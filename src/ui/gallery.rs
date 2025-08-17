@@ -43,7 +43,7 @@ fn ImageCard(cx: Scope, image: ImagePost) -> Element {
             std::fs::create_dir_all(&download_path).ok();
             let full_path = download_path.join(filename);
             
-            match crate::api::download_image(&file_url, &full_path.to_string_lossy()).await {
+            match crate::api::download_image(&file_url, &full_path).await {
         
         cx.spawn(async move {
             std::fs::create_dir_all(&download_path).ok();
