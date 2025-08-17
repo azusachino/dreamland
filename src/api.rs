@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use anyhow::Result;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ImagePost {
     pub id: u64,
     pub tags: String,
@@ -28,13 +28,39 @@ pub async fn fetch_images(url: &str, page: usize) -> Result<Vec<ImagePost>> {
     Ok(images)
 }
 
-pub async fn download_image(url: &str, path: &str) -> Result<()> {
+pub async fn download_image(url: &str, download_dir: &std::path::Path) -> Result<(std::path::PathBuf, String)> {
     let client = reqwest::Client::new();
     let response = client.get(url).send().await?;
+    
+    // Get content type from response headers
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|ct| ct.to_str().ok())
+        .unwrap_or("image/jpeg")
+        .to_string();
+    
     let bytes = response.bytes().await?;
     
-    tokio::fs::write(path, bytes).await?;
-    Ok(())
+    // Create a temporary filename
+    let temp_filename = format!("temp_{}", uuid::Uuid::new_v4());
+    let full_path = download_dir.join(temp_filename);
+    
+    tokio::fs::write(&full_path, bytes).await?;
+    
+    Ok((full_path, content_type))
+}
+
+pub fn mime_to_extension(content_type: &str) -> Option<&str> {
+    match content_type {
+        "image/jpeg" => Some("jpg"),
+        "image/png" => Some("png"),
+        "image/gif" => Some("gif"),
+        "image/webp" => Some("webp"),
+        "image/bmp" => Some("bmp"),
+        "image/svg+xml" => Some("svg"),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

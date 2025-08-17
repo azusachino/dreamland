@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use crate::{AppState, api::ImagePost};
+use crate::{AppState, api::{ImagePost, mime_to_extension}};
 
 #[inline_props]
 pub fn Gallery(cx: Scope) -> Element {
@@ -37,13 +37,7 @@ fn ImageCard(cx: Scope, image: ImagePost) -> Element {
     let download_image = move |_| {
         let file_url = image.file_url.clone();
         let download_path = app_state.read().config.download_path.clone();
-        let filename = format!("{}.{}", image.md5, file_url.split('.').last().unwrap_or("jpg"));
-        
-        cx.spawn(async move {
-            std::fs::create_dir_all(&download_path).ok();
-            let full_path = download_path.join(filename);
-            
-            match crate::api::download_image(&file_url, &full_path).await {
+        let md5 = image.md5.clone();
         
         cx.spawn(async move {
             std::fs::create_dir_all(&download_path).ok();
@@ -52,7 +46,7 @@ fn ImageCard(cx: Scope, image: ImagePost) -> Element {
                 Ok((full_path, content_type)) => {
                     // Map content type to extension
                     let ext = mime_to_extension(&content_type).unwrap_or("jpg");
-                    let filename = format!("{}.{}", image.md5, ext);
+                    let filename = format!("{}.{}", md5, ext);
                     let final_path = download_path.join(filename);
                     // Rename the file to have the correct extension
                     if let Err(e) = std::fs::rename(&full_path, &final_path) {
