@@ -44,7 +44,23 @@ fn ImageCard(cx: Scope, image: ImagePost) -> Element {
             let full_path = download_path.join(filename);
             
             match crate::api::download_image(&file_url, &full_path.to_string_lossy()).await {
-                Ok(_) => println!("Downloaded: {}", full_path.display()),
+        
+        cx.spawn(async move {
+            std::fs::create_dir_all(&download_path).ok();
+            // Download the image and get the content type
+            match crate::api::download_image(&file_url, &download_path).await {
+                Ok((full_path, content_type)) => {
+                    // Map content type to extension
+                    let ext = mime_to_extension(&content_type).unwrap_or("jpg");
+                    let filename = format!("{}.{}", image.md5, ext);
+                    let final_path = download_path.join(filename);
+                    // Rename the file to have the correct extension
+                    if let Err(e) = std::fs::rename(&full_path, &final_path) {
+                        eprintln!("Failed to rename file: {}", e);
+                    } else {
+                        println!("Downloaded: {}", final_path.display());
+                    }
+                }
                 Err(e) => eprintln!("Download failed: {}", e),
             }
         });
