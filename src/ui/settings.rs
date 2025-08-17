@@ -4,7 +4,12 @@ use crate::{AppState, config::AppConfig};
 #[inline_props]
 pub fn Settings(cx: Scope, on_close: EventHandler<()>) -> Element {
     let app_state = use_shared_state::<AppState>(cx)?;
-    let download_path = use_state(cx, || app_state.read().config.download_path.to_string_lossy().to_string());
+    let download_path = use_state(cx, || {
+        app_state.read().config.download_path
+            .to_str()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| String::from("<invalid path>"))
+    });
     let api_url = use_state(cx, || app_state.read().config.api_url.clone());
     
     let save_settings = move |_| {
