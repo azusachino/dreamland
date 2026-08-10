@@ -18,7 +18,7 @@ is outside the supported acceptance matrix until that decision changes.
 
 The migration uses normal descriptive feature branches. The Dreamland branch
 is `feat/migrate-to-tauri`; the workstation branch tracking this vendored
-change is `feat/vendor-dreamland-tauri`. There is no special `universal`
+change is `feat/vendor-dreamland-tauri`. There is no special cross-platform
 branch convention.
 
 ## Frontend and desktop shell
