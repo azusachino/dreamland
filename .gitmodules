@@ -1,3 +1,6 @@
 [submodule "vendor/moeloaderp"]
 	path = vendor/moeloaderp
 	url = git@github.com:xplusky/MoeLoaderP.git
+[submodule "vendor/moebooru"]
+	path = vendor/moebooru
+	url = https://github.com/yueeng/moebooru.git

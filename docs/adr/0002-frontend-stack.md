@@ -5,7 +5,7 @@
 
 ## Context
 
-The frontend will grow from a small gallery into a provider-aware desktop
+The frontend will grow from a small gallery into a site-aware desktop
 collector. It needs typed IPC, predictable asynchronous state, and a styling
 system that can scale without adding a framework server or mobile target.
 

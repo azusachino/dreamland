@@ -1,7 +1,10 @@
 [workspace]
 members = [
   "crates/dreamland-core",
-  "crates/dreamland-provider-yandere",
+  "crates/dreamland-sites",
+  "crates/dreamland-site-pixiv",
+  "crates/dreamland-site-twitter",
+  "crates/dreamland-site-yandere",
   "crates/dreamland-runtime",
   "src-tauri",
 ]

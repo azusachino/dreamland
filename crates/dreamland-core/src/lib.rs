@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ProviderId(String);
+pub struct SiteId(String);
 
-impl ProviderId {
+impl SiteId {
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
     }
@@ -15,12 +15,12 @@ impl ProviderId {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PostRef {
-    pub provider: ProviderId,
+    pub site: SiteId,
     pub id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ProviderCapabilities {
+pub struct SiteCapabilities {
     pub browse: bool,
     pub post_search: bool,
     pub tag_search: bool,
@@ -32,8 +32,8 @@ pub struct ProviderCapabilities {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ProviderDescriptor {
-    pub id: ProviderId,
+pub struct SiteDescriptor {
+    pub id: SiteId,
     pub name: String,
-    pub capabilities: ProviderCapabilities,
+    pub capabilities: SiteCapabilities,
 }

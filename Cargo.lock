@@ -705,8 +705,9 @@ dependencies = [
 name = "dreamland"
 version = "0.1.0"
 dependencies = [
- "dreamland-provider-yandere",
  "dreamland-runtime",
+ "dreamland-site-yandere",
+ "dreamland-sites",
  "tauri",
  "tauri-build",
 ]
@@ -716,16 +717,6 @@ name = "dreamland-core"
 version = "0.1.0"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "dreamland-provider-yandere"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "reqwest 0.11.27",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -739,6 +730,41 @@ dependencies = [
  "serde_json",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "dreamland-site-pixiv"
+version = "0.1.0"
+dependencies = [
+ "dreamland-core",
+]
+
+[[package]]
+name = "dreamland-site-twitter"
+version = "0.1.0"
+dependencies = [
+ "dreamland-core",
+]
+
+[[package]]
+name = "dreamland-site-yandere"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dreamland-core",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "dreamland-sites"
+version = "0.1.0"
+dependencies = [
+ "dreamland-core",
+ "dreamland-site-pixiv",
+ "dreamland-site-twitter",
+ "dreamland-site-yandere",
 ]
 
 [[package]]

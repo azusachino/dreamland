@@ -1,5 +1,11 @@
-use dreamland_provider_yandere::ImagePost;
 use dreamland_runtime::AppConfig;
+use dreamland_site_yandere::ImagePost;
+use dreamland_sites::SiteDescriptor;
+
+#[tauri::command]
+fn list_sites() -> Vec<SiteDescriptor> {
+    dreamland_sites::descriptors()
+}
 
 #[tauri::command]
 fn load_config() -> Result<AppConfig, String> {
@@ -17,7 +23,7 @@ fn save_config(download_path: String, api_url: String) -> Result<AppConfig, Stri
 #[tauri::command]
 async fn load_images(page: usize) -> Result<Vec<ImagePost>, String> {
     let config = AppConfig::load().map_err(|error| error.to_string())?;
-    dreamland_provider_yandere::fetch_images(&config.api_url, page)
+    dreamland_site_yandere::fetch_images(&config.api_url, page)
         .await
         .map_err(|error| error.to_string())
 }
@@ -35,6 +41,7 @@ async fn download_image(image: ImagePost) -> Result<String, String> {
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            list_sites,
             load_config,
             save_config,
             load_images,

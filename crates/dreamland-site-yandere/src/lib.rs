@@ -1,7 +1,25 @@
 use anyhow::Result;
+use dreamland_core::{SiteCapabilities, SiteDescriptor, SiteId};
 use serde::{Deserialize, Serialize};
 
-pub const PROVIDER_ID: &str = "yandere";
+pub const SITE_ID: &str = "yandere";
+
+pub fn descriptor() -> SiteDescriptor {
+    SiteDescriptor {
+        id: SiteId::new(SITE_ID),
+        name: "Yande.re".to_owned(),
+        capabilities: SiteCapabilities {
+            browse: true,
+            post_search: true,
+            tag_search: true,
+            tag_query: true,
+            post_lookup: true,
+            page_numbers: true,
+            cursors: false,
+            multiple_download_variants: true,
+        },
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ImagePost {
@@ -57,7 +75,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_uses_the_stable_yandere_id() {
-        assert_eq!(PROVIDER_ID, "yandere");
+    fn site_uses_the_stable_yandere_id() {
+        assert_eq!(SITE_ID, "yandere");
     }
 }
