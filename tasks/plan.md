@@ -3,7 +3,7 @@
 ## Objective
 
 Rebuild Dreamland as a Tauri 2 desktop application while preserving its
-gallery, API pagination, settings, and image-download behavior.
+provider set, API pagination, settings, and image-download behavior.
 
 ## Commands
 
@@ -12,6 +12,8 @@ gallery, API pagination, settings, and image-download behavior.
 - Format Rust: `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`
 - Check frontend: `bun run build`
 - Run desktop app: `bun run tauri:dev`
+- Check tooling: `uv run scripts/doctor.py`
+- Run daily checks: `uv run scripts/check.py` or `make check`
 
 ## Project Structure
 
@@ -20,6 +22,7 @@ gallery, API pagination, settings, and image-download behavior.
 - `dist/` — Vite build output loaded by Tauri
 - `src-tauri/` — Tauri application and Rust commands
 - `tasks/` — rework plan and acceptance checklist
+- `scripts/` — uv-runnable daily tooling and platform-aware checks
 
 ## Code Style
 
@@ -36,6 +39,9 @@ Validate the frontend through Vite's production build.
 ## Boundaries
 
 - Always: preserve existing user-visible features and run the repository checks.
+- Always: keep provider requests and runtime persistence behind Rust commands.
+- Always: treat yande.re as one provider, not the universal API contract.
+- Always: approve `docs/API-V1.md` before implementing provider or runtime traits.
 - Ask first: new native capabilities, plugins, or unrelated UI redesign.
 - Never: expose arbitrary filesystem access to the frontend or commit secrets.
 

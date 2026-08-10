@@ -31,6 +31,17 @@ commands instead of receiving filesystem or network capabilities directly.
 This keeps the rework small and makes the same web UI usable in Tauri’s
 desktop WebView without adding another frontend framework.
 
+## API and runtime contract
+
+The existing API and runtime ownership model is part of the product contract.
+Rust remains responsible for provider requests, configuration persistence,
+validation, and downloads. React communicates through narrow provider-neutral
+Tauri commands; it does not call providers or access the filesystem directly.
+
+Dreamland supports a set of providers. `yande.re` is one complete provider,
+not the application-wide API assumption. Provider-specific capabilities such
+as search and pagination must be represented at the provider boundary.
+
 ## Project toolchain: Nix only
 
 The project-level toolchain decision is Nix. The Nix definition should pin
@@ -39,8 +50,10 @@ project-level toolchain file is kept in the repository.
 
 `flake.nix` provides a development shell for `aarch64-darwin` and
 `x86_64-darwin`, including Rust 1.97.1 with rustfmt and clippy, Bun, Make,
-OpenSSL, and pkg-config. Enter it with `nix develop` before running the Make
-targets or Bun commands.
+OpenSSL, pkg-config, and uv. Enter it with `nix develop` before running the
+Make targets or Bun commands. The `pyproject.toml` and `uv.lock` files only
+describe the small daily-tooling environment; they do not replace Nix as the
+project toolchain decision.
 
 There is one platform constraint: Nix is not a native Windows provisioning
 layer. The feasible counterpart for first-class Windows support is to keep Nix
@@ -81,28 +94,18 @@ scheme, rejects empty download paths, checks HTTP status codes, and accepts
 only hexadecimal image identifiers for output filenames. Remote previews are
 allowed over HTTPS by the CSP; arbitrary frontend filesystem access is not.
 
-## Packaging changes (planned)
+## Release planning
 
-The Tauri bundle remains the packaging boundary, with icons generated from the
-checked-in `app-icon.svg`. Packaging will be defined for the two first-class
-platforms:
-
-- macOS: an `.app` bundle, with a `.dmg` distribution artifact when release
-  distribution needs it;
-- Windows: a native installer artifact, initially `.msi` unless release
-  testing shows that an `.exe` installer is a better fit.
-
-Linux packages and Linux-specific packaging dependencies are out of scope.
-macOS signing/notarization and Windows signing, installer UX, and distribution
-channels remain separate release decisions. No packaging configuration changes
-are made in this rework.
+There is no release plan yet. Signing, notarization, installers, distribution
+channels, automatic updates, and store submission are deliberately not
+roadmap commitments. The current Tauri bundle configuration only supports
+development of the desktop application.
 
 ## Explicitly deferred
 
 The following are recorded decisions, not completed changes:
 
 - adopt TOML runtime settings with a legacy JSON fallback;
-- update Tauri packaging configuration for native macOS and Windows artifacts;
-- define the macOS and Windows build/release matrix;
-- decide signing, notarization, and installer distribution details for each
-  supported platform.
+- define application-data storage for favorites and tags;
+- implement the provider contract and registry;
+- add provider-aware search, tags, favorites, and batch downloads.

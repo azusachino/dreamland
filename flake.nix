@@ -38,6 +38,7 @@
               gnumake
               openssl
               pkg-config
+              uv
             ];
 
             shellHook = ''

@@ -1,29 +1,40 @@
 SHELL := bash
 
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+NIX_RUN := $(if $(IN_NIX_SHELL),,nix develop --command )
+else
+NIX_RUN :=
+endif
+
 .DEFAULT_GOAL := help
-.PHONY: help install dev build frontend fmt test check
+.PHONY: help install doctor dev build frontend fmt test check
 
 help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | \
 		awk 'BEGIN{FS=":.*## "}{printf "  %-10s %s\n", $$1, $$2}'
 
-install: ## Install frontend dependencies
-	bun install --frozen-lockfile
+install: ## Install uv and frontend dependencies
+	$(NIX_RUN)uv sync --locked
+	$(NIX_RUN)bun install --frozen-lockfile
+
+doctor: ## Check host development tools
+	$(NIX_RUN)uv run scripts/doctor.py
 
 dev: ## Run the Tauri development application
-	bun run tauri:dev
+	$(NIX_RUN)bun run tauri:dev
 
 build: ## Build the distributable Tauri application
-	bun run tauri:build
+	$(NIX_RUN)bun run tauri:build
 
 frontend: ## Build the React frontend
-	bun run build
+	$(NIX_RUN)bun run build
 
 fmt: ## Format Rust sources
-	cargo fmt --manifest-path src-tauri/Cargo.toml
+	$(NIX_RUN)cargo fmt --manifest-path src-tauri/Cargo.toml
 
-test: ## Run Rust tests
-	cargo test --manifest-path src-tauri/Cargo.toml
+test: ## Run platform-aware tests
+	$(NIX_RUN)uv run scripts/test.py
 
-check: frontend fmt test ## Run the project checks
-	cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+check: ## Run platform-aware project checks
+	$(NIX_RUN)uv run scripts/check.py

@@ -29,6 +29,7 @@ Install dependencies and start the Tauri development window:
 
 ```bash
 nix develop
+uv sync --locked
 bun install
 bun run tauri:dev
 ```
@@ -42,8 +43,10 @@ make check
 ```
 
 The Nix flake provides the pinned Rust, Bun, Make, OpenSSL, and pkg-config
-toolchain for macOS. Windows uses native runners with the same Rust and Bun
-versions because Nix is not a native Windows provisioning layer.
+toolchain plus uv for macOS. Windows uses native runners with the same Rust,
+Bun, and uv tool versions because Nix is not a native Windows provisioning
+layer. Use `uv run scripts/doctor.py` to check the local toolchain and
+`uv run scripts/check.py` for the daily platform-aware checks.
 Run the frontend build:
 
 ```bash
@@ -75,7 +78,7 @@ The frontend calls four narrow Tauri commands: `load_config`, `save_config`,
 Rust rather than being exposed directly to the webview.
 
 See [docs/DECISIONS.md](docs/DECISIONS.md) for the platform scope, TOML
-configuration, security boundary, and packaging decisions.
+configuration, security boundary, and tooling decisions.
 
 ## Configuration
 

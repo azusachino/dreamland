@@ -4,3 +4,9 @@ dist/
 
 # Frontend dependencies
 node_modules/
+
+# uv project environment
+.venv/
+
+# Python tooling cache
+__pycache__/

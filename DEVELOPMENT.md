@@ -4,14 +4,17 @@
 
 ```bash
 nix develop
+uv sync --locked
 bun install
 bun run tauri:dev
 ```
 
 The frontend runs on Vite during Tauri development. Rust commands live under
-`src-tauri/` and handle API requests, configuration, and downloads.
+`src-tauri/` and handle API requests, configuration, and downloads. Daily
+tooling and platform-aware checks live in `scripts/` and run through uv.
 
-Or use `make install`, `make dev`, and `make check` inside `nix develop`.
+Or use `make install`, `make doctor`, `make dev`, and `make check` inside
+`nix develop`.
 
 ## Commands
 
@@ -19,6 +22,8 @@ Or use `make install`, `make dev`, and `make check` inside `nix develop`.
 - `bun run build` — build the React frontend into `dist/`
 - `bun run tauri:dev` — run the desktop application
 - `bun run tauri:build` — build the Tauri application
+- `uv run scripts/doctor.py` — check the local toolchain
+- `uv run scripts/check.py` — run the daily platform-aware checks
 - `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` — check Rust formatting
 - `cargo test --manifest-path src-tauri/Cargo.toml` — run Rust tests
 
