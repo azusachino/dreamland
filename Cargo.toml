@@ -1,21 +1,25 @@
-[package]
-name = "dreamland"
-version = "0.1.0"
+[workspace]
+members = [
+  "crates/dreamland-core",
+  "crates/dreamland-provider-yandere",
+  "crates/dreamland-runtime",
+  "src-tauri",
+]
+resolver = "2"
+
+[workspace.package]
+authors = ["azusachino"]
 edition = "2021"
 repository = "https://github.com/azusachino/dreamland"
+version = "0.1.0"
 
-[[bin]]
-name = "dreamland"
-path = "src/main.rs"
-
-[dependencies]
+[workspace.dependencies]
 anyhow = "1"
-thiserror = "2"
-tokio = { version = "1", features = ["full"] }
-dioxus = "0.5"
-dioxus-desktop = "0.5"
+dirs = "5"
+reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-reqwest = { version = "0.11", features = ["json"] }
-dirs = "5.0"
+tauri = { version = "2", features = [] }
+tauri-build = { version = "2", features = [] }
+tokio = { version = "1", features = ["fs"] }
 uuid = { version = "1.0", features = ["v4"] }

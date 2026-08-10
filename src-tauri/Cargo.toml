@@ -1,0 +1,23 @@
+[package]
+name = "dreamland"
+description = "A cross-platform image gallery application"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[lib]
+name = "dreamland_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "dreamland"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+dreamland-provider-yandere = { path = "../crates/dreamland-provider-yandere" }
+dreamland-runtime = { path = "../crates/dreamland-runtime" }
+tauri.workspace = true

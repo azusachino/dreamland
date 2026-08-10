@@ -1,101 +1,93 @@
-# Dreamland Image Viewer
+# Dreamland
 
-A cross-platform image gallery application built with Rust, Dioxus, and supporting image APIs like yande.re.
+> A native desktop image-board browser and collector for macOS and Windows.
 
-## Features
+Dreamland is being rebuilt as a focused Tauri application: a React and
+TypeScript interface over a Rust runtime that owns providers, configuration,
+local data, and downloads.
 
-- **Image Gallery**: Browse images in a responsive grid layout
-- **API Integration**: Fetches images from JSON APIs (yande.re/post.json format)
-- **Download Management**: Download high-quality images to local storage
-- **Settings Panel**: Configure download locations and API endpoints
-- **Pagination**: Navigate through multiple pages of images
-- **Cross-Platform**: Built with Dioxus for desktop applications
+**Status:** foundation rework in progress  ·  **Targets:** macOS, Windows  ·
+**Provider ID:** `yandere`
 
-## Project Structure
+## What exists now
 
-```
-src/
-├── main.rs           # Main application entry point
-├── api.rs            # API client for fetching and downloading images
-├── config.rs         # Configuration management
-└── ui/
-    ├── mod.rs        # UI module exports
-    ├── header.rs     # Top header with controls and settings
-    ├── gallery.rs    # Main image gallery component
-    └── settings.rs   # Settings dialog component
-```
+- Tauri 2 desktop shell
+- React 19 + TypeScript + Vite + Bun frontend
+- Typed Tauri IPC wrappers
+- Tailwind CSS styling foundation
+- TanStack Query for command-backed asynchronous state
+- Rust Cargo workspace with core, runtime, and Yandere adapter boundaries
+- Browse, pagination, settings, and image downloads through Rust commands
+
+Linux and mobile are not planned targets. There is no release schedule or
+distribution plan yet.
 
 ## Architecture
 
-### State Management
-The application uses Dioxus's context system to manage global state:
-- Image list and loading states
-- User configuration (download path, API URL)
-- Current page for pagination
-
-### API Integration
-- Fetches image metadata from JSON APIs
-- Downloads high-quality images to configurable local directories
-- Supports pagination for large image sets
-
-### UI Components
-- **Header**: Load button, settings toggle
-- **Gallery**: Responsive grid of image cards with download buttons
-- **Settings**: Modal dialog for configuration
-- **Pagination**: Previous/Next page navigation
-
-## Configuration
-
-The application stores settings in:
-- `~/.config/dreamland/config.json` on Linux/macOS
-- User config directory on Windows
-
-Default settings:
-```json
-{
-  "download_path": "~/Downloads/dreamland_images",
-  "api_url": "https://yande.re/post.json",
-  "images_per_page": 20
-}
+```text
+React + TypeScript
+        │ typed Tauri IPC
+        ▼
+src-tauri/                  desktop commands and window lifecycle
+        │
+        ├── dreamland-runtime       config, persistence, downloads
+        ├── dreamland-core          provider-neutral domain contracts
+        └── dreamland-provider-yandere
+                                    yande.re adapter and fixtures
 ```
 
-## Usage
+The frontend does not call providers or access the filesystem directly.
+Provider traits, registry behavior, and the provider-neutral v1 command model
+remain gated by [API and runtime design v1](docs/API-V1.md).
 
-1. **Start the application**: `cargo run`
-2. **Load images**: Click "Load Images" to fetch from the configured API
-3. **Browse gallery**: Scroll through the image grid
-4. **Download images**: Click download button on any image card
-5. **Configure settings**: Click "Settings" to change download path or API URL
-6. **Navigate pages**: Use Previous/Next buttons for pagination
+## Stack
 
-## Dependencies
+| Layer | Choice | Role |
+| --- | --- | --- |
+| Desktop | Tauri 2 | Native macOS/Windows shell and IPC |
+| Frontend | React 19, TypeScript, Vite, Bun | UI and local interaction state |
+| Async UI state | TanStack Query | Cache and lifecycle for Rust commands |
+| Styling | Tailwind CSS v4 | Utility styling through Vite |
+| Runtime | Rust | Providers, validation, persistence, and downloads |
+| Toolchain | Nix + uv scripts | Reproducible development and daily checks |
 
-- **dioxus**: Modern reactive UI framework for Rust
-- **dioxus-desktop**: Desktop renderer for Dioxus apps
-- **reqwest**: HTTP client for API requests and downloads
-- **serde**: JSON serialization/deserialization
-- **dirs**: Cross-platform directory utilities
-- **tokio**: Async runtime for HTTP operations
+## Quick start
 
-## API Format
+On macOS, enter the Nix development shell. On Windows, use the native Rust,
+Bun, and uv toolchain with the same pinned versions; Nix is not used as a
+native Windows provisioning layer.
 
-The application expects JSON APIs that return arrays of objects with these fields:
-```json
-[
-  {
-    "id": 123456,
-    "tags": "tag1 tag2 tag3",
-    "width": 1920,
-    "height": 1080,
-    "file_url": "https://example.com/full_image.jpg",
-    "sample_url": "https://example.com/sample.jpg",
-    "preview_url": "https://example.com/preview.jpg",
-    "rating": "s",
-    "score": 42,
-    "md5": "abcdef123456",
-    "file_size": 1048576
-  }
-]
+```bash
+nix develop                 # macOS
+uv sync --locked
+bun install
+make doctor
+make dev
 ```
 
-This format is compatible with popular image board APIs like yande.re, danbooru, and similar services.
+Run the daily checks:
+
+```bash
+make check
+```
+
+The check command validates the uv lockfile, Python tooling, TypeScript,
+frontend build, and Rust formatting. Native Tauri tests run on macOS and
+Windows; Linux is intentionally outside the acceptance matrix.
+
+## Documentation
+
+- [Development guide](docs/DEVELOPMENT.md) — setup, commands, and troubleshooting
+- [Project spec](docs/PROJECT-SPEC.md) — scope and acceptance criteria
+- [API v1 draft](docs/API-V1.md) — contract gate before provider/runtime traits
+- [Architecture decisions](docs/DECISIONS.md) — decision index
+- [ADRs](docs/adr/README.md) — rationale and consequences of accepted decisions
+- [Roadmap](docs/ROADMAP.md) — product direction, not a release schedule
+- [Reference learnings](docs/REFERENCE-LEARNINGS.md) — yande and MoeLoaderP notes
+- [Changelog](CHANGELOG.md) — unreleased and future user-visible changes
+
+## Contributing direction
+
+The next architectural gate is approval of API v1. Until then, keep changes
+inside the documented boundaries and avoid adding provider traits, registries,
+search, favorites, tags, or batch workflows speculatively.

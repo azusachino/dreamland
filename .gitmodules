@@ -1,0 +1,3 @@
+[submodule "vendor/moeloaderp"]
+	path = vendor/moeloaderp
+	url = git@github.com:xplusky/MoeLoaderP.git
