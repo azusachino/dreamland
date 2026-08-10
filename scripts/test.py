@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import platform
 import subprocess
-import sys
 from pathlib import Path
 
 
@@ -21,8 +20,7 @@ def main() -> int:
         [
             "cargo",
             "test",
-            "--manifest-path",
-            str(ROOT / "src-tauri/Cargo.toml"),
+            "--workspace",
         ],
         cwd=ROOT,
         check=False,

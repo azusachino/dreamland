@@ -1,5 +1,7 @@
 - [x] Add the Tauri application shell and Rust command boundary.
-- [x] Port the gallery UI to React/Vite.
+- [x] Port the gallery UI to React/TypeScript/Vite.
+- [x] Establish the Cargo workspace and runtime/provider crate boundaries.
+- [x] Add Tailwind CSS and TanStack Query frontend foundations.
 - [x] Remove the Dioxus shell and update project documentation.
 - [x] Run frontend, Rust formatting, and Tauri checks.
 

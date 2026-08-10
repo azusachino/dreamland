@@ -33,7 +33,8 @@ showing what Dreamland should improve:
   persistence, download I/O, and runtime errors.
 - Tauri commands expose application concepts, not provider JSON or arbitrary
   filesystem/network primitives.
-- `yande.re` is one provider adapter in the provider set. It is not the
+- `yandere` is the stable provider ID for the `yande.re` adapter. It is one
+  provider adapter in the provider set, not the
   application-wide API contract.
 - Provider credentials, if a future provider needs them, do not go into TOML;
   use a platform secret store when that requirement exists.
@@ -77,7 +78,7 @@ pub struct DownloadVariant {
 ```
 
 `PostId` is a string because provider identifiers are not required to be
-numeric. The yande.re adapter converts its numeric IDs and MD5 values into the
+numeric. The `yandere` adapter converts its numeric IDs and MD5 values into the
 provider-neutral representation. The frontend must never infer identity from
 an MD5 or from a URL.
 

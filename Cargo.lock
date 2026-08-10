@@ -705,13 +705,38 @@ dependencies = [
 name = "dreamland"
 version = "0.1.0"
 dependencies = [
+ "dreamland-provider-yandere",
+ "dreamland-runtime",
+ "tauri",
+ "tauri-build",
+]
+
+[[package]]
+name = "dreamland-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "dreamland-provider-yandere"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "dreamland-runtime"
+version = "0.1.0"
+dependencies = [
  "anyhow",
  "dirs 5.0.1",
  "reqwest 0.11.27",
  "serde",
  "serde_json",
- "tauri",
- "tauri-build",
  "tokio",
  "uuid",
 ]

@@ -18,8 +18,11 @@ supported and is not part of the rework acceptance matrix.
 
 - Tauri 2
 - React 19
+- TypeScript
 - Vite
 - Bun
+- TanStack Query
+- Tailwind CSS
 - Rust
 - Nix
 
@@ -56,20 +59,23 @@ bun run build
 Run Rust checks:
 
 ```bash
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-cargo test --manifest-path src-tauri/Cargo.toml
+cargo fmt --all -- --check
+cargo test --workspace
 ```
 
 ## Project Structure
 
 ```text
-src/                    # React frontend
-src-tauri/              # Tauri application and Rust commands
-  src/api.rs            # API client and image metadata
-  src/config.rs         # Persistent settings
-  src/lib.rs            # Tauri command registration
+Cargo.toml              # Rust workspace definition
+src/                    # React + TypeScript frontend
+  lib/ipc.ts            # Typed Tauri command wrappers
+src-tauri/              # Tauri application and command registration
+crates/
+  dreamland-core/       # Provider-neutral identifiers and descriptors
+  dreamland-runtime/    # Config, downloads, and runtime-owned I/O
+  dreamland-provider-yandere/ # Yandere adapter and fixtures
 index.html              # Vite entry document
-vite.config.js          # Vite configuration
+vite.config.ts          # Vite + Tailwind configuration
 docs/DECISIONS.md       # Architecture and tooling decisions
 ```
 

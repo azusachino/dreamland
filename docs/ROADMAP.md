@@ -27,7 +27,8 @@ set.
 This is the current Tauri/React foundation:
 
 - Tauri 2 desktop shell;
-- React 19 + Vite + Bun frontend;
+- React 19 + TypeScript + Vite + Bun frontend;
+- Tailwind CSS styling and TanStack Query IPC state;
 - Rust command boundary for API calls, settings, and downloads;
 - Nix development environment for macOS;
 - desktop-only macOS/Windows icon set.

@@ -31,7 +31,7 @@ frontend: ## Build the React frontend
 	$(NIX_RUN)bun run build
 
 fmt: ## Format Rust sources
-	$(NIX_RUN)cargo fmt --manifest-path src-tauri/Cargo.toml
+	$(NIX_RUN)cargo fmt --all
 
 test: ## Run platform-aware tests
 	$(NIX_RUN)uv run scripts/test.py

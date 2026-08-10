@@ -7,9 +7,10 @@ provider set, API pagination, settings, and image-download behavior.
 
 ## Commands
 
-- Check Rust: `cargo check --manifest-path src-tauri/Cargo.toml`
-- Test Rust: `cargo test --manifest-path src-tauri/Cargo.toml`
-- Format Rust: `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check`
+- Check Rust: `cargo check --workspace`
+- Test Rust: `cargo test --workspace`
+- Format Rust: `cargo fmt --all -- --check`
+- Check TypeScript: `bun run typecheck`
 - Check frontend: `bun run build`
 - Run desktop app: `bun run tauri:dev`
 - Check tooling: `uv run scripts/doctor.py`
@@ -18,9 +19,10 @@ provider set, API pagination, settings, and image-download behavior.
 ## Project Structure
 
 - `index.html` — Vite entry document
-- `src/` — React frontend
+- `src/` — React + TypeScript frontend
 - `dist/` — Vite build output loaded by Tauri
-- `src-tauri/` — Tauri application and Rust commands
+- `crates/` — core, runtime, and Yandere adapter crates
+- `src-tauri/` — Tauri application and command boundary
 - `tasks/` — rework plan and acceptance checklist
 - `scripts/` — uv-runnable daily tooling and platform-aware checks
 
@@ -32,9 +34,10 @@ backend calls.
 
 ## Testing Strategy
 
-Keep the existing API deserialization tests in the Tauri crate. Add command
-boundary tests only where behavior is not already covered by module tests.
-Validate the frontend through Vite's production build.
+Keep provider response deserialization tests in the Yandere adapter crate and
+runtime I/O tests in the runtime crate. Add command-boundary tests only where
+behavior is not already covered by module tests. Validate the frontend through
+TypeScript and Vite production checks.
 
 ## Boundaries
 
@@ -48,6 +51,9 @@ Validate the frontend through Vite's production build.
 ## Success Criteria
 
 - The repository has a Tauri 2 project structure and no Dioxus dependencies.
+- The Rust code is organized as a workspace with isolated runtime/provider
+  boundaries.
+- The frontend is strict TypeScript with typed IPC wrappers.
 - The frontend can load images, paginate, save settings, and download images
   through registered Tauri commands.
 - Rust tests and formatting pass; the Vite production build succeeds.

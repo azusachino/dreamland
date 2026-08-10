@@ -1,61 +1,97 @@
-import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useState } from "react";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import {
+  downloadImage,
+  loadConfig,
+  loadImages,
+  saveConfig,
+  type AppConfig,
+  type ImagePost,
+} from "./lib/ipc";
 
 const defaultApiUrl = "https://yande.re/post.json";
 
+function errorMessage(reason: unknown): string {
+  return reason instanceof Error ? reason.message : String(reason);
+}
+
 function App() {
-  const [config, setConfig] = useState(null);
-  const [images, setImages] = useState([]);
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
+  const [imagesRequested, setImagesRequested] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [downloadingId, setDownloadingId] = useState(null);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  useEffect(() => {
-    invoke("load_config")
-      .then(setConfig)
-      .catch((reason) => setError(`Failed to load configuration: ${reason}`));
-  }, []);
+  const configQuery = useQuery({
+    queryKey: ["config"],
+    queryFn: loadConfig,
+  });
+  const imagesQuery = useQuery({
+    queryKey: ["images", page],
+    queryFn: () => loadImages(page),
+    enabled: configQuery.isSuccess && imagesRequested,
+  });
+  const saveConfigMutation = useMutation({
+    mutationFn: ({ downloadPath, apiUrl }: ConfigInput) =>
+      saveConfig(downloadPath, apiUrl),
+    onSuccess: (nextConfig) => {
+      queryClient.setQueryData(["config"], nextConfig);
+      setSettingsOpen(false);
+      setNotice("Settings saved");
+    },
+    onError: (reason) => setError(`Failed to save settings: ${errorMessage(reason)}`),
+  });
+  const downloadMutation = useMutation({
+    mutationFn: downloadImage,
+    onSuccess: (path) => setNotice(`Downloaded to ${path}`),
+    onError: (reason) => setError(`Download failed: ${errorMessage(reason)}`),
+  });
 
-  async function loadImages(nextPage) {
-    setLoading(true);
+  const queryError = configQuery.error
+    ? `Failed to load configuration: ${errorMessage(configQuery.error)}`
+    : imagesQuery.error
+      ? `Failed to load images: ${errorMessage(imagesQuery.error)}`
+      : "";
+  const images = imagesQuery.data ?? [];
+  const loading = configQuery.isPending || imagesQuery.isFetching;
+
+  async function requestImages(nextPage: number) {
     setError("");
     setNotice("");
-    try {
-      const result = await invoke("load_images", { page: nextPage });
-      setImages(result);
-      setPage(nextPage);
-    } catch (reason) {
-      setError(`Failed to load images: ${reason}`);
-    } finally {
-      setLoading(false);
+    setImagesRequested(true);
+    if (nextPage === page) {
+      await imagesQuery.refetch();
+      return;
     }
+    setPage(nextPage);
   }
 
-  async function downloadImage(image) {
+  async function handleDownload(image: ImagePost) {
     setDownloadingId(image.id);
     setError("");
     setNotice("");
     try {
-      const path = await invoke("download_image", { image });
-      setNotice(`Downloaded to ${path}`);
-    } catch (reason) {
-      setError(`Download failed: ${reason}`);
+      await downloadMutation.mutateAsync(image);
+    } catch {
+      // The mutation reports the user-facing error.
     } finally {
       setDownloadingId(null);
     }
   }
 
-  async function saveConfig(downloadPath, apiUrl) {
+  async function handleSaveConfig(downloadPath: string, apiUrl: string) {
+    setError("");
+    setNotice("");
     try {
-      const nextConfig = await invoke("save_config", { downloadPath, apiUrl });
-      setConfig(nextConfig);
-      setSettingsOpen(false);
-      setNotice("Settings saved");
-    } catch (reason) {
-      setError(`Failed to save settings: ${reason}`);
+      await saveConfigMutation.mutateAsync({ downloadPath, apiUrl });
+    } catch {
+      // The mutation reports the user-facing error.
     }
   }
 
@@ -67,7 +103,7 @@ function App() {
           <button
             className="button button-success"
             disabled={loading}
-            onClick={() => loadImages(page)}
+            onClick={() => void requestImages(page)}
           >
             {loading ? "Loading..." : "Load Images"}
           </button>
@@ -81,7 +117,9 @@ function App() {
       </header>
 
       <main className="content">
-        {error && <p className="message message-error">{error}</p>}
+        {(error || queryError) && (
+          <p className="message message-error">{error || queryError}</p>
+        )}
         {notice && <p className="message message-success">{notice}</p>}
         {images.length === 0 ? (
           <p className="message">Click 'Load Images' to fetch images from the API</p>
@@ -93,7 +131,7 @@ function App() {
                   key={image.id}
                   image={image}
                   downloading={downloadingId === image.id}
-                  onDownload={downloadImage}
+                  onDownload={handleDownload}
                 />
               ))}
             </div>
@@ -101,7 +139,7 @@ function App() {
               <button
                 className="button button-primary"
                 disabled={loading || page <= 1}
-                onClick={() => loadImages(page - 1)}
+                onClick={() => void requestImages(page - 1)}
               >
                 Previous
               </button>
@@ -109,7 +147,7 @@ function App() {
               <button
                 className="button button-primary"
                 disabled={loading}
-                onClick={() => loadImages(page + 1)}
+                onClick={() => void requestImages(page + 1)}
               >
                 Next
               </button>
@@ -120,16 +158,27 @@ function App() {
 
       {settingsOpen && (
         <SettingsDialog
-          config={config}
+          config={configQuery.data ?? null}
           onCancel={() => setSettingsOpen(false)}
-          onSave={saveConfig}
+          onSave={handleSaveConfig}
         />
       )}
     </div>
   );
 }
 
-function ImageCard({ image, downloading, onDownload }) {
+interface ConfigInput {
+  downloadPath: string;
+  apiUrl: string;
+}
+
+interface ImageCardProps {
+  image: ImagePost;
+  downloading: boolean;
+  onDownload: (image: ImagePost) => Promise<void>;
+}
+
+function ImageCard({ image, downloading, onDownload }: ImageCardProps) {
   return (
     <article className="card">
       <div className="preview">
@@ -145,7 +194,7 @@ function ImageCard({ image, downloading, onDownload }) {
           <button
             className="button button-warning"
             disabled={downloading}
-            onClick={() => onDownload(image)}
+            onClick={() => void onDownload(image)}
           >
             {downloading ? "Saving..." : "Download"}
           </button>
@@ -155,12 +204,18 @@ function ImageCard({ image, downloading, onDownload }) {
   );
 }
 
-function SettingsDialog({ config, onCancel, onSave }) {
+interface SettingsDialogProps {
+  config: AppConfig | null;
+  onCancel: () => void;
+  onSave: (downloadPath: string, apiUrl: string) => Promise<void>;
+}
+
+function SettingsDialog({ config, onCancel, onSave }: SettingsDialogProps) {
   const [apiUrl, setApiUrl] = useState(config?.api_url ?? defaultApiUrl);
   const [downloadPath, setDownloadPath] = useState(config?.download_path ?? "");
   const [saving, setSaving] = useState(false);
 
-  async function submit(event) {
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     await onSave(downloadPath, apiUrl);

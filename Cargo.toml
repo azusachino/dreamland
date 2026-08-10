@@ -1,0 +1,25 @@
+[workspace]
+members = [
+  "crates/dreamland-core",
+  "crates/dreamland-provider-yandere",
+  "crates/dreamland-runtime",
+  "src-tauri",
+]
+resolver = "2"
+
+[workspace.package]
+authors = ["azusachino"]
+edition = "2021"
+repository = "https://github.com/azusachino/dreamland"
+version = "0.1.0"
+
+[workspace.dependencies]
+anyhow = "1"
+dirs = "5"
+reqwest = { version = "0.11", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tauri = { version = "2", features = [] }
+tauri-build = { version = "2", features = [] }
+tokio = { version = "1", features = ["fs"] }
+uuid = { version = "1.0", features = ["v4"] }

@@ -22,10 +22,11 @@ Or use `make install`, `make doctor`, `make dev`, and `make check` inside
 - `bun run build` — build the React frontend into `dist/`
 - `bun run tauri:dev` — run the desktop application
 - `bun run tauri:build` — build the Tauri application
+- `bun run typecheck` — check TypeScript
 - `uv run scripts/doctor.py` — check the local toolchain
 - `uv run scripts/check.py` — run the daily platform-aware checks
-- `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` — check Rust formatting
-- `cargo test --manifest-path src-tauri/Cargo.toml` — run Rust tests
+- `cargo fmt --all -- --check` — check Rust formatting
+- `cargo test --workspace` — run Rust tests
 
 ## Architecture
 

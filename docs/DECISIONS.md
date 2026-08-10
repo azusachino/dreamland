@@ -28,8 +28,28 @@ local UI state; Rust owns network requests, configuration persistence, and
 downloads. The frontend crosses the boundary through four explicit Tauri
 commands instead of receiving filesystem or network capabilities directly.
 
+The frontend source is strict TypeScript. Typed IPC wrappers keep Tauri
+command payloads out of individual components. Tailwind CSS v4 is the styling
+layer through its Vite plugin. TanStack Query owns asynchronous Rust-command
+state; React state remains for local interaction state. No router, global store,
+or component library is required while the desktop app has one window and one
+primary view.
+
 This keeps the rework small and makes the same web UI usable in Tauri’s
 desktop WebView without adding another frontend framework.
+
+## Rust workspace
+
+The Rust side is a Cargo workspace with four members: `dreamland-core` for
+provider-neutral identifiers and descriptors, `dreamland-runtime` for config
+and download I/O, `dreamland-provider-yandere` for the Yandere adapter, and
+`src-tauri` for the desktop shell and command registration. The Tauri crate is
+kept as the application boundary; it does not own provider HTTP or runtime
+filesystem logic.
+
+Provider traits and the registry remain gated by [API and runtime design
+v1](API-V1.md). The workspace layout makes that boundary possible without
+pretending the draft contract is already final.
 
 ## API and runtime contract
 

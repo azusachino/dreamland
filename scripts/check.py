@@ -20,13 +20,13 @@ def run(label: str, *command: str) -> None:
 def main() -> int:
     run("uv lock", "uv", "lock", "--check")
     run("tooling syntax", sys.executable, "-m", "compileall", "-q", "scripts")
+    run("TypeScript check", "bun", "run", "typecheck")
     run("frontend build", "bun", "run", "build")
     run(
         "Rust formatting",
         "cargo",
         "fmt",
-        "--manifest-path",
-        "src-tauri/Cargo.toml",
+        "--all",
         "--",
         "--check",
     )
