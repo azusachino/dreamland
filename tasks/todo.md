@@ -5,7 +5,7 @@
 
 The decision-only pass does not change the existing verification status.
 
-- [ ] Add the Nix project environment and remove `.mise.toml`.
+- [ ] Add the Nix project environment.
 - [ ] Migrate runtime settings from JSON to TOML with a legacy JSON fallback.
 - [ ] Update Tauri packaging for native macOS and Windows artifacts.
 - [ ] Define native macOS and Windows build/release validation.
