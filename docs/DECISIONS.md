@@ -33,10 +33,9 @@ desktop WebView without adding another frontend framework.
 
 ## Project toolchain: Nix only (planned)
 
-The project-level toolchain decision is Nix. `mise` is not the long-term
-project environment and should be removed when the toolchain migration is
-implemented. The Nix definition should pin Rust, Bun, and the command-line
-tools needed by the project.
+The project-level toolchain decision is Nix. The Nix definition should pin
+Rust, Bun, and the command-line tools needed by the project. No competing
+project-level toolchain file is kept in the repository.
 
 There is one platform constraint: Nix is not a native Windows provisioning
 layer. The feasible counterpart for first-class Windows support is to keep Nix
@@ -45,7 +44,8 @@ native Windows runners for Windows builds and platform SDK requirements. The
 Windows setup must consume the same pinned Rust and Bun versions; it must not
 introduce a second project-specific version policy.
 
-No Nix flake is added in this decision-only pass.
+No Nix flake is added in this decision-only pass; contributors currently need
+to provide Bun and Rust through their host environment.
 
 ## Runtime configuration: TOML (planned)
 
@@ -94,7 +94,7 @@ are made in this decision-only pass.
 
 The following are recorded decisions, not completed changes:
 
-- add the Nix project environment and remove `.mise.toml`;
+- add the Nix project environment;
 - migrate runtime settings from JSON to TOML with legacy JSON fallback;
 - update Tauri packaging configuration for native macOS and Windows artifacts;
 - define the macOS and Windows build/release matrix;

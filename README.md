@@ -39,9 +39,9 @@ make dev
 make check
 ```
 
-The current checkout uses the existing pinned Bun and Rust toolchain through
-`mise`. The planned project-level toolchain is Nix; that migration is recorded
-but intentionally not implemented yet.
+The project-level toolchain direction is Nix. The Nix environment is a
+follow-up task; until it is added, install Bun and Rust using the host’s
+preferred toolchain manager.
 Run the frontend build:
 
 ```bash
