@@ -1,56 +1,70 @@
 # Dreamland Image Viewer
 
-A cross-platform image gallery application built with Rust, Dioxus, and supporting image APIs like yande.re.
+A cross-platform image gallery application built with Tauri, React, Vite, and
+Rust. It supports image-board APIs using the `yande.re/post.json` format.
 
 ## Features
 
-- **Image Gallery**: Browse images in a responsive grid layout
-- **API Integration**: Fetches images from JSON APIs (yande.re/post.json format)
-- **Download Management**: Download high-quality images to local storage
-- **Settings Panel**: Configure download locations and API endpoints
-- **Pagination**: Navigate through multiple pages of images
-- **Cross-Platform**: Built with Dioxus for desktop applications
+- Browse images in a responsive gallery
+- Fetch image metadata from a configurable API
+- Download high-quality images to a configurable local directory
+- Paginate through image results
+- Save settings in the platform user configuration directory
+
+## Stack
+
+- Tauri 2
+- React 19
+- Vite
+- Bun
+- Rust
+
+## Development
+
+Install dependencies and start the Tauri development window:
+
+```bash
+bun install
+bun run tauri:dev
+```
+Run the frontend build:
+
+```bash
+bun run build
+```
+
+Run Rust checks:
+
+```bash
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo test --manifest-path src-tauri/Cargo.toml
+```
 
 ## Project Structure
 
-```
-src/
-├── main.rs           # Main application entry point
-├── api.rs            # API client for fetching and downloading images
-├── config.rs         # Configuration management
-└── ui/
-    ├── mod.rs        # UI module exports
-    ├── header.rs     # Top header with controls and settings
-    ├── gallery.rs    # Main image gallery component
-    └── settings.rs   # Settings dialog component
+```text
+src/                    # React frontend
+src-tauri/              # Tauri application and Rust commands
+  src/api.rs            # API client and image metadata
+  src/config.rs         # Persistent settings
+  src/lib.rs            # Tauri command registration
+index.html              # Vite entry document
+vite.config.js          # Vite configuration
 ```
 
-## Architecture
-
-### State Management
-The application uses Dioxus's context system to manage global state:
-- Image list and loading states
-- User configuration (download path, API URL)
-- Current page for pagination
-
-### API Integration
-- Fetches image metadata from JSON APIs
-- Downloads high-quality images to configurable local directories
-- Supports pagination for large image sets
-
-### UI Components
-- **Header**: Load button, settings toggle
-- **Gallery**: Responsive grid of image cards with download buttons
-- **Settings**: Modal dialog for configuration
-- **Pagination**: Previous/Next page navigation
+The frontend calls four narrow Tauri commands: `load_config`, `save_config`,
+`load_images`, and `download_image`. Filesystem and network access remain in
+Rust rather than being exposed directly to the webview.
 
 ## Configuration
 
-The application stores settings in:
+Settings are stored at:
+
 - `~/.config/dreamland/config.json` on Linux/macOS
-- User config directory on Windows
+- The platform config directory on Windows
 
 Default settings:
+
 ```json
 {
   "download_path": "~/Downloads/dreamland_images",
@@ -59,27 +73,10 @@ Default settings:
 }
 ```
 
-## Usage
-
-1. **Start the application**: `cargo run`
-2. **Load images**: Click "Load Images" to fetch from the configured API
-3. **Browse gallery**: Scroll through the image grid
-4. **Download images**: Click download button on any image card
-5. **Configure settings**: Click "Settings" to change download path or API URL
-6. **Navigate pages**: Use Previous/Next buttons for pagination
-
-## Dependencies
-
-- **dioxus**: Modern reactive UI framework for Rust
-- **dioxus-desktop**: Desktop renderer for Dioxus apps
-- **reqwest**: HTTP client for API requests and downloads
-- **serde**: JSON serialization/deserialization
-- **dirs**: Cross-platform directory utilities
-- **tokio**: Async runtime for HTTP operations
-
 ## API Format
 
-The application expects JSON APIs that return arrays of objects with these fields:
+The configured API returns an array of objects with these fields:
+
 ```json
 [
   {
@@ -97,5 +94,3 @@ The application expects JSON APIs that return arrays of objects with these field
   }
 ]
 ```
-
-This format is compatible with popular image board APIs like yande.re, danbooru, and similar services.

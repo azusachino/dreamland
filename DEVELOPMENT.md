@@ -2,112 +2,39 @@
 
 ## Quick Start
 
-1. **Install Rust**: https://rustup.rs/
-2. **Clone and Build**:
-   ```bash
-   git clone <repository-url>
-   cd dreamland
-   chmod +x build.sh
-   ./build.sh
-   ```
-3. **Run Application**:
-   ```bash
-   cargo run
-   ```
-
-## Development Commands
-
-- `cargo check` - Fast compilation check
-- `cargo test` - Run unit tests
-- `cargo run` - Build and run the application
-- `cargo build --release` - Optimized production build
-
-## Key Features Implemented
-
-### ✅ Core Application Structure
-- Dioxus desktop application setup
-- State management with shared context
-- Modular component architecture
-
-### ✅ API Integration
-- HTTP client for fetching JSON data
-- Image download functionality
-- Support for yande.re API format
-- Error handling for network operations
-
-### ✅ User Interface Components
-- **Header**: Title, load button, settings toggle
-- **Gallery**: Responsive image grid with lazy loading
-- **Image Cards**: Preview, metadata, download buttons
-- **Settings Dialog**: Configuration management
-- **Pagination**: Page navigation controls
-
-### ✅ Configuration Management
-- Persistent settings storage
-- Cross-platform config directories
-- User-configurable download paths and API URLs
-
-### ✅ File Management
-- Automatic directory creation
-- Organized download structure
-- File naming based on image MD5 hashes
-
-## Architecture Overview
-
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   UI Components │────│   App State     │────│  Configuration  │
-│   (Dioxus)      │    │   (Reactive)    │    │   (JSON File)   │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                        │                        │
-         │                        │                        │
-         ▼                        ▼                        ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   API Client    │    │  Image Gallery  │    │ Download Manager│
-│   (Reqwest)     │    │   (Grid Layout) │    │ (File System)   │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-```
-
-## Testing
-
-The application includes unit tests for:
-- JSON deserialization of image data
-- Configuration loading and saving
-- API response parsing
-
-Run tests with:
 ```bash
-cargo test
+bun install
+bun run tauri:dev
 ```
 
-## Future Enhancements
+The frontend runs on Vite during Tauri development. Rust commands live under
+`src-tauri/` and handle API requests, configuration, and downloads.
 
-- [ ] Image caching for better performance
-- [ ] Advanced filtering and search
-- [ ] Multiple API source support
-- [ ] Thumbnail generation
-- [ ] Batch download operations
-- [ ] Custom themes and styling
-- [ ] Export/import settings
+## Commands
+
+- `bun run dev` — start the Vite frontend only
+- `bun run build` — build the React frontend into `dist/`
+- `bun run tauri:dev` — run the desktop application
+- `bun run tauri:build` — build the Tauri application
+- `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` — check Rust formatting
+- `cargo test --manifest-path src-tauri/Cargo.toml` — run Rust tests
+
+## Architecture
+
+```text
+React + Vite (src/) ── Tauri IPC ── Rust commands (src-tauri/src/lib.rs)
+                                      ├── API client (api.rs)
+                                      ├── config persistence (config.rs)
+                                      └── image downloads
+```
+
+The frontend calls `load_config`, `save_config`, `load_images`, and
+`download_image`. Native filesystem and network access stays in Rust.
 
 ## Troubleshooting
 
-### Common Issues
-
-1. **Network Timeouts**: Check internet connection and API availability
-2. **Permission Errors**: Ensure write access to download directory
-3. **Compilation Errors**: Update Rust toolchain with `rustup update`
-
-### Debug Mode
-
-Run with debug logging:
-```bash
-RUST_LOG=debug cargo run
-```
-
-### Configuration Reset
-
-Delete config file to reset to defaults:
-```bash
-rm ~/.config/dreamland/config.json  # Linux/macOS
-```
+- **Linux native build errors:** install Tauri's WebKitGTK 4.1 and librsvg
+  prerequisites for your distribution.
+- **Network errors:** check the configured API URL and connectivity.
+- **Permission errors:** ensure the configured download directory is writable.
+- **Configuration reset:** delete `~/.config/dreamland/config.json` on Linux/macOS.

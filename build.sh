@@ -1,21 +1,10 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Build script for Dreamland Image Viewer
-echo "Building Dreamland Image Viewer..."
+command -v bun >/dev/null || { echo "Bun is required" >&2; exit 1; }
+command -v cargo >/dev/null || { echo "Rust/Cargo is required" >&2; exit 1; }
 
-# Check if rust is installed
-if ! command -v cargo &> /dev/null; then
-    echo "Error: Cargo/Rust not found. Please install Rust first."
-    exit 1
-fi
-
-# Run tests first
-echo "Running tests..."
-cargo test --lib
-
-# Check code compilation
-echo "Checking compilation..."
-cargo check
-
-echo "Build complete! You can run the application with:"
-echo "  cargo run"
+bun install --frozen-lockfile
+bun run build
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo test --manifest-path src-tauri/Cargo.toml
