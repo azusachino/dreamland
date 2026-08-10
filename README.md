@@ -3,6 +3,9 @@
 A cross-platform image gallery application built with Tauri, React, Vite, and
 Rust. It supports image-board APIs using the `yande.re/post.json` format.
 
+macOS and Windows are the first-class desktop targets. Linux is not currently
+supported and is not part of the migration acceptance matrix.
+
 ## Features
 
 - Browse images in a responsive gallery
@@ -36,7 +39,9 @@ make dev
 make check
 ```
 
-Use `mise install` first when switching to the pinned Bun and Rust toolchain.
+The current checkout uses the existing pinned Bun and Rust toolchain through
+`mise`. The planned project-level toolchain is Nix; that migration is recorded
+but intentionally not implemented yet.
 Run the frontend build:
 
 ```bash
@@ -67,15 +72,18 @@ The frontend calls four narrow Tauri commands: `load_config`, `save_config`,
 `load_images`, and `download_image`. Filesystem and network access remain in
 Rust rather than being exposed directly to the webview.
 
-See [docs/DECISIONS.md](docs/DECISIONS.md) for the rationale behind JSON
-settings, mise versus Nix, the `universal` branch, security, and packaging.
+See [docs/DECISIONS.md](docs/DECISIONS.md) for the platform scope, planned Nix
+and TOML migrations, security boundary, and packaging decisions.
 
 ## Configuration
 
-Settings are stored at:
+The current implementation stores settings at:
 
-- `~/.config/dreamland/config.json` on Linux/macOS
+- The platform configuration directory on macOS
 - The platform config directory on Windows
+
+The planned format is TOML. The current JSON format remains until that
+migration is implemented.
 
 Default settings:
 

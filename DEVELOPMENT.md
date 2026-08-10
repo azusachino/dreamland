@@ -10,8 +10,9 @@ bun run tauri:dev
 The frontend runs on Vite during Tauri development. Rust commands live under
 `src-tauri/` and handle API requests, configuration, and downloads.
 
-Or use `make install`, `make dev`, and `make check`. Run `mise install` first
-to use the pinned Bun and Rust versions.
+Or use `make install`, `make dev`, and `make check`. The current checkout uses
+the existing pinned Bun and Rust versions through `mise`; the planned project
+toolchain is Nix and is not implemented yet.
 
 ## Commands
 
@@ -36,8 +37,12 @@ The frontend calls `load_config`, `save_config`, `load_images`, and
 
 ## Troubleshooting
 
-- **Linux native build errors:** install Tauri's WebKitGTK 4.1 and librsvg
-  prerequisites for your distribution.
+- **macOS setup:** use the pinned project tools and the native macOS Tauri
+  prerequisites before running the desktop build.
+- **Windows setup:** use a native Windows environment or CI runner with the
+  pinned Rust and Bun versions and the native Tauri build prerequisites.
 - **Network errors:** check the configured API URL and connectivity.
 - **Permission errors:** ensure the configured download directory is writable.
-- **Configuration reset:** delete `~/.config/dreamland/config.json` on Linux/macOS.
+- **Configuration reset:** remove `config.json` from the platform configuration
+  directory. The current implementation still uses JSON; TOML migration is
+  planned.
