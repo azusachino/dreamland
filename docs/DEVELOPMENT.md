@@ -31,14 +31,17 @@ Or use `make install`, `make doctor`, `make dev`, and `make check` inside
 ## Architecture
 
 ```text
-React + Vite (src/) ── Tauri IPC ── Rust commands (src-tauri/src/lib.rs)
-                                      ├── API client (api.rs)
-                                      ├── config persistence (config.rs)
-                                      └── image downloads
+React + TypeScript (src/) ── typed Tauri IPC ── commands (src-tauri/src/lib.rs)
+                                                   ├── Yandere adapter crate
+                                                   ├── runtime crate
+                                                   └── core crate
 ```
 
 The frontend calls `load_config`, `save_config`, `load_images`, and
 `download_image`. Native filesystem and network access stays in Rust.
+
+Architecture rationale is recorded in [DECISIONS.md](DECISIONS.md) and
+[adr/](adr/). The API boundary is still governed by [API-V1.md](API-V1.md).
 
 ## Troubleshooting
 

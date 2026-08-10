@@ -1,129 +1,93 @@
-# Dreamland Image Viewer
+# Dreamland
 
-A cross-platform image gallery application built with Tauri, React, Vite, and
-Rust. It supports image-board APIs using the `yande.re/post.json` format.
+> A native desktop image-board browser and collector for macOS and Windows.
 
-macOS and Windows are the first-class desktop targets. Linux is not currently
-supported and is not part of the rework acceptance matrix.
+Dreamland is being rebuilt as a focused Tauri application: a React and
+TypeScript interface over a Rust runtime that owns providers, configuration,
+local data, and downloads.
 
-## Features
+**Status:** foundation rework in progress  ·  **Targets:** macOS, Windows  ·
+**Provider ID:** `yandere`
 
-- Browse images in a responsive gallery
-- Fetch image metadata from a configurable API
-- Download high-quality images to a configurable local directory
-- Paginate through image results
-- Save settings in the platform user configuration directory
+## What exists now
+
+- Tauri 2 desktop shell
+- React 19 + TypeScript + Vite + Bun frontend
+- Typed Tauri IPC wrappers
+- Tailwind CSS styling foundation
+- TanStack Query for command-backed asynchronous state
+- Rust Cargo workspace with core, runtime, and Yandere adapter boundaries
+- Browse, pagination, settings, and image downloads through Rust commands
+
+Linux and mobile are not planned targets. There is no release schedule or
+distribution plan yet.
+
+## Architecture
+
+```text
+React + TypeScript
+        │ typed Tauri IPC
+        ▼
+src-tauri/                  desktop commands and window lifecycle
+        │
+        ├── dreamland-runtime       config, persistence, downloads
+        ├── dreamland-core          provider-neutral domain contracts
+        └── dreamland-provider-yandere
+                                    yande.re adapter and fixtures
+```
+
+The frontend does not call providers or access the filesystem directly.
+Provider traits, registry behavior, and the provider-neutral v1 command model
+remain gated by [API and runtime design v1](docs/API-V1.md).
 
 ## Stack
 
-- Tauri 2
-- React 19
-- TypeScript
-- Vite
-- Bun
-- TanStack Query
-- Tailwind CSS
-- Rust
-- Nix
+| Layer | Choice | Role |
+| --- | --- | --- |
+| Desktop | Tauri 2 | Native macOS/Windows shell and IPC |
+| Frontend | React 19, TypeScript, Vite, Bun | UI and local interaction state |
+| Async UI state | TanStack Query | Cache and lifecycle for Rust commands |
+| Styling | Tailwind CSS v4 | Utility styling through Vite |
+| Runtime | Rust | Providers, validation, persistence, and downloads |
+| Toolchain | Nix + uv scripts | Reproducible development and daily checks |
 
-## Development
+## Quick start
 
-Install dependencies and start the Tauri development window:
+On macOS, enter the Nix development shell. On Windows, use the native Rust,
+Bun, and uv toolchain with the same pinned versions; Nix is not used as a
+native Windows provisioning layer.
 
 ```bash
-nix develop
+nix develop                 # macOS
 uv sync --locked
 bun install
-bun run tauri:dev
+make doctor
+make dev
 ```
 
-The same commands are available through the repository Makefile:
+Run the daily checks:
 
 ```bash
-make install
-make dev
 make check
 ```
 
-The Nix flake provides the pinned Rust, Bun, Make, OpenSSL, and pkg-config
-toolchain plus uv for macOS. Windows uses native runners with the same Rust,
-Bun, and uv tool versions because Nix is not a native Windows provisioning
-layer. Use `uv run scripts/doctor.py` to check the local toolchain and
-`uv run scripts/check.py` for the daily platform-aware checks.
-Run the frontend build:
+The check command validates the uv lockfile, Python tooling, TypeScript,
+frontend build, and Rust formatting. Native Tauri tests run on macOS and
+Windows; Linux is intentionally outside the acceptance matrix.
 
-```bash
-bun run build
-```
+## Documentation
 
-Run Rust checks:
+- [Development guide](docs/DEVELOPMENT.md) — setup, commands, and troubleshooting
+- [Project spec](docs/PROJECT-SPEC.md) — scope and acceptance criteria
+- [API v1 draft](docs/API-V1.md) — contract gate before provider/runtime traits
+- [Architecture decisions](docs/DECISIONS.md) — decision index
+- [ADRs](docs/adr/README.md) — rationale and consequences of accepted decisions
+- [Roadmap](docs/ROADMAP.md) — product direction, not a release schedule
+- [Reference learnings](docs/REFERENCE-LEARNINGS.md) — yande and MoeLoaderP notes
+- [Changelog](CHANGELOG.md) — unreleased and future user-visible changes
 
-```bash
-cargo fmt --all -- --check
-cargo test --workspace
-```
+## Contributing direction
 
-## Project Structure
-
-```text
-Cargo.toml              # Rust workspace definition
-src/                    # React + TypeScript frontend
-  lib/ipc.ts            # Typed Tauri command wrappers
-src-tauri/              # Tauri application and command registration
-crates/
-  dreamland-core/       # Provider-neutral identifiers and descriptors
-  dreamland-runtime/    # Config, downloads, and runtime-owned I/O
-  dreamland-provider-yandere/ # Yandere adapter and fixtures
-index.html              # Vite entry document
-vite.config.ts          # Vite + Tailwind configuration
-docs/DECISIONS.md       # Architecture and tooling decisions
-```
-
-The frontend calls four narrow Tauri commands: `load_config`, `save_config`,
-`load_images`, and `download_image`. Filesystem and network access remain in
-Rust rather than being exposed directly to the webview.
-
-See [docs/DECISIONS.md](docs/DECISIONS.md) for the platform scope, TOML
-configuration, security boundary, and tooling decisions.
-
-## Configuration
-
-The current implementation stores settings at:
-
-- The platform configuration directory on macOS
-- The platform config directory on Windows
-
-The planned format is TOML. The current JSON format remains until that
-configuration change is implemented.
-
-Default settings:
-
-```json
-{
-  "download_path": "~/Downloads/dreamland_images",
-  "api_url": "https://yande.re/post.json",
-  "images_per_page": 20
-}
-```
-
-## API Format
-
-The configured API returns an array of objects with these fields:
-
-```json
-[
-  {
-    "id": 123456,
-    "tags": "tag1 tag2 tag3",
-    "width": 1920,
-    "height": 1080,
-    "file_url": "https://example.com/full_image.jpg",
-    "sample_url": "https://example.com/sample.jpg",
-    "preview_url": "https://example.com/preview.jpg",
-    "rating": "s",
-    "score": 42,
-    "md5": "abcdef123456",
-    "file_size": 1048576
-  }
-]
-```
+The next architectural gate is approval of API v1. Until then, keep changes
+inside the documented boundaries and avoid adding provider traits, registries,
+search, favorites, tags, or batch workflows speculatively.

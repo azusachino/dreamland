@@ -23,7 +23,7 @@ provider set, API pagination, settings, and image-download behavior.
 - `dist/` — Vite build output loaded by Tauri
 - `crates/` — core, runtime, and Yandere adapter crates
 - `src-tauri/` — Tauri application and command boundary
-- `tasks/` — rework plan and acceptance checklist
+- `docs/` — project specification, decisions, ADRs, roadmap, and references
 - `scripts/` — uv-runnable daily tooling and platform-aware checks
 
 ## Code Style

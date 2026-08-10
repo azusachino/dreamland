@@ -4,6 +4,11 @@ This is a product roadmap, not a release schedule. Release packaging,
 signing, distribution, and store submission are intentionally outside the
 current plan.
 
+The roadmap remains canonical in this repository. GitHub Issues are an
+execution mirror for approved work: each issue should be actionable, link to
+the relevant roadmap/ADR/API section, and avoid introducing a decision that
+is not documented here.
+
 The long-term goal is to exceed MoeLoaderP’s provider breadth and workflow
 depth with a cleaner, provider-neutral runtime. The roadmap reaches that goal
 in layers; v0.1.0 is the contract and parity foundation, not the final feature
