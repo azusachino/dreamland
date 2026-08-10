@@ -1,8 +1,8 @@
-# Spec: Dreamland Tauri migration
+# Spec: Dreamland Tauri rework
 
 ## Objective
 
-Replace the Dioxus desktop shell with Tauri 2 while preserving Dreamland's
+Rebuild Dreamland as a Tauri 2 desktop application while preserving its
 gallery, API pagination, settings, and image-download behavior.
 
 ## Commands
@@ -19,7 +19,7 @@ gallery, API pagination, settings, and image-download behavior.
 - `src/` — React frontend
 - `dist/` — Vite build output loaded by Tauri
 - `src-tauri/` — Tauri application and Rust commands
-- `tasks/` — migration plan and acceptance checklist
+- `tasks/` — rework plan and acceptance checklist
 
 ## Code Style
 

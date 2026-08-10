@@ -3,6 +3,7 @@
 ## Quick Start
 
 ```bash
+nix develop
 bun install
 bun run tauri:dev
 ```
@@ -10,9 +11,7 @@ bun run tauri:dev
 The frontend runs on Vite during Tauri development. Rust commands live under
 `src-tauri/` and handle API requests, configuration, and downloads.
 
-Or use `make install`, `make dev`, and `make check`. The project-level
-toolchain direction is Nix; until its environment is added, install Bun and
-Rust using the host’s preferred toolchain manager.
+Or use `make install`, `make dev`, and `make check` inside `nix develop`.
 
 ## Commands
 
@@ -37,12 +36,12 @@ The frontend calls `load_config`, `save_config`, `load_images`, and
 
 ## Troubleshooting
 
-- **macOS setup:** use the pinned project tools and the native macOS Tauri
+- **macOS setup:** enter `nix develop` and install the native macOS Tauri
   prerequisites before running the desktop build.
 - **Windows setup:** use a native Windows environment or CI runner with the
   pinned Rust and Bun versions and the native Tauri build prerequisites.
 - **Network errors:** check the configured API URL and connectivity.
 - **Permission errors:** ensure the configured download directory is writable.
 - **Configuration reset:** remove `config.json` from the platform configuration
-  directory. The current implementation still uses JSON; TOML migration is
-  planned.
+  directory. The current implementation still uses JSON; TOML configuration
+  is planned.

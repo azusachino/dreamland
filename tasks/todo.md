@@ -3,9 +3,9 @@
 - [x] Remove the Dioxus shell and update project documentation.
 - [x] Run frontend, Rust formatting, and Tauri checks.
 
-The decision-only pass does not change the existing verification status.
+The remaining follow-up work is platform packaging and configuration format.
 
-- [ ] Add the Nix project environment.
-- [ ] Migrate runtime settings from JSON to TOML with a legacy JSON fallback.
+- [x] Add the Nix project environment for macOS.
+- [ ] Adopt TOML runtime settings with a legacy JSON fallback.
 - [ ] Update Tauri packaging for native macOS and Windows artifacts.
 - [ ] Define native macOS and Windows build/release validation.

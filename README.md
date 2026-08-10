@@ -4,7 +4,7 @@ A cross-platform image gallery application built with Tauri, React, Vite, and
 Rust. It supports image-board APIs using the `yande.re/post.json` format.
 
 macOS and Windows are the first-class desktop targets. Linux is not currently
-supported and is not part of the migration acceptance matrix.
+supported and is not part of the rework acceptance matrix.
 
 ## Features
 
@@ -21,12 +21,14 @@ supported and is not part of the migration acceptance matrix.
 - Vite
 - Bun
 - Rust
+- Nix
 
 ## Development
 
 Install dependencies and start the Tauri development window:
 
 ```bash
+nix develop
 bun install
 bun run tauri:dev
 ```
@@ -39,9 +41,9 @@ make dev
 make check
 ```
 
-The project-level toolchain direction is Nix. The Nix environment is a
-follow-up task; until it is added, install Bun and Rust using the host’s
-preferred toolchain manager.
+The Nix flake provides the pinned Rust, Bun, Make, OpenSSL, and pkg-config
+toolchain for macOS. Windows uses native runners with the same Rust and Bun
+versions because Nix is not a native Windows provisioning layer.
 Run the frontend build:
 
 ```bash
@@ -72,8 +74,8 @@ The frontend calls four narrow Tauri commands: `load_config`, `save_config`,
 `load_images`, and `download_image`. Filesystem and network access remain in
 Rust rather than being exposed directly to the webview.
 
-See [docs/DECISIONS.md](docs/DECISIONS.md) for the platform scope, planned Nix
-and TOML migrations, security boundary, and packaging decisions.
+See [docs/DECISIONS.md](docs/DECISIONS.md) for the platform scope, TOML
+configuration, security boundary, and packaging decisions.
 
 ## Configuration
 
@@ -83,7 +85,7 @@ The current implementation stores settings at:
 - The platform config directory on Windows
 
 The planned format is TOML. The current JSON format remains until that
-migration is implemented.
+configuration change is implemented.
 
 Default settings:
 

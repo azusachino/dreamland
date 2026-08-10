@@ -1,7 +1,7 @@
 # Dreamland decisions
 
 This document records the current direction. The decisions marked as
-“planned” are intentionally not implemented in this stop point.
+“planned” are intentionally deferred follow-up work.
 
 ## Product and platform scope
 
@@ -11,12 +11,12 @@ native Windows environment or CI runner.
 
 Linux is not a planned target yet. We will not add Linux-specific components,
 Linux packaging, Linux CI requirements, or Linux troubleshooting as part of
-this migration. The code may still compile elsewhere incidentally, but Linux
+this rework. The code may still compile elsewhere incidentally, but Linux
 is outside the supported acceptance matrix until that decision changes.
 
 ## Branching
 
-The migration uses normal descriptive feature branches. The Dreamland branch
+The rework uses normal descriptive feature branches. The Dreamland branch
 is `feat/migrate-to-tauri`; the workstation branch tracking this vendored
 change is `feat/vendor-dreamland-tauri`. There is no special cross-platform
 branch convention.
@@ -28,14 +28,19 @@ local UI state; Rust owns network requests, configuration persistence, and
 downloads. The frontend crosses the boundary through four explicit Tauri
 commands instead of receiving filesystem or network capabilities directly.
 
-This keeps the migration small and makes the same web UI usable in Tauri’s
+This keeps the rework small and makes the same web UI usable in Tauri’s
 desktop WebView without adding another frontend framework.
 
-## Project toolchain: Nix only (planned)
+## Project toolchain: Nix only
 
 The project-level toolchain decision is Nix. The Nix definition should pin
 Rust, Bun, and the command-line tools needed by the project. No competing
 project-level toolchain file is kept in the repository.
+
+`flake.nix` provides a development shell for `aarch64-darwin` and
+`x86_64-darwin`, including Rust 1.97.1 with rustfmt and clippy, Bun, Make,
+OpenSSL, and pkg-config. Enter it with `nix develop` before running the Make
+targets or Bun commands.
 
 There is one platform constraint: Nix is not a native Windows provisioning
 layer. The feasible counterpart for first-class Windows support is to keep Nix
@@ -44,8 +49,10 @@ native Windows runners for Windows builds and platform SDK requirements. The
 Windows setup must consume the same pinned Rust and Bun versions; it must not
 introduce a second project-specific version policy.
 
-No Nix flake is added in this decision-only pass; contributors currently need
-to provide Bun and Rust through their host environment.
+Linux is intentionally absent from the flake outputs. Windows remains a
+first-class native build target, but uses a native Windows runner for platform
+SDKs and the same pinned Rust and Bun versions because Nix is not a native
+Windows provisioning layer.
 
 ## Runtime configuration: TOML (planned)
 
@@ -59,12 +66,12 @@ This applies only to Dreamland’s runtime settings. Tauri’s own
 `src-tauri/tauri.conf.json` remains JSON because that is the format consumed by
 the Tauri CLI and its schema.
 
-The migration should remain backwards-compatible: read the new TOML file
+The configuration change should remain backwards-compatible: read the new TOML file
 first, fall back to the existing `config.json` when TOML is absent, validate
 the values, and write subsequent changes as TOML. The legacy JSON file should
-not be deleted automatically during the first migration release.
+not be deleted automatically during the first release using TOML.
 
-The current checkout still reads and writes JSON. The TOML migration, including
+The current checkout still reads and writes JSON. TOML configuration, including
 its compatibility tests, is future implementation work.
 
 ## Security boundary
@@ -88,14 +95,13 @@ platforms:
 Linux packages and Linux-specific packaging dependencies are out of scope.
 macOS signing/notarization and Windows signing, installer UX, and distribution
 channels remain separate release decisions. No packaging configuration changes
-are made in this decision-only pass.
+are made in this rework.
 
 ## Explicitly deferred
 
 The following are recorded decisions, not completed changes:
 
-- add the Nix project environment;
-- migrate runtime settings from JSON to TOML with legacy JSON fallback;
+- adopt TOML runtime settings with a legacy JSON fallback;
 - update Tauri packaging configuration for native macOS and Windows artifacts;
 - define the macOS and Windows build/release matrix;
 - decide signing, notarization, and installer distribution details for each
