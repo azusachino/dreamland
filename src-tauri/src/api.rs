@@ -21,7 +21,8 @@ pub async fn fetch_images(url: &str, page: usize) -> Result<Vec<ImagePost>> {
         .get(url)
         .query(&[("page", page)])
         .send()
-        .await?;
+        .await?
+        .error_for_status()?;
 
     Ok(response.json().await?)
 }
@@ -30,7 +31,11 @@ pub async fn download_file(
     url: &str,
     download_dir: &std::path::Path,
 ) -> Result<(std::path::PathBuf, String)> {
-    let response = reqwest::Client::new().get(url).send().await?;
+    let response = reqwest::Client::new()
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?;
     let content_type = response
         .headers()
         .get("content-type")
@@ -56,6 +61,19 @@ pub fn mime_to_extension(content_type: &str) -> Option<&str> {
         "image/svg+xml" => Some("svg"),
         _ => None,
     }
+}
+
+pub fn image_filename(image: &ImagePost, extension: &str) -> Result<String> {
+    validate_image_identifier(&image.md5)?;
+    Ok(format!("{}.{}", image.md5.trim(), extension))
+}
+
+pub fn validate_image_identifier(value: &str) -> Result<()> {
+    let value = value.trim();
+    if value.is_empty() || !value.chars().all(|character| character.is_ascii_hexdigit()) {
+        anyhow::bail!("image identifier is not a hexadecimal value");
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -89,5 +107,24 @@ mod tests {
     fn mime_types_map_to_extensions() {
         assert_eq!(mime_to_extension("image/jpeg"), Some("jpg"));
         assert_eq!(mime_to_extension("image/unknown"), None);
+    }
+
+    #[test]
+    fn image_filename_rejects_path_traversal() {
+        let image = ImagePost {
+            id: 1,
+            tags: String::new(),
+            width: 1,
+            height: 1,
+            file_url: String::new(),
+            sample_url: String::new(),
+            preview_url: String::new(),
+            rating: String::new(),
+            score: None,
+            md5: "../dreamland".to_string(),
+            file_size: None,
+        };
+
+        assert!(image_filename(&image, "jpg").is_err());
     }
 }

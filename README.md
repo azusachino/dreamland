@@ -27,6 +27,16 @@ Install dependencies and start the Tauri development window:
 bun install
 bun run tauri:dev
 ```
+
+The same commands are available through the repository Makefile:
+
+```bash
+make install
+make dev
+make check
+```
+
+Use `mise install` first when switching to the pinned Bun and Rust toolchain.
 Run the frontend build:
 
 ```bash
@@ -50,11 +60,15 @@ src-tauri/              # Tauri application and Rust commands
   src/lib.rs            # Tauri command registration
 index.html              # Vite entry document
 vite.config.js          # Vite configuration
+docs/DECISIONS.md       # Architecture and tooling decisions
 ```
 
 The frontend calls four narrow Tauri commands: `load_config`, `save_config`,
 `load_images`, and `download_image`. Filesystem and network access remain in
 Rust rather than being exposed directly to the webview.
+
+See [docs/DECISIONS.md](docs/DECISIONS.md) for the rationale behind JSON
+settings, mise versus Nix, the `universal` branch, security, and packaging.
 
 ## Configuration
 

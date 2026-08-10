@@ -10,6 +10,9 @@ bun run tauri:dev
 The frontend runs on Vite during Tauri development. Rust commands live under
 `src-tauri/` and handle API requests, configuration, and downloads.
 
+Or use `make install`, `make dev`, and `make check`. Run `mise install` first
+to use the pinned Bun and Rust versions.
+
 ## Commands
 
 - `bun run dev` — start the Vite frontend only

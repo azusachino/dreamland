@@ -1,0 +1,5 @@
+# Project toolchain. Native Tauri libraries remain OS-level prerequisites.
+
+[tools]
+rust = { version = "1.97.1", components = "rustfmt,clippy" }
+bun = "1.3.13"
