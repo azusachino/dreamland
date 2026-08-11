@@ -1214,18 +1214,21 @@ select:focus-visible {
 }
 
 .detail-preview {
-  aspect-ratio: 16 / 10;
+  align-items: center;
   background: var(--surface-container);
   border-radius: var(--radius-md);
-  max-height: min(62dvh, 46rem);
+  display: flex;
+  height: min(68dvh, 48rem);
   overflow: hidden;
 }
 
 .detail-preview img {
   display: block;
-  height: 100%;
+  height: auto;
+  max-height: 100%;
+  max-width: 100%;
   object-fit: contain;
-  width: 100%;
+  width: auto;
 }
 
 .detail-navigation {
@@ -1469,6 +1472,10 @@ select:focus-visible {
   .detail-panel {
     max-height: calc(100dvh - 1.5rem);
     width: 100%;
+  }
+
+  .detail-preview {
+    height: min(64dvh, 40rem);
   }
 }
 
