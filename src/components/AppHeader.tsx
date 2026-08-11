@@ -40,7 +40,7 @@ interface AppHeaderProps {
 
 export function AppHeader({ activeSite, activeSiteId, sites, siteMenuAnchor, onSiteMenuOpen, onSiteMenuClose, onSelectSite, onOpenSite, title, loading, canGoBack, canGoForward, onBack, onForward, onRefresh, onSettings, searchDraft, searchInput, searchFocused, onSearchFocus, onSearchBlur, onSearchChange, onSearchSubmit, onClearSearch, onOpenAdvancedSearch, suggestions, onChooseTag }: AppHeaderProps) {
   return (
-    <header className="app-header shell-surface">
+    <header className="app-header shell-surface" data-tauri-drag-region="deep">
       <div className="header-identity">
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true">✦</div>

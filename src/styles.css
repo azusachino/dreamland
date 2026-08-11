@@ -127,13 +127,17 @@ select:focus-visible {
 .app-header {
   align-items: center;
   display: grid;
-  gap: 1.5rem;
-  grid-template-columns: minmax(18rem, 1fr) minmax(20rem, 1.8fr) auto;
+  gap: 1rem;
+  grid-template-columns: max-content minmax(20rem, 1fr) max-content;
   min-height: 5.3rem;
   padding: 0.8rem clamp(1rem, 3vw, 2.5rem);
   position: sticky;
-  top: 0.75rem;
+  top: 0;
   z-index: 5;
+}
+
+:root[data-platform="macos"] .app-header {
+  padding-top: 2.35rem;
 }
 
 .brand-lockup,
@@ -323,9 +327,11 @@ select:focus-visible {
   border: 1px solid var(--outline);
   border-radius: 999px;
   display: flex;
+  justify-self: center;
   min-width: 0;
   padding: 0 0.85rem;
   position: relative;
+  width: min(100%, 48rem);
 }
 
 .search-bar:focus-within {
@@ -809,6 +815,21 @@ select:focus-visible {
   padding: 1rem 1.15rem;
 }
 
+.error-state .MuiAlert-icon {
+  align-items: center;
+  padding: 0;
+}
+
+.error-state .MuiAlert-message {
+  min-width: 0;
+  padding: 0;
+}
+
+.error-state .MuiAlert-action {
+  align-items: center;
+  padding: 0 0 0 1rem;
+}
+
 .error-symbol {
   align-items: center;
   background: var(--danger);
@@ -832,7 +853,7 @@ select:focus-visible {
   margin: 0;
 }
 
-.error-state .button {
+.error-state .MuiButton-root {
   margin-left: auto;
   white-space: nowrap;
 }
@@ -1424,7 +1445,7 @@ select:focus-visible {
   }
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1250px) {
   .app-header {
     grid-template-columns: minmax(0, 1fr) auto;
   }
@@ -1436,6 +1457,8 @@ select:focus-visible {
   .search-bar {
     grid-column: 1 / -1;
     grid-row: 2;
+    justify-self: stretch;
+    width: 100%;
   }
 
   .content-heading {

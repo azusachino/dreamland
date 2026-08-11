@@ -276,10 +276,17 @@ interface ErrorStateProps {
 }
 
 export function ErrorState({ message, onRetry, onOpenSite, siteName }: ErrorStateProps) {
+  const detail = message
+    .replace("Failed to load images: ", "")
+    .replace(/query session has no next page/i, "this feed window has ended; start it again to refresh the results");
   return (
-    <Alert className="error-state" severity="error" action={<><Button color="inherit" size="small" onClick={onRetry}>try again</Button>{onOpenSite && <Button color="inherit" size="small" onClick={onOpenSite}>open {siteName}</Button>}</>}>
-      <span className="error-symbol" aria-hidden="true">!</span>
-      <div><h3>couldn’t load this feed</h3><p>{message.replace("Failed to load images: ", "")}</p></div>
+    <Alert
+      className="error-state"
+      severity="error"
+      icon={<span className="error-symbol" aria-hidden="true">!</span>}
+      action={<><Button color="inherit" size="small" onClick={onRetry}>try again</Button>{onOpenSite && <Button color="inherit" size="small" onClick={onOpenSite}>open {siteName}</Button>}</>}
+    >
+      <div><h3>couldn’t load this feed</h3><p>{detail}</p></div>
     </Alert>
   );
 }

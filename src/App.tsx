@@ -612,14 +612,14 @@ function App() {
   });
 
   const isBrowseView = view === "latest" || view === "popular" || view === "search";
+  const images = imagesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
   const queryError = sitesQuery.error
     ? `failed to load sites: ${errorMessage(sitesQuery.error)}`
     : configQuery.error
       ? `failed to load configuration: ${errorMessage(configQuery.error)}`
-      : isBrowseView && imagesQuery.error
+      : isBrowseView && imagesQuery.error && images.length === 0
         ? `failed to load images: ${errorMessage(imagesQuery.error)}`
         : "";
-  const images = imagesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
   const favoritePosts = favoritesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
   const pools = poolsQuery.data?.pages.flatMap((page) => page.pools).filter((pool) => pool.public) ?? [];
   const poolPosts = poolPostsQuery.data?.pages.flatMap((page) => page.posts) ?? [];
@@ -648,8 +648,12 @@ function App() {
       : view === "pools"
       ? "pools"
       : view === "favorites"
-      ? "favorites"
-      : "latest posts";
+        ? "favorites"
+        : "latest posts";
+
+  function resetImagesQuery() {
+    void queryClient.resetQueries({ queryKey: ["posts", activeSiteId, request] });
+  }
   const subtitle = view === "search"
     ? `matching “${submittedSearch}”`
     : view === "popular"
@@ -1089,7 +1093,7 @@ function App() {
         onBack={() => navigate(-1)}
         onForward={() => navigate(1)}
         onRefresh={() => {
-          if (isBrowseView) void imagesQuery.refetch();
+          if (isBrowseView) resetImagesQuery();
           else if (view === "favorites") void favoritesQuery.refetch();
           else if (view === "pools") void poolsQuery.refetch();
           else void downloadsQuery.refetch();
@@ -1217,7 +1221,7 @@ function App() {
               {queryError ? (
                 <PopupErrorState
                   message={queryError}
-                  onRetry={() => void imagesQuery.refetch()}
+                  onRetry={resetImagesQuery}
                   onOpenSite={activeSite ? () => void openSite(activeSiteId).catch((reason) => setError(`could not open site: ${errorMessage(reason)}`)) : undefined}
                   siteName={activeSite?.name}
                 />
