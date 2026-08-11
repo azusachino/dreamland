@@ -78,7 +78,7 @@ import { Icon } from "./components/Icon";
 import { AppLayout } from "./components/AppLayout";
 import { MainNavigation } from "./components/MainNavigation";
 import { AdvancedQueryDialog as PopupAdvancedQueryDialog, ErrorState as PopupErrorState, SettingsDialog as PopupSettingsDialog, Toast as PopupToast } from "./components/Popups";
-import { isPostPath, pathForView, popularPath, postPath, searchPath, viewFromPath } from "./navigation";
+import { isPoolPath, isPostPath, pathForView, poolPath, popularPath, postPath, searchPath, viewFromPath } from "./navigation";
 
 import type { ViewMode } from "./view-model";
 type PopularPeriod = "Day" | "Week" | "Month";
@@ -384,6 +384,17 @@ function App() {
       const routeDate = params.get("date") ?? today();
       setPopularPeriod(nextPeriod);
       setPopularAnchorDate(normalizePopularAnchor(routeDate, nextPeriod));
+    }
+    if (location.pathname === "/pools" || isPoolPath(location.pathname)) {
+      const query = params.get("query") ?? "";
+      setPoolSearchDraft(query);
+      setSubmittedPoolSearch(query);
+      if (isPoolPath(location.pathname)) {
+        const routeState = location.state as { pool?: Pool } | null;
+        if (routeState?.pool) setSelectedPool(routeState.pool);
+      } else {
+        setSelectedPool(null);
+      }
     }
   }, [location.pathname, location.search]);
 
@@ -716,12 +727,25 @@ function App() {
   function submitPoolSearch(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     setSelectedPool(null);
-    setSubmittedPoolSearch(poolSearchDraft.trim());
+    const query = poolSearchDraft.trim();
+    setSubmittedPoolSearch(query);
+    navigate(poolPath(activeSiteId, undefined, query));
   }
 
   function clearPoolSearch() {
     setPoolSearchDraft("");
     setSubmittedPoolSearch("");
+    navigate(poolPath(activeSiteId), { replace: true });
+  }
+
+  function openPool(pool: Pool) {
+    setSelectedPool(pool);
+    navigate(poolPath(activeSiteId, pool.id, submittedPoolSearch), { state: { pool } });
+  }
+
+  function closePool() {
+    if (isPoolPath(location.pathname)) navigate(-1);
+    else setSelectedPool(null);
   }
 
   function selectAdjacentPost(offset: -1 | 1) {
@@ -1240,8 +1264,8 @@ function App() {
               onRetryPosts={() => void poolPostsQuery.refetch()}
               onLoadMorePools={() => void poolsQuery.fetchNextPage()}
               onLoadMorePosts={() => void poolPostsQuery.fetchNextPage()}
-              onBack={() => setSelectedPool(null)}
-              onBrowse={setSelectedPool}
+              onBack={closePool}
+              onBrowse={openPool}
               onDownloadZip={(pool) => void handlePoolZip(pool)}
               onSelectPost={openPostDetail}
               onDownload={handleDownload}

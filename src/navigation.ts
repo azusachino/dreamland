@@ -14,10 +14,12 @@ interface ViewPathOptions {
   tags?: string;
   period?: string;
   date?: string;
+  query?: string;
 }
 
 export function viewFromPath(pathname: string): ViewMode {
   const path = pathname.replace(/\/+$/, "") || "/latest";
+  if (path === "/pools" || path.startsWith("/pools/")) return "pools";
   const entry = Object.entries(viewPaths).find(([, value]) => value === path);
   return (entry?.[0] as ViewMode | undefined) ?? "latest";
 }
@@ -28,6 +30,7 @@ export function pathForView(view: ViewMode, options: ViewPathOptions = {}): stri
   if (options.tags) params.set("tags", options.tags);
   if (options.period) params.set("period", options.period);
   if (options.date) params.set("date", options.date);
+  if (options.query) params.set("query", options.query);
   const query = params.toString();
   return `${viewPaths[view]}${query ? `?${query}` : ""}`;
 }
@@ -38,6 +41,16 @@ export function searchPath(expression: string, siteId?: string): string {
 
 export function popularPath(siteId: string, period: string, date: string): string {
   return pathForView("popular", { siteId, period, date });
+}
+
+export function poolPath(siteId: string, poolId?: string, query?: string): string {
+  const path = poolId ? `/pools/${encodeURIComponent(poolId)}` : "/pools";
+  const base = pathForView("pools", { siteId, query });
+  return poolId ? `${path}${base.slice("/pools".length)}` : base;
+}
+
+export function isPoolPath(pathname: string): boolean {
+  return /^\/pools\/[^/]+$/.test(pathname);
 }
 
 export function postPath(siteId: string, postId: string): string {
