@@ -196,9 +196,19 @@ pub async fn cache_detail_image(
     post_id: &str,
     network: &NetworkPolicy,
 ) -> anyhow::Result<std::path::PathBuf> {
+    let cache_root = detail_cache_path();
+    cache_detail_image_at(url, site_id, post_id, &cache_root, network).await
+}
+
+pub async fn cache_detail_image_at(
+    url: &str,
+    site_id: &str,
+    post_id: &str,
+    cache_root: &std::path::Path,
+    network: &NetworkPolicy,
+) -> anyhow::Result<std::path::PathBuf> {
     validate_image_identifier(post_id)?;
     validate_path_component(site_id, "site")?;
-    let cache_root = detail_cache_path();
     let posts_dir = cache_root.join(site_id).join("posts");
     if let Some(path) = existing_image_path(&posts_dir, post_id).await? {
         log_detail_event(&format!(
@@ -207,7 +217,7 @@ pub async fn cache_detail_image(
         ));
         return Ok(path);
     }
-    let staging_root = detail_cache_staging_path();
+    let staging_root = cache_root.with_file_name("detail-staging");
     log_detail_event(&format!("cache_miss site={site_id} post={post_id}"));
     let result = download_image(
         url,
@@ -233,10 +243,6 @@ pub async fn cache_detail_image(
 
 fn detail_cache_path() -> std::path::PathBuf {
     default_cache_path().with_file_name("detail")
-}
-
-fn detail_cache_staging_path() -> std::path::PathBuf {
-    default_cache_path().with_file_name("detail-staging")
 }
 
 async fn existing_image_path(

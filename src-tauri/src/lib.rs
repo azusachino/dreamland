@@ -608,6 +608,7 @@ async fn lookup_post(
 
 #[tauri::command]
 async fn load_detail_image(
+    app: AppHandle,
     state: State<'_, RuntimeState>,
     site_id: String,
     post_id: String,
@@ -636,13 +637,25 @@ async fn load_detail_image(
         dreamland_runtime::log_detail_failure(&site_id, &post_id, &error);
         error
     })?;
-    dreamland_runtime::cache_detail_image(&source_url, &site_id, &post_id, &config.network)
-        .await
-        .map(|path| path.to_string_lossy().into_owned())
-        .map_err(|error| {
-            dreamland_runtime::log_detail_failure(&site_id, &post_id, &error.to_string());
-            error.to_string()
-        })
+    let cache_root = app
+        .path()
+        .cache_dir()
+        .map_err(|error| error.to_string())?
+        .join("dreamland")
+        .join("detail");
+    dreamland_runtime::cache_detail_image_at(
+        &source_url,
+        &site_id,
+        &post_id,
+        &cache_root,
+        &config.network,
+    )
+    .await
+    .map(|path| path.to_string_lossy().into_owned())
+    .map_err(|error| {
+        dreamland_runtime::log_detail_failure(&site_id, &post_id, &error.to_string());
+        error.to_string()
+    })
 }
 
 #[tauri::command]
