@@ -276,6 +276,16 @@ pub async fn cache_detail_image(
     cache_detail_image_at(url, site_id, post_id, &cache_root, network).await
 }
 
+pub async fn find_cached_detail_image_at(
+    site_id: &str,
+    post_id: &str,
+    cache_root: &std::path::Path,
+) -> anyhow::Result<Option<std::path::PathBuf>> {
+    validate_image_identifier(post_id)?;
+    validate_path_component(site_id, "site")?;
+    existing_image_path(&cache_root.join(site_id).join("posts"), post_id).await
+}
+
 pub async fn cache_detail_image_at(
     url: &str,
     site_id: &str,
@@ -710,6 +720,24 @@ mod tests {
         assert!(!cache.join("yandere/123.jpg").exists());
         let _ = tokio::fs::remove_dir_all(root).await;
         let _ = tokio::fs::remove_dir_all(cache).await;
+        let _ = tokio::fs::remove_dir_all(detail).await;
+    }
+
+    #[tokio::test]
+    async fn cached_detail_image_is_found_without_remote_url() {
+        let detail =
+            std::env::temp_dir().join(format!("dreamland-detail-{}", uuid::Uuid::new_v4()));
+        let cached = detail.join("yandere/posts/123.jpg");
+        tokio::fs::create_dir_all(cached.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&cached, b"detail-cache").await.unwrap();
+
+        let found = find_cached_detail_image_at("yandere", "123", &detail)
+            .await
+            .unwrap();
+
+        assert_eq!(found, Some(cached));
         let _ = tokio::fs::remove_dir_all(detail).await;
     }
 
