@@ -987,6 +987,26 @@ select:focus-visible {
   gap: 0.5rem;
 }
 
+.auth-guide {
+  margin: 0;
+}
+
+.auth-guide p {
+  margin: 0.35rem 0 0;
+}
+
+.account-status {
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  margin: 0;
+}
+
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
 .download-list {
   display: grid;
   gap: 0.65rem;

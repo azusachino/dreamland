@@ -367,6 +367,7 @@ function App() {
   const [favoritePostIds, setFavoritePostIds] = useState<Set<string>>(new Set());
   const [batchDownloading, setBatchDownloading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [authFlowStarted, setAuthFlowStarted] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState<ToastState | null>(null);
   const toastId = useRef(0);
@@ -459,6 +460,29 @@ function App() {
     queryFn: authStatus,
     enabled: activeSite?.capabilities.authentication === true,
   });
+
+  async function handleBeginAuth() {
+    setError("");
+    try {
+      await beginAuth();
+      setAuthFlowStarted(true);
+      showToast("sign-in window opened", "finish signing in at yande.re, then choose check login.", "info");
+    } catch (reason) {
+      setError(`could not open yande.re sign-in: ${errorMessage(reason)}`);
+    }
+  }
+
+  async function handleCheckAuth() {
+    setError("");
+    const result = await authQuery.refetch();
+    if (result.data?.authenticated) {
+      setAuthFlowStarted(false);
+      showToast("yande.re connected", result.data.username ? `signed in as ${result.data.username}.` : "your account is ready.");
+    } else {
+      setAuthFlowStarted(true);
+      showToast("not signed in yet", "finish the yande.re sign-in, then check again.", "info");
+    }
+  }
   const savedQueriesQuery = useQuery({
     queryKey: ["saved-queries", activeSiteId],
     queryFn: () => listSavedQueries(activeSiteId),
@@ -634,6 +658,7 @@ function App() {
   const canGoPrevious = selectedPreviewIndex > 0;
   const canGoNext = selectedPreviewIndex >= 0 && selectedPreviewIndex < previewPosts.length - 1;
   const loading = configQuery.isPending || sitesQuery.isPending || imagesQuery.isPending;
+  const browseLoading = loading || (imagesQuery.isFetching && !imagesQuery.isFetchingNextPage);
   const loadingMore = imagesQuery.isFetchingNextPage;
   const downloadRecords = useMemo(() => {
     const records = downloadsQuery.data?.pages.flatMap((page) => page) ?? [];
@@ -1217,7 +1242,7 @@ function App() {
           {error && !queryError && <p className="message message-error" role="alert">{error}</p>}
           {isBrowseView ? (
             <>
-          {loading && images.length === 0 && <GallerySkeleton count={Math.min(pageSize, 12)} />}
+          {browseLoading && <GallerySkeleton count={Math.min(pageSize, 12)} />}
               {queryError ? (
                 <PopupErrorState
                   message={queryError}
@@ -1225,7 +1250,7 @@ function App() {
                   onOpenSite={activeSite ? () => void openSite(activeSiteId).catch((reason) => setError(`could not open site: ${errorMessage(reason)}`)) : undefined}
                   siteName={activeSite?.name}
                 />
-              ) : !loading && images.length === 0 ? (
+              ) : !browseLoading && images.length === 0 ? (
                 <div className="empty-state">
                   <span className="empty-symbol" aria-hidden="true">✦</span>
                   <h3>no posts found</h3>
@@ -1321,8 +1346,9 @@ function App() {
               favoritesError={favoritesQuery.error ? errorMessage(favoritesQuery.error) : ""}
               favoritesHasNext={Boolean(favoritesQuery.hasNextPage)}
               loading={authQuery.isFetching}
-              onBeginAuth={() => void beginAuth()}
-              onRefresh={() => void authQuery.refetch()}
+              authFlowStarted={authFlowStarted}
+              onBeginAuth={() => void handleBeginAuth()}
+              onRefresh={() => void handleCheckAuth()}
               onRetry={() => void favoritesQuery.refetch()}
               onLoadMore={() => void favoritesQuery.fetchNextPage()}
               onSelect={openPostDetail}
@@ -1936,6 +1962,7 @@ interface AccountPanelProps {
   favoritesError: string;
   favoritesHasNext: boolean;
   loading: boolean;
+  authFlowStarted: boolean;
   onBeginAuth: () => void;
   onRefresh: () => void;
   onRetry: () => void;
@@ -1946,7 +1973,7 @@ interface AccountPanelProps {
   onSignOut: () => Promise<void>;
 }
 
-function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favoritesHasNext, loading, onBeginAuth, onRefresh, onRetry, onLoadMore, onSelect, onDownload, onTag, onSignOut }: AccountPanelProps) {
+function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favoritesHasNext, loading, authFlowStarted, onBeginAuth, onRefresh, onRetry, onLoadMore, onSelect, onDownload, onTag, onSignOut }: AccountPanelProps) {
   return (
     <section className="workspace-panel shell-surface" aria-label="favorites account">
       <div className="inspector-heading">
@@ -1978,9 +2005,15 @@ function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favor
         </>
       ) : (
         <>
-          <p className="helper-text">sign in through yandere’s own page. Dreamland reads only the safe auth state and keeps the browser session in Rust.</p>
-          <Button variant="contained" fullWidth onClick={onBeginAuth}>sign in to yandere</Button>
-          <Button variant="outlined" fullWidth disabled={loading} onClick={onRefresh}>{loading ? "checking…" : "check login"}</Button>
+          <Alert className="auth-guide" severity="info">
+            <strong>sign in in the yande.re window</strong>
+            <p>Dreamland never asks for your password here. Complete the site’s own sign-in, keep the window open, then check the session.</p>
+          </Alert>
+          {authFlowStarted && <p className="account-status" role="status">sign-in window is open. After you finish, choose “check login”.</p>}
+          <div className="account-actions">
+            <Button variant="contained" onClick={onBeginAuth}>{authFlowStarted ? "reopen sign-in page" : "sign in to yande.re"}</Button>
+            <Button variant="outlined" disabled={loading} onClick={onRefresh}>{loading ? "checking…" : "check login"}</Button>
+          </div>
         </>
       )}
     </section>
