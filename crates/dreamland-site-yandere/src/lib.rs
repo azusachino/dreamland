@@ -1,9 +1,9 @@
 use anyhow::{bail, Context, Result};
 use dreamland_core::{
     ContentPolicy, Continuation, DiscoverySource, FeedKind, MediaVariant, NetworkPolicy,
-    PaginationRequest, PopularPeriod, Post, PostQueryRequest, PostRef, ProxyMode, Rating,
-    SiteCapabilities, SiteDescriptor, SiteError, SiteErrorCode, SiteId, SitePage, TagCategory,
-    TagSuggestion, TagSuggestionRequest,
+    PaginationRequest, Pool, PoolPage, PopularPeriod, Post, PostQueryRequest, PostRef, ProxyMode,
+    Rating, SiteCapabilities, SiteDescriptor, SiteError, SiteErrorCode, SiteId, SitePage,
+    TagCategory, TagSuggestion, TagSuggestionRequest,
 };
 use serde::{Deserialize, Serialize};
 
@@ -95,6 +95,22 @@ struct TagRecord {
     #[serde(rename = "type")]
     category: Option<u8>,
     ambiguous: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+struct PoolRecord {
+    id: u64,
+    name: String,
+    #[serde(default)]
+    is_public: bool,
+    #[serde(default)]
+    post_count: u32,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+struct UserRecord {
+    name: String,
+    id: u64,
 }
 
 impl From<ImagePost> for Post {
@@ -206,6 +222,108 @@ pub fn tag_endpoint(base_url: &str) -> Result<String> {
     Ok(url.to_string())
 }
 
+pub fn pool_endpoint(base_url: &str) -> Result<String> {
+    let mut url = reqwest::Url::parse(base_url).context("parse Yande API URL")?;
+    url.set_path("/pool.json");
+    url.set_query(None);
+    Ok(url.to_string())
+}
+
+pub fn pool_posts_expression(pool_id: &str) -> Result<String> {
+    if pool_id.is_empty() || !pool_id.chars().all(|value| value.is_ascii_digit()) {
+        bail!("Yande pool id must be numeric");
+    }
+    Ok(format!("pool:{pool_id}"))
+}
+
+pub fn decode_pools(body: &[u8]) -> Result<Vec<Pool>> {
+    let records = serde_json::from_slice::<Vec<PoolRecord>>(body).context("decode Yande pools")?;
+    Ok(records
+        .into_iter()
+        .map(|pool| Pool {
+            site: SiteId::new(SITE_ID),
+            id: pool.id.to_string(),
+            name: pool.name,
+            post_count: pool.post_count,
+            public: pool.is_public,
+        })
+        .collect())
+}
+
+pub async fn fetch_pools(
+    api_url: &str,
+    page: u32,
+    page_size: u16,
+    network: &NetworkPolicy,
+) -> Result<PoolPage> {
+    if page == 0 || page_size == 0 {
+        bail!("Yande pool pagination must be greater than zero");
+    }
+    let endpoint = pool_endpoint(api_url)?;
+    let client = build_client(network)?;
+    let params = [("page", page.to_string()), ("limit", page_size.to_string())];
+    let pools = decode_pools(&get_bytes(&client, &endpoint, &params, network).await?)?;
+    Ok(PoolPage {
+        has_next: pools.len() == usize::from(page_size),
+        pools,
+        page,
+        page_size,
+    })
+}
+
+pub async fn current_user(
+    api_url: &str,
+    user_id: &str,
+    cookie_header: &str,
+    network: &NetworkPolicy,
+) -> Result<String> {
+    if user_id.is_empty() || !user_id.chars().all(|value| value.is_ascii_digit()) {
+        bail!("Yande user id must be numeric");
+    }
+    let mut endpoint = reqwest::Url::parse(api_url).context("parse Yande API URL")?;
+    endpoint.set_path("/user.json");
+    endpoint.set_query(None);
+    let client = build_client_with_cookie(network, Some(cookie_header))?;
+    let users = serde_json::from_slice::<Vec<UserRecord>>(
+        &get_bytes(
+            &client,
+            endpoint.as_str(),
+            &[("id", user_id.to_owned()), ("limit", "1".to_owned())],
+            network,
+        )
+        .await?,
+    )
+    .context("decode Yande current user")?;
+    users
+        .into_iter()
+        .find(|user| user.id.to_string() == user_id)
+        .map(|user| user.name)
+        .ok_or_else(|| anyhow::anyhow!("Yande current user was not found"))
+}
+
+pub async fn query_pool_posts(
+    api_url: &str,
+    pool_id: &str,
+    content_policy: ContentPolicy,
+    page: u32,
+    page_size: u16,
+    network: &NetworkPolicy,
+) -> Result<SitePage> {
+    let request = PostQueryRequest {
+        query: dreamland_core::ReplayableQuery {
+            source: DiscoverySource::Search {
+                expression: pool_posts_expression(pool_id)?,
+            },
+            content_policy,
+        },
+        pagination: PaginationRequest::Page {
+            number: page,
+            page_size,
+        },
+    };
+    query_posts(api_url, &request, network).await
+}
+
 pub fn popular_query_params(anchor_date: &str) -> Result<Vec<(&'static str, String)>> {
     let mut parts = anchor_date.split('-');
     let year = parts.next().unwrap_or_default();
@@ -257,8 +375,41 @@ pub async fn query_posts(
     request: &PostQueryRequest,
     network: &NetworkPolicy,
 ) -> Result<SitePage> {
+    query_posts_with_cookie(api_url, request, network, None).await
+}
+
+pub async fn list_favorites(
+    api_url: &str,
+    username: &str,
+    cookie_header: &str,
+    content_policy: ContentPolicy,
+    page: u32,
+    page_size: u16,
+    network: &NetworkPolicy,
+) -> Result<SitePage> {
+    let request = PostQueryRequest {
+        query: dreamland_core::ReplayableQuery {
+            source: DiscoverySource::Search {
+                expression: format!("vote:3:{username} order:vote"),
+            },
+            content_policy,
+        },
+        pagination: PaginationRequest::Page {
+            number: page,
+            page_size,
+        },
+    };
+    query_posts_with_cookie(api_url, &request, network, Some(cookie_header)).await
+}
+
+async fn query_posts_with_cookie(
+    api_url: &str,
+    request: &PostQueryRequest,
+    network: &NetworkPolicy,
+    cookie_header: Option<&str>,
+) -> Result<SitePage> {
     let (endpoint, params, page_size, fixed_window) = request_parts(api_url, request)?;
-    let client = build_client(network)?;
+    let client = build_client_with_cookie(network, cookie_header)?;
     let mut posts = decode_posts(&get_bytes(&client, &endpoint, &params, network).await?)?;
     posts.retain(|post| matches_content_policy(post, request.query.content_policy));
     let returned_size = u16::try_from(posts.len()).unwrap_or(u16::MAX);
@@ -276,13 +427,54 @@ pub async fn query_posts(
 }
 
 fn build_client(network: &NetworkPolicy) -> Result<reqwest::Client> {
+    build_client_with_cookie(network, None)
+}
+
+fn build_client_with_cookie(
+    network: &NetworkPolicy,
+    cookie_header: Option<&str>,
+) -> Result<reqwest::Client> {
     let mut builder = reqwest::Client::builder().user_agent(USER_AGENT);
     match &network.proxy {
         ProxyMode::Auto => {}
         ProxyMode::Direct => builder = builder.no_proxy(),
         ProxyMode::Manual { url } => builder = builder.proxy(reqwest::Proxy::all(url)?),
     }
+    if let Some(cookie_header) = cookie_header {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::COOKIE,
+            reqwest::header::HeaderValue::from_str(cookie_header)?,
+        );
+        builder = builder.default_headers(headers);
+    }
     Ok(builder.build()?)
+}
+
+pub async fn set_favorite(
+    api_url: &str,
+    post_id: &str,
+    favorite: bool,
+    cookie_header: &str,
+    network: &NetworkPolicy,
+) -> Result<()> {
+    if post_id.is_empty() || !post_id.chars().all(|value| value.is_ascii_digit()) {
+        bail!("Yande post id must be numeric");
+    }
+    let mut endpoint = reqwest::Url::parse(api_url).context("parse Yande API URL")?;
+    endpoint.set_path("/post/vote.json");
+    endpoint.set_query(None);
+    let client = build_client_with_cookie(network, Some(cookie_header))?;
+    let response = client
+        .post(endpoint)
+        .form(&[("id", post_id), ("score", if favorite { "3" } else { "2" })])
+        .send()
+        .await?;
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        bail!("{}", map_http_status(response.status()).message)
+    }
 }
 
 async fn get_bytes(
@@ -578,6 +770,25 @@ mod tests {
         assert_eq!(suggestions[0].post_count, Some(12));
         assert_eq!(suggestions[0].ambiguous, Some(false));
         assert!(suggestions[0].aliases.is_empty());
+    }
+
+    #[test]
+    fn pools_map_to_site_neutral_records() {
+        let pools =
+            decode_pools(br#"[{"id":12,"name":"art book","is_public":true,"post_count":4}]"#)
+                .unwrap();
+
+        assert_eq!(pools[0].site.as_str(), SITE_ID);
+        assert_eq!(pools[0].id, "12");
+        assert_eq!(pools[0].name, "art book");
+        assert_eq!(pools[0].post_count, 4);
+        assert!(pools[0].public);
+    }
+
+    #[test]
+    fn pool_query_is_a_safe_exact_tag_expression() {
+        assert_eq!(pool_posts_expression("42").unwrap(), "pool:42");
+        assert!(pool_posts_expression("42 order:score").is_err());
     }
 
     #[test]

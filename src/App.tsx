@@ -1,16 +1,23 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  authStatus,
+  beginAuth,
   detectProxy,
   enqueueDownload,
+  listPools,
+  listFavorites,
   listDownloads,
   cancelDownload,
   retryDownload,
   loadConfig,
   queryPosts,
   saveConfig,
+  setFavorite,
+  signOut,
   suggestTags,
   type AppConfig,
+  type AuthStatus,
   type ContentPolicy,
   type DiscoverySource,
   type DownloadRecord,
@@ -19,6 +26,7 @@ import {
   type NetworkPolicy,
   type Post,
   type PostQueryRequest,
+  type Pool,
   type ProxyMode,
 } from "./lib/ipc";
 
@@ -60,9 +68,14 @@ function App() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
+  const [poolsOpen, setPoolsOpen] = useState(false);
+  const [poolPage, setPoolPage] = useState(1);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [favoritePage, setFavoritePage] = useState(1);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
+  const [favoritePostIds, setFavoritePostIds] = useState<Set<string>>(new Set());
   const [batchDownloading, setBatchDownloading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -82,6 +95,10 @@ function App() {
   const configQuery = useQuery({
     queryKey: ["config"],
     queryFn: loadConfig,
+  });
+  const authQuery = useQuery({
+    queryKey: ["auth"],
+    queryFn: authStatus,
   });
   const pageSize = configQuery.data?.images_per_page ?? 20;
   const contentPolicy = configQuery.data?.content_policy ?? "SafeOnly";
@@ -139,6 +156,20 @@ function App() {
     enabled: searchFocused && searchDraft.trim().length >= 2,
     staleTime: 30_000,
   });
+  const poolsQuery = useQuery({
+    queryKey: ["pools", poolPage],
+    queryFn: () => listPools(poolPage, 30),
+    enabled: poolsOpen,
+  });
+  const favoritesQuery = useQuery({
+    queryKey: ["favorites", favoritePage],
+    queryFn: () => listFavorites(favoritePage, 20),
+    enabled: accountOpen && authQuery.data?.authenticated === true && Boolean(authQuery.data.username),
+  });
+  useEffect(() => {
+    if (!favoritesQuery.data?.posts) return;
+    setFavoritePostIds((current) => new Set([...current, ...favoritesQuery.data.posts.map((post) => post.post.id)]));
+  }, [favoritesQuery.data]);
   const saveConfigMutation = useMutation({
     mutationFn: ({ downloadPath, contentPolicy, network }: ConfigInput) =>
       saveConfig(downloadPath, contentPolicy, network),
@@ -256,6 +287,28 @@ function App() {
     if (queued > 0) showToast("Batch queued", `${queued} post${queued === 1 ? "" : "s"} added to Downloads.`);
   }
 
+  async function handleFavorite(post: Post) {
+    if (!authQuery.data?.authenticated) {
+      setAccountOpen(true);
+      showToast("Sign in required", "Connect your Yande account before changing favorites.", "info");
+      return;
+    }
+    const favorite = !favoritePostIds.has(post.post.id);
+    try {
+      await setFavorite(post.post.id, favorite);
+      void queryClient.invalidateQueries({ queryKey: ["favorites"] });
+      setFavoritePostIds((current) => {
+        const next = new Set(current);
+        if (favorite) next.add(post.post.id);
+        else next.delete(post.post.id);
+        return next;
+      });
+      showToast(favorite ? "Added to favorites" : "Removed from favorites", `Post #${post.post.id} updated on Yande.`);
+    } catch (reason) {
+      setError(`Favorite failed: ${errorMessage(reason)}`);
+    }
+  }
+
   async function handleDownload(post: Post) {
     setDownloadingId(post.post.id);
     setError("");
@@ -359,8 +412,12 @@ function App() {
           <NavButton active={view === "popular"} label="Popular" icon="↗" onClick={() => changeView("popular")} />
           <p className="nav-heading nav-heading-spaced">Your space</p>
           <NavButton active={downloadsOpen} label="Downloads" icon="⇩" onClick={() => setDownloadsOpen(true)} />
-          <NavButton disabled label="Pools" icon="▦" hint="Gated" />
-          <NavButton disabled label="Favorites" icon="♡" hint="Gated" />
+          <NavButton active={poolsOpen} label="Pools" icon="▦" onClick={() => {
+            setPoolsOpen(true);
+            setPoolPage(1);
+            setDownloadsOpen(false);
+          }} />
+          <NavButton active={accountOpen} label="Favorites" icon="♡" onClick={() => setAccountOpen(true)} />
           <div className="nav-footer">
             <span className="connection-dot" aria-hidden="true" />
             <span>Yandere connected</span>
@@ -457,6 +514,8 @@ function App() {
             downloading={downloadingId === selectedPost.post.id}
             onClose={() => setSelectedPost(null)}
             onDownload={handleDownload}
+            favorited={favoritePostIds.has(selectedPost.post.id)}
+            onFavorite={handleFavorite}
             onTag={chooseTag}
           />
         )}
@@ -480,6 +539,46 @@ function App() {
           onRetry={async (id) => {
             await retryDownload(id);
             await queryClient.invalidateQueries({ queryKey: ["downloads"] });
+          }}
+        />
+      )}
+      {poolsOpen && (
+        <PoolPanel
+          pools={poolsQuery.data?.pools ?? []}
+          page={poolPage}
+          hasNext={poolsQuery.data?.has_next ?? false}
+          loading={poolsQuery.isPending || poolsQuery.isFetching}
+          error={poolsQuery.error ? errorMessage(poolsQuery.error) : ""}
+          onClose={() => setPoolsOpen(false)}
+          onRetry={() => void poolsQuery.refetch()}
+          onPrevious={() => setPoolPage((current) => Math.max(1, current - 1))}
+          onNext={() => setPoolPage((current) => current + 1)}
+          onBrowse={(pool) => {
+            setPoolsOpen(false);
+            chooseTag(`pool:${pool.id}`);
+          }}
+        />
+      )}
+      {accountOpen && (
+        <AccountPanel
+          auth={authQuery.data ?? null}
+          favorites={favoritesQuery.data?.posts ?? []}
+          favoritesLoading={favoritesQuery.isPending || favoritesQuery.isFetching}
+          favoritePage={favoritePage}
+          favoritesHasNext={favoritesQuery.data?.continuation !== "None" && (favoritesQuery.data?.posts.length ?? 0) === 20}
+          loading={authQuery.isFetching}
+          onClose={() => setAccountOpen(false)}
+          onBeginAuth={() => void beginAuth()}
+          onRefresh={() => void authQuery.refetch()}
+          onPrevious={() => setFavoritePage((current) => Math.max(1, current - 1))}
+          onNext={() => setFavoritePage((current) => current + 1)}
+          onSelect={setSelectedPost}
+          onFavorite={handleFavorite}
+          onSignOut={async () => {
+            await signOut();
+            await authQuery.refetch();
+            setFavoritePostIds(new Set());
+            setFavoritePage(1);
           }}
         />
       )}
@@ -618,12 +717,14 @@ function ImageCard({ post, selectionMode, selected, downloading, onDownload, onS
 interface PostInspectorProps {
   post: Post;
   downloading: boolean;
+  favorited: boolean;
   onClose: () => void;
   onDownload: (post: Post) => Promise<void>;
+  onFavorite: (post: Post) => Promise<void>;
   onTag: (tag: string) => void;
 }
 
-function PostInspector({ post, downloading, onClose, onDownload, onTag }: PostInspectorProps) {
+function PostInspector({ post, downloading, favorited, onClose, onDownload, onFavorite, onTag }: PostInspectorProps) {
   const originalUrl = post.full_url ?? post.sample_url ?? post.preview_url;
   return (
     <aside className="detail-panel shell-surface" aria-label="Post details">
@@ -656,6 +757,9 @@ function PostInspector({ post, downloading, onClose, onDownload, onTag }: PostIn
         <div><dt>File size</dt><dd>{post.file_size ? `${Math.round(post.file_size / 1024)} KB` : "—"}</dd></div>
       </dl>
       <p className="detail-helper">Tags and metadata come from the feed result. Yande does not expose a separate post-lookup operation in this release.</p>
+      <button className="button button-outlined button-wide" type="button" onClick={() => void onFavorite(post)}>
+        {favorited ? "Remove from Yande favorites" : "Add to Yande favorites"}
+      </button>
       <button className="button button-primary button-wide" disabled={downloading} onClick={() => void onDownload(post)}>
         {downloading ? "Saving…" : "Download best quality"}
       </button>
@@ -731,6 +835,110 @@ function DownloadRow({ record, onCancel, onRetry }: DownloadRowProps) {
         {canRetry && <button className="button button-outlined" type="button" onClick={() => void onRetry(record.id)}>Retry</button>}
       </div>}
     </article>
+  );
+}
+
+interface PoolPanelProps {
+  pools: Pool[];
+  page: number;
+  hasNext: boolean;
+  loading: boolean;
+  error: string;
+  onClose: () => void;
+  onRetry: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
+  onBrowse: (pool: Pool) => void;
+}
+
+function PoolPanel({ pools, page, hasNext, loading, error, onClose, onRetry, onPrevious, onNext, onBrowse }: PoolPanelProps) {
+  return (
+    <aside className="collection-panel shell-surface" aria-label="Pools">
+      <div className="inspector-heading">
+        <div><p className="eyebrow">Yande collections</p><h2>Pools</h2></div>
+        <button className="icon-button" type="button" aria-label="Close pools" onClick={onClose}>×</button>
+      </div>
+      <p className="helper-text">Public pools group ordered posts from the site. ZIP download will be enabled after authenticated archive handling is wired.</p>
+      {loading && <p className="helper-text">Loading pools…</p>}
+      {error && <div className="panel-error" role="alert"><p>{error}</p><button className="button button-outlined" type="button" onClick={onRetry}>Try again</button></div>}
+      {!loading && !error && pools.filter((pool) => pool.public).length === 0 && <div className="panel-empty">No public pools found.</div>}
+      <div className="collection-list">
+        {pools.filter((pool) => pool.public).map((pool) => (
+          <article className="collection-row" key={pool.id}>
+            <div><strong>{pool.name}</strong><p>{pool.post_count} post{pool.post_count === 1 ? "" : "s"}</p></div>
+            <button className="button button-outlined" type="button" onClick={() => onBrowse(pool)}>Browse</button>
+          </article>
+        ))}
+      </div>
+      {!loading && !error && (
+        <div className="collection-pagination">
+          <button className="button button-outlined" type="button" disabled={page <= 1} onClick={onPrevious}>Previous</button>
+          <span>Page {page}</span>
+          <button className="button button-outlined" type="button" disabled={!hasNext} onClick={onNext}>Next</button>
+        </div>
+      )}
+    </aside>
+  );
+}
+
+interface AccountPanelProps {
+  auth: AuthStatus | null;
+  favorites: Post[];
+  favoritesLoading: boolean;
+  favoritePage: number;
+  favoritesHasNext: boolean;
+  loading: boolean;
+  onClose: () => void;
+  onBeginAuth: () => void;
+  onRefresh: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
+  onSelect: (post: Post) => void;
+  onFavorite: (post: Post) => Promise<void>;
+  onSignOut: () => Promise<void>;
+}
+
+function AccountPanel({ auth, favorites, favoritesLoading, favoritePage, favoritesHasNext, loading, onClose, onBeginAuth, onRefresh, onPrevious, onNext, onSelect, onFavorite, onSignOut }: AccountPanelProps) {
+  return (
+    <aside className="collection-panel shell-surface" aria-label="Favorites account">
+      <div className="inspector-heading">
+        <div><p className="eyebrow">Yande account</p><h2>Favorites</h2></div>
+        <button className="icon-button" type="button" aria-label="Close favorites" onClick={onClose}>×</button>
+      </div>
+      {auth?.authenticated ? (
+        <>
+          <p className="account-connected"><span className="connection-dot" /> {auth.username ? `${auth.username} connected` : "Yande account connected"}</p>
+          {favoritesLoading && <p className="helper-text">Loading favorites…</p>}
+          {!favoritesLoading && favorites.length === 0 && <div className="panel-empty">No favorites on this page.</div>}
+          <div className="favorite-list">
+            {favorites.map((post) => {
+              const preview = post.preview_url ?? post.sample_url ?? post.full_url;
+              return (
+                <article className="favorite-row" key={post.post.id}>
+                  <button className="favorite-preview" type="button" onClick={() => onSelect(post)}>
+                    {preview ? <img src={preview} alt={`Post ${post.post.id}`} /> : <span>—</span>}
+                  </button>
+                  <div className="favorite-row-body"><strong>#{post.post.id}</strong><span>{post.tags.slice(0, 2).join(" · ") || "No tags"}</span></div>
+                  <button className="button button-text" type="button" onClick={() => void onFavorite(post)}>Remove</button>
+                </article>
+              );
+            })}
+          </div>
+          <div className="collection-pagination">
+            <button className="button button-outlined" type="button" disabled={favoritePage <= 1 || favoritesLoading} onClick={onPrevious}>Previous</button>
+            <span>Page {favoritePage}</span>
+            <button className="button button-outlined" type="button" disabled={!favoritesHasNext || favoritesLoading} onClick={onNext}>Next</button>
+          </div>
+          <button className="button button-outlined" type="button" onClick={() => void onSignOut()}>Sign out</button>
+        </>
+      ) : (
+        <>
+          <p className="helper-text">Sign in through Yande’s own page. Dreamland reads only the safe auth state and keeps the browser session in Rust.</p>
+          <button className="button button-primary button-wide" type="button" onClick={onBeginAuth}>Sign in to Yande</button>
+          <button className="button button-outlined button-wide" type="button" disabled={loading} onClick={onRefresh}>{loading ? "Checking…" : "Check login"}</button>
+        </>
+      )}
+    </aside>
   );
 }
 

@@ -2,19 +2,21 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use dreamland_core::{
-    ContentPolicy, MediaVariant, NetworkPolicy, Post, PostQueryRequest, QuerySessionId, SiteId,
-    SitePage, TagSuggestion, TagSuggestionRequest,
+    ContentPolicy, MediaVariant, NetworkPolicy, PoolPage, Post, PostQueryRequest, QuerySessionId,
+    SiteId, SitePage, TagSuggestion, TagSuggestionRequest,
 };
 use dreamland_runtime::{AppConfig, DownloadRecord, DownloadRequest};
 use dreamland_sites::SiteDescriptor;
 use serde::{Deserialize, Serialize};
-use tauri::{Manager, State};
+use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 /// Posts from the most recent typed query, keyed by post id. Downloads resolve
 /// their URL from here rather than trusting a client-supplied one -- the
 /// frontend can only ever download a post this backend fetched from the site.
 struct RuntimeState {
     posts: Mutex<HashMap<String, Post>>,
+    auth_cookie: Mutex<Option<String>>,
+    auth_username: Mutex<Option<String>>,
     sessions: dreamland_runtime::QuerySessionStore,
     downloads: dreamland_runtime::DownloadManager,
 }
@@ -23,6 +25,8 @@ impl RuntimeState {
     fn new(config: &AppConfig) -> anyhow::Result<Self> {
         Ok(Self {
             posts: Mutex::new(HashMap::new()),
+            auth_cookie: Mutex::new(None),
+            auth_username: Mutex::new(None),
             sessions: dreamland_runtime::QuerySessionStore::default(),
             downloads: dreamland_runtime::DownloadManager::open(
                 dreamland_runtime::default_state_path(),
@@ -43,6 +47,12 @@ struct QueryInput {
 struct TagSuggestionInput {
     site: SiteId,
     request: TagSuggestionRequest,
+}
+
+#[derive(Debug, Serialize)]
+struct AuthStatus {
+    authenticated: bool,
+    username: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -96,6 +106,174 @@ fn save_config(
 #[tauri::command]
 fn detect_proxy() -> dreamland_runtime::ProxyDetection {
     dreamland_runtime::detect_proxy()
+}
+
+#[tauri::command]
+fn begin_auth(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("yande-auth") {
+        window.show().map_err(|error| error.to_string())?;
+        window.set_focus().map_err(|error| error.to_string())?;
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(
+        &app,
+        "yande-auth",
+        WebviewUrl::External(
+            "https://yande.re/user/login"
+                .parse()
+                .map_err(|error| format!("invalid login URL: {error}"))?,
+        ),
+    )
+    .title("Sign in to Yande.re")
+    .inner_size(480.0, 760.0)
+    .build()
+    .map(|_| ())
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn auth_status(app: AppHandle, state: State<'_, RuntimeState>) -> Result<AuthStatus, String> {
+    let Some(window) = app.get_webview_window("yande-auth") else {
+        return Ok(AuthStatus {
+            authenticated: false,
+            username: None,
+        });
+    };
+    let cookies = window
+        .cookies_for_url(
+            "https://yande.re/"
+                .parse()
+                .map_err(|error| format!("invalid Yande URL: {error}"))?,
+        )
+        .map_err(|error| error.to_string())?;
+    let authenticated = cookies.iter().any(|cookie| cookie.name() == "user_id");
+    let user_id = cookies
+        .iter()
+        .find(|cookie| cookie.name() == "user_id")
+        .map(|cookie| cookie.value().to_owned());
+    let cookie_header = cookies
+        .iter()
+        .map(|cookie| format!("{}={}", cookie.name(), cookie.value()))
+        .collect::<Vec<_>>()
+        .join("; ");
+    *state.auth_cookie.lock().expect("auth cookie lock poisoned") =
+        authenticated.then_some(cookie_header);
+    let cookie_for_lookup = state
+        .auth_cookie
+        .lock()
+        .expect("auth cookie lock poisoned")
+        .clone();
+    let username = if authenticated {
+        if let (Some(user_id), Some(cookie_header)) = (user_id, cookie_for_lookup) {
+            let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
+            dreamland_sites::current_user(
+                dreamland_sites::DEFAULT_SITE_ID,
+                &user_id,
+                &cookie_header,
+                &config.network,
+            )
+            .await
+            .ok()
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    *state
+        .auth_username
+        .lock()
+        .expect("auth username lock poisoned") = username.clone();
+    Ok(AuthStatus {
+        authenticated,
+        username,
+    })
+}
+
+#[tauri::command]
+fn sign_out(app: AppHandle, state: State<'_, RuntimeState>) -> Result<(), String> {
+    *state.auth_cookie.lock().expect("auth cookie lock poisoned") = None;
+    *state
+        .auth_username
+        .lock()
+        .expect("auth username lock poisoned") = None;
+    if let Some(window) = app.get_webview_window("yande-auth") {
+        window.close().map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn list_pools(
+    _state: State<'_, RuntimeState>,
+    page: u32,
+    page_size: u16,
+) -> Result<PoolPage, String> {
+    let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
+    dreamland_sites::list_pools(
+        dreamland_sites::DEFAULT_SITE_ID,
+        page,
+        page_size,
+        &config.network,
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn list_favorites(
+    state: State<'_, RuntimeState>,
+    page: u32,
+    page_size: u16,
+) -> Result<SitePage, String> {
+    let cookie = state
+        .auth_cookie
+        .lock()
+        .expect("auth cookie lock poisoned")
+        .clone()
+        .ok_or_else(|| "Yande login is required to view favorites".to_owned())?;
+    let username = state
+        .auth_username
+        .lock()
+        .expect("auth username lock poisoned")
+        .clone()
+        .ok_or_else(|| "Refresh Yande login status before viewing favorites".to_owned())?;
+    let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
+    dreamland_sites::list_favorites(
+        dreamland_sites::DEFAULT_SITE_ID,
+        &username,
+        &cookie,
+        config.content_policy,
+        page,
+        page_size,
+        &config.network,
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn set_favorite(
+    state: State<'_, RuntimeState>,
+    post_id: String,
+    favorite: bool,
+) -> Result<(), String> {
+    let cookie = state
+        .auth_cookie
+        .lock()
+        .expect("auth cookie lock poisoned")
+        .clone()
+        .ok_or_else(|| "Yande login is required to change favorites".to_owned())?;
+    let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
+    dreamland_sites::set_favorite(
+        dreamland_sites::DEFAULT_SITE_ID,
+        &post_id,
+        favorite,
+        &cookie,
+        &config.network,
+    )
+    .await
+    .map_err(|error| error.to_string())
 }
 
 async fn execute_query(
@@ -279,6 +457,12 @@ pub fn run() {
             load_config,
             save_config,
             detect_proxy,
+            begin_auth,
+            auth_status,
+            sign_out,
+            list_pools,
+            list_favorites,
+            set_favorite,
             query_posts,
             continue_query,
             cancel_query,

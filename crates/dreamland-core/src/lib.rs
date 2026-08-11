@@ -198,6 +198,23 @@ pub struct SitePage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Pool {
+    pub site: SiteId,
+    pub id: String,
+    pub name: String,
+    pub post_count: u32,
+    pub public: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PoolPage {
+    pub pools: Vec<Pool>,
+    pub page: u32,
+    pub page_size: u16,
+    pub has_next: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SiteDescriptor {
     pub id: SiteId,
     pub name: String,

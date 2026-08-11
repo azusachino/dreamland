@@ -83,6 +83,26 @@ export interface SitePage {
   session: string | null;
 }
 
+export interface Pool {
+  site: string;
+  id: string;
+  name: string;
+  post_count: number;
+  public: boolean;
+}
+
+export interface PoolPage {
+  pools: Pool[];
+  page: number;
+  page_size: number;
+  has_next: boolean;
+}
+
+export interface AuthStatus {
+  authenticated: boolean;
+  username: string | null;
+}
+
 export interface TagSuggestion {
   name: string;
   category: string | null;
@@ -129,6 +149,30 @@ export function saveConfig(
 
 export function detectProxy(): Promise<ProxyDetection> {
   return invoke<ProxyDetection>("detect_proxy");
+}
+
+export function beginAuth(): Promise<void> {
+  return invoke<void>("begin_auth");
+}
+
+export function authStatus(): Promise<AuthStatus> {
+  return invoke<AuthStatus>("auth_status");
+}
+
+export function signOut(): Promise<void> {
+  return invoke<void>("sign_out");
+}
+
+export function listPools(page = 1, pageSize = 20): Promise<PoolPage> {
+  return invoke<PoolPage>("list_pools", { page, pageSize });
+}
+
+export function setFavorite(postId: string, favorite: boolean): Promise<void> {
+  return invoke<void>("set_favorite", { postId, favorite });
+}
+
+export function listFavorites(page = 1, pageSize = 20): Promise<SitePage> {
+  return invoke<SitePage>("list_favorites", { page, pageSize });
 }
 
 export function queryDefaultPosts(page: number): Promise<Post[]> {
