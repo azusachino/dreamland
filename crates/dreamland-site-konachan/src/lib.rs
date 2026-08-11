@@ -31,7 +31,7 @@ pub fn descriptor() -> SiteDescriptor {
             post_search: true,
             tag_search: true,
             tag_query: true,
-            post_lookup: false,
+            post_lookup: true,
             page_numbers: true,
             cursors: false,
             multiple_download_variants: true,
@@ -72,6 +72,30 @@ pub async fn query_posts(
             }
             page
         })
+}
+
+pub async fn lookup_post(api_url: &str, post_id: &str, network: &NetworkPolicy) -> Result<Post> {
+    let request = lookup_post_request(post_id)?;
+    let page = query_posts(api_url, &request, network).await?;
+    page.posts
+        .into_iter()
+        .find(|post| post.post.id == post_id)
+        .ok_or_else(|| anyhow::anyhow!("Konachan post #{post_id} was not found in the safe API"))
+}
+
+fn lookup_post_request(post_id: &str) -> Result<PostQueryRequest> {
+    if post_id.is_empty() || !post_id.chars().all(|value| value.is_ascii_digit()) {
+        bail!("Konachan post id must be numeric");
+    }
+    Ok(PostQueryRequest {
+        query: dreamland_core::ReplayableQuery {
+            source: dreamland_core::DiscoverySource::Search {
+                expression: format!("id:{post_id}"),
+            },
+            content_policy: ContentPolicy::SafeOnly,
+        },
+        pagination: dreamland_core::PaginationRequest::First { page_size: 1 },
+    })
 }
 
 pub async fn fetch_tag_suggestions(
@@ -241,9 +265,21 @@ mod tests {
         assert_eq!(SITE_ID, "konachan");
         assert!(descriptor().capabilities.browse);
         assert!(descriptor().capabilities.collections);
+        assert!(descriptor().capabilities.post_lookup);
         assert!(!descriptor().capabilities.collection_downloads);
         assert!(default_config().safe_only);
         assert!(ensure_supported_policy(ContentPolicy::AllowExplicit).is_err());
+    }
+
+    #[test]
+    fn lookup_requires_numeric_id() {
+        assert!(lookup_post_request("not-a-number").is_err());
+        assert_eq!(
+            lookup_post_request("407162").unwrap().query.source,
+            dreamland_core::DiscoverySource::Search {
+                expression: "id:407162".to_owned()
+            }
+        );
     }
 
     #[test]

@@ -15,6 +15,7 @@ import {
   listDownloadHistory,
   listArchives,
   listSavedQueries,
+  lookupPost,
   cancelDownload,
   deleteSavedQuery,
   listSites,
@@ -481,6 +482,12 @@ function App() {
       return lastPage.posts.length >= lastPage.page_size ? pages.length + 1 : undefined;
     },
     enabled: view === "pools" && selectedPool !== null && configQuery.isSuccess && activeSite?.capabilities.collections === true,
+  });
+  const postDetailQuery = useQuery({
+    queryKey: ["post-detail", activeSiteId, selectedPost?.post.id],
+    queryFn: () => lookupPost(activeSiteId, selectedPost!.post.id),
+    enabled: Boolean(selectedPost) && activeSite?.capabilities.post_lookup === true,
+    staleTime: 60_000,
   });
   const favoritesQuery = useInfiniteQuery({
     queryKey: ["favorites"],
@@ -1180,7 +1187,9 @@ function App() {
 
         {selectedPost && (
           <PostInspector
-            post={selectedPost}
+            post={postDetailQuery.data ?? selectedPost}
+            detailLoading={postDetailQuery.isFetching}
+            detailError={postDetailQuery.error ? errorMessage(postDetailQuery.error) : ""}
             downloading={downloadingId === selectedPost.post.id}
             siteName={activeSite?.name ?? selectedPost.post.site}
             favoriteSupported={activeSite?.capabilities.remote_favorites === true}
@@ -1487,6 +1496,8 @@ function ImageCard({ post, selectionMode, selected, downloading, onDownload, onS
 
 interface PostInspectorProps {
   post: Post;
+  detailLoading: boolean;
+  detailError: string;
   downloading: boolean;
   siteName: string;
   favoriteSupported: boolean;
@@ -1498,7 +1509,7 @@ interface PostInspectorProps {
   downloadVariant: MediaVariant;
 }
 
-function PostInspector({ post, downloading, siteName, favoriteSupported, favorited, onClose, onDownload, onFavorite, onTag, downloadVariant }: PostInspectorProps) {
+function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, onClose, onDownload, onFavorite, onTag, downloadVariant }: PostInspectorProps) {
   const originalUrl = post.full_url ?? post.sample_url ?? post.preview_url;
   return (
     <aside className="detail-panel shell-surface" aria-label="post details">
@@ -1518,6 +1529,8 @@ function PostInspector({ post, downloading, siteName, favoriteSupported, favorit
         {originalUrl && <a href={originalUrl} target="_blank" rel="noreferrer">open original</a>}
         {post.source && <a href={post.source} target="_blank" rel="noreferrer">open source</a>}
       </div>
+      {detailLoading && <p className="detail-helper" role="status">refreshing post details…</p>}
+      {detailError && <p className="detail-helper" role="alert">couldn’t refresh the post; showing the feed snapshot. {detailError}</p>}
       <div className="inspector-section">
         <span className="section-label">tags</span>
         <div className="tag-list">
@@ -1537,7 +1550,7 @@ function PostInspector({ post, downloading, siteName, favoriteSupported, favorit
         <div><dt>children</dt><dd>{post.has_children ? "yes" : "no"}</dd></div>
         <div><dt>created</dt><dd>{post.created_at ? new Date(post.created_at).toLocaleString() : "—"}</dd></div>
       </dl>
-      <p className="detail-helper">tags and metadata come from the feed result; this site does not expose a separate post-lookup operation in this release.</p>
+      {!detailLoading && !detailError && <p className="detail-helper">post details are hydrated from the site’s safe API.</p>}
       {favoriteSupported && (
         <button className="button button-outlined button-wide" type="button" onClick={() => void onFavorite(post)}>
           {favorited ? `remove from ${siteName} favorites` : `add to ${siteName} favorites`}

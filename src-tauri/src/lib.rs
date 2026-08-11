@@ -516,6 +516,31 @@ async fn query_posts(
 }
 
 #[tauri::command]
+async fn lookup_post(
+    state: State<'_, RuntimeState>,
+    site_id: String,
+    post_id: String,
+) -> Result<Post, String> {
+    let site = dreamland_sites::descriptors()
+        .into_iter()
+        .find(|site| site.id.as_str() == site_id)
+        .ok_or_else(|| format!("site '{site_id}' is not registered"))?;
+    if !site.capabilities.post_lookup {
+        return Err(format!("site '{site_id}' does not support post lookup"));
+    }
+    let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
+    let post = dreamland_sites::lookup_post(&site_id, &post_id, &config.network)
+        .await
+        .map_err(|error| error.to_string())?;
+    state
+        .posts
+        .lock()
+        .expect("post cache lock poisoned")
+        .insert(post_cache_key(&site_id, &post_id), post.clone());
+    Ok(post)
+}
+
+#[tauri::command]
 async fn continue_query(
     state: State<'_, RuntimeState>,
     session: QuerySessionId,
@@ -717,6 +742,7 @@ pub fn run() {
             move_saved_query,
             set_favorite,
             query_posts,
+            lookup_post,
             continue_query,
             cancel_query,
             suggest_tags,

@@ -26,6 +26,16 @@ pub async fn query_posts(
     }
 }
 
+pub async fn lookup_post(site_id: &str, post_id: &str, network: &NetworkPolicy) -> Result<Post> {
+    match site_id {
+        dreamland_site_konachan::SITE_ID => {
+            let config = dreamland_site_konachan::default_config();
+            dreamland_site_konachan::lookup_post(&config.api_url, post_id, network).await
+        }
+        _ => bail!("site '{site_id}' has no active post lookup adapter"),
+    }
+}
+
 pub async fn suggest_tags(
     site_id: &str,
     request: &TagSuggestionRequest,
@@ -222,6 +232,7 @@ mod tests {
         assert_eq!(sites[0].id.as_str(), "yandere");
         assert_eq!(sites[1].id.as_str(), "konachan");
         assert!(sites[1].capabilities.collections);
+        assert!(sites[1].capabilities.post_lookup);
         assert!(!sites[1].capabilities.collection_downloads);
     }
 
