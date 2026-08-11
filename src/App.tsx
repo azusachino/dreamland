@@ -624,7 +624,6 @@ interface PostInspectorProps {
 }
 
 function PostInspector({ post, downloading, onClose, onDownload, onTag }: PostInspectorProps) {
-  const previewUrl = post.sample_url ?? post.full_url ?? post.preview_url;
   const originalUrl = post.full_url ?? post.sample_url ?? post.preview_url;
   return (
     <aside className="detail-panel shell-surface" aria-label="Post details">
@@ -636,7 +635,7 @@ function PostInspector({ post, downloading, onClose, onDownload, onTag }: PostIn
         <button className="icon-button" type="button" aria-label="Close details" onClick={onClose}>×</button>
       </div>
       <div className="detail-preview">
-        {previewUrl ? <img src={previewUrl} alt={`Post ${post.post.id}`} /> : <span>Preview unavailable</span>}
+        <DetailImage key={post.post.id} post={post} />
       </div>
       <div className="detail-summary">
         <span>Yande.re post #{post.post.id}</span>
@@ -661,6 +660,24 @@ function PostInspector({ post, downloading, onClose, onDownload, onTag }: PostIn
         {downloading ? "Saving…" : "Download best quality"}
       </button>
     </aside>
+  );
+}
+
+function DetailImage({ post }: { post: Post }) {
+  const sources = [post.preview_url, post.sample_url, post.full_url].filter(
+    (url, index, all): url is string => Boolean(url) && all.indexOf(url) === index,
+  );
+  const [sourceIndex, setSourceIndex] = useState(0);
+  const source = sources[sourceIndex];
+
+  if (!source) return <span>Preview unavailable</span>;
+  return (
+    <img
+      src={source}
+      alt={`Post ${post.post.id}`}
+      loading="eager"
+      onError={() => setSourceIndex((current) => current + 1)}
+    />
   );
 }
 
