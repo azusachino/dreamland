@@ -1,19 +1,23 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import AccessTimeRounded from "@mui/icons-material/AccessTimeRounded";
-import ArrowBackRounded from "@mui/icons-material/ArrowBackRounded";
-import ArrowForwardRounded from "@mui/icons-material/ArrowForwardRounded";
-import CheckRounded from "@mui/icons-material/CheckRounded";
-import CloseRounded from "@mui/icons-material/CloseRounded";
-import DownloadRounded from "@mui/icons-material/DownloadRounded";
-import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
-import FavoriteBorderRounded from "@mui/icons-material/FavoriteBorderRounded";
-import MenuBookRounded from "@mui/icons-material/MenuBookRounded";
-import RefreshRounded from "@mui/icons-material/RefreshRounded";
-import SearchRounded from "@mui/icons-material/SearchRounded";
-import SettingsRounded from "@mui/icons-material/SettingsRounded";
-import TrendingUpRounded from "@mui/icons-material/TrendingUpRounded";
-import { Alert, Button, Chip, CssBaseline, IconButton, Skeleton, ThemeProvider, Tooltip } from "@mui/material";
+import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Alert,
+  Button,
+  Chip,
+  CssBaseline,
+  Dialog,
+  FormControl,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Select,
+  Skeleton,
+  TextField,
+  ThemeProvider,
+} from "@mui/material";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   authStatus,
@@ -68,12 +72,16 @@ import {
   type SiteDescriptor,
 } from "./lib/ipc";
 import { createDreamlandTheme } from "./theme";
+import { AppHeader } from "./components/AppHeader";
+import { Icon } from "./components/Icon";
+import { AppLayout } from "./components/AppLayout";
+import { MainNavigation } from "./components/MainNavigation";
+import { AdvancedQueryDialog as PopupAdvancedQueryDialog, ErrorState as PopupErrorState, SettingsDialog as PopupSettingsDialog, Toast as PopupToast } from "./components/Popups";
 
 type ViewMode = "latest" | "popular" | "search" | "downloads" | "pools" | "favorites";
 type PopularPeriod = "Day" | "Week" | "Month";
 type ToastTone = "success" | "info" | "error";
 type ThemeMode = "system" | "light" | "dark";
-type IconName = "clock" | "trend" | "download" | "book" | "heart" | "search" | "refresh" | "settings" | "close" | "back" | "forward" | "check" | "chevron";
 type QueryOrder = "" | "score" | "score_asc" | "id" | "id_desc" | "mpixels" | "mpixels_asc" | "landscape" | "portrait" | "vote" | "random";
 
 interface AdvancedQueryForm {
@@ -330,26 +338,6 @@ function isActiveDownload(status: DownloadStatus): boolean {
   return status === "Queued" || status === "Running";
 }
 
-function Icon({ name }: { name: IconName }) {
-  const icons = {
-    clock: AccessTimeRounded,
-    trend: TrendingUpRounded,
-    download: DownloadRounded,
-    book: MenuBookRounded,
-    heart: FavoriteBorderRounded,
-    search: SearchRounded,
-    refresh: RefreshRounded,
-    settings: SettingsRounded,
-    close: CloseRounded,
-    back: ArrowBackRounded,
-    forward: ArrowForwardRounded,
-    check: CheckRounded,
-    chevron: ExpandMoreRounded,
-  } as const;
-  const Component = icons[name];
-  return <Component className="icon" aria-hidden="true" />;
-}
-
 function App() {
   const queryClient = useQueryClient();
   const [view, setView] = useState<ViewMode>("latest");
@@ -362,7 +350,7 @@ function App() {
   const [searchDraft, setSearchDraft] = useState("");
   const [submittedSearch, setSubmittedSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
-  const [siteMenuOpen, setSiteMenuOpen] = useState(false);
+  const [siteMenuAnchor, setSiteMenuAnchor] = useState<HTMLElement | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
   const [selectedPool, setSelectedPool] = useState<Pool | null>(null);
@@ -380,7 +368,6 @@ function App() {
   const [toast, setToast] = useState<ToastState | null>(null);
   const toastId = useRef(0);
   const searchInput = useRef<HTMLInputElement>(null);
-  const sitePicker = useRef<HTMLDivElement>(null);
   const downloadStatuses = useRef(new Map<string, DownloadStatus>());
   const activeQuerySession = useRef<string | null>(null);
 
@@ -663,22 +650,11 @@ function App() {
     };
   }, [selectedPost]);
 
-  useEffect(() => {
-    if (!siteMenuOpen) return;
-    function closeSiteMenu(event: PointerEvent) {
-      if (event.target instanceof Node && !sitePicker.current?.contains(event.target)) {
-        setSiteMenuOpen(false);
-      }
-    }
-    document.addEventListener("pointerdown", closeSiteMenu);
-    return () => document.removeEventListener("pointerdown", closeSiteMenu);
-  }, [siteMenuOpen]);
-
   function selectSite(site: SiteDescriptor) {
     if (!site.capabilities.browse || site.id === activeSiteId) return;
     window.localStorage.setItem("dreamland.site", site.id);
     setSelectedSiteId(site.id);
-    setSiteMenuOpen(false);
+    setSiteMenuAnchor(null);
     setError("");
     setNotice("");
     setView("latest");
@@ -982,179 +958,65 @@ function App() {
     <ThemeProvider theme={muiTheme}>
       <CssBaseline />
       <div className="app">
-      <header className="app-header shell-surface">
-        <div className="header-identity">
-          <div className="brand-lockup">
-            <div className="brand-mark" aria-hidden="true">✦</div>
-            <div>
-              <p className="eyebrow">image board</p>
-              <h1>Dreamland</h1>
-            </div>
-          </div>
-        </div>
-        <form className="search-bar" onSubmit={submitSearch} role="search">
-          <span className="search-icon"><Icon name="search" /></span>
-          <input
-            ref={searchInput}
-            aria-label="search tags"
-            placeholder="Search by tags…"
-            value={searchDraft}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => window.setTimeout(() => setSearchFocused(false), 120)}
-            onChange={(event) => setSearchDraft(event.target.value)}
-          />
-          {searchDraft && (
-            <button
-              className="clear-search"
-              type="button"
-              aria-label="clear search"
-              onClick={() => {
-                setSearchDraft("");
-                changeView("latest");
-              }}
-            >
-              ×
-            </button>
-          )}
-          <button className="search-advanced" type="button" onClick={() => {
-            setEditingSavedQueryId(null);
-            setAdvancedSearchOpen(true);
-          }}>filters</button>
-          {searchFocused && suggestionsQuery.data && suggestionsQuery.data.length > 0 && (
-            <div className="suggestions" role="listbox">
-              <p className="suggestion-heading">suggested tags</p>
-              {suggestionsQuery.data.map((tag) => (
-                <button
-                  key={tag.name}
-                  className="suggestion"
-                  type="button"
-                  role="option"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => chooseTag(tag.name)}
-                >
-                  <span>{tag.name}</span>
-                  {tag.post_count !== null && <small>{tag.post_count.toLocaleString()}</small>}
-                </button>
-              ))}
-            </div>
-          )}
-        </form>
-        <div className="header-actions">
-          <div className="site-picker" ref={sitePicker}>
-            <div className="site-picker-controls">
-              <div className="site-menu">
-                <button
-                  className="site-menu-trigger"
-                  type="button"
-                  aria-label="choose image board site"
-                  aria-expanded={siteMenuOpen}
-                  onClick={() => setSiteMenuOpen((current) => !current)}
-                >
-                  <span>{activeSite?.name ?? "choose site"}</span>
-                  <Icon name="chevron" />
-                </button>
-                {siteMenuOpen && <div className="site-menu-popover" role="menu">
-                  {(sitesQuery.data ?? []).map((site) => (
-                    <button
-                      key={site.id}
-                      className={`site-menu-option${site.id === activeSiteId ? " active" : ""}`}
-                      type="button"
-                      role="menuitem"
-                      disabled={!site.capabilities.browse}
-                      onClick={() => selectSite(site)}
-                      title={site.capabilities.browse ? `browse ${site.name}` : `${site.name} coming later`}
-                    >
-                      <span>{site.name}</span>
-                      <small>{site.capabilities.browse ? "ready" : "later"}</small>
-                    </button>
-                  ))}
-                  <button
-                    className="site-menu-open"
-                    type="button"
-                    disabled={!activeSite}
-                    onClick={() => {
-                      setSiteMenuOpen(false);
-                      void handleOpenSite();
-                    }}
-                  >
-                    open current site
-                  </button>
-                </div>}
-              </div>
-            </div>
-          </div>
-          <button
-            className="icon-button"
-            type="button"
-            aria-label={`refresh ${title.toLowerCase()}`}
-            title={`refresh ${title.toLowerCase()}`}
-            disabled={loading}
-            onClick={() => {
-              if (isBrowseView) void imagesQuery.refetch();
-              else if (view === "favorites") void favoritesQuery.refetch();
-              else if (view === "pools") void poolsQuery.refetch();
-              else void downloadsQuery.refetch();
-            }}
-          >
-            <Icon name="refresh" />
-          </button>
-          <button className="button button-tonal button-with-icon" type="button" onClick={() => setSettingsOpen(true)}>
-            <Icon name="settings" />
-            <span>settings</span>
-          </button>
-        </div>
-      </header>
+      <AppHeader
+        activeSite={activeSite}
+        activeSiteId={activeSiteId}
+        sites={sitesQuery.data ?? []}
+        siteMenuAnchor={siteMenuAnchor}
+        onSiteMenuOpen={setSiteMenuAnchor}
+        onSiteMenuClose={() => setSiteMenuAnchor(null)}
+        onSelectSite={selectSite}
+        onOpenSite={() => {
+          setSiteMenuAnchor(null);
+          void handleOpenSite();
+        }}
+        title={title}
+        loading={loading}
+        onRefresh={() => {
+          if (isBrowseView) void imagesQuery.refetch();
+          else if (view === "favorites") void favoritesQuery.refetch();
+          else if (view === "pools") void poolsQuery.refetch();
+          else void downloadsQuery.refetch();
+        }}
+        onSettings={() => setSettingsOpen(true)}
+        searchDraft={searchDraft}
+        searchInput={searchInput}
+        searchFocused={searchFocused}
+        onSearchFocus={() => setSearchFocused(true)}
+        onSearchBlur={() => window.setTimeout(() => setSearchFocused(false), 120)}
+        onSearchChange={setSearchDraft}
+        onSearchSubmit={submitSearch}
+        onClearSearch={() => {
+          setSearchDraft("");
+          changeView("latest");
+        }}
+        onOpenAdvancedSearch={() => {
+          setEditingSavedQueryId(null);
+          setAdvancedSearchOpen(true);
+        }}
+        suggestions={suggestionsQuery.data ?? []}
+        onChooseTag={chooseTag}
+      />
 
-      <div className="app-layout">
+      <AppLayout>
         <main className="content">
-          <nav className="view-tabs shell-surface" aria-label="Dreamland sections" role="tablist">
-            <NavButton active={view === "latest"} label="latest" icon="clock" onClick={() => changeView("latest")} />
-            <NavButton active={view === "popular"} label="popular" icon="trend" onClick={() => changeView("popular")} />
-          {savedQueriesQuery.data?.map((saved, index, savedQueries) => {
-            const previous = savedQueries[index - 1];
-            const next = savedQueries[index + 1];
-            const canMoveUp = Boolean(previous && previous.pinned === saved.pinned);
-            const canMoveDown = Boolean(next && next.pinned === saved.pinned);
-            return (
-            <div className="saved-query-nav" key={saved.id}>
-              <button
-                className={`nav-item${selectedSavedQueryId === saved.id ? " active" : ""}`}
-                type="button"
-                role="tab"
-                aria-selected={selectedSavedQueryId === saved.id}
-                disabled={!savedQueryIsRunnable(saved)}
-                onClick={() => openSavedQuery(saved)}
-                title={savedQueryIsRunnable(saved) ? savedQueryDescription(saved) : `${savedQueryDescription(saved)} (not supported yet)`}
-              >
-                <Icon name="search" />
-                <span>{saved.name}</span>
-                {!savedQueryIsRunnable(saved) && <small>unavailable</small>}
-                {saved.pinned && savedQueryIsRunnable(saved) && <small>pinned</small>}
-              </button>
-              <div className="saved-query-actions">
-                <button className="icon-button" type="button" aria-label={`edit ${saved.name}`} title="edit query" disabled={!savedQueryIsRunnable(saved)} onClick={() => editSavedQuery(saved)}>✎</button>
-                <button className="icon-button" type="button" aria-label={`move ${saved.name} earlier`} title="move earlier" disabled={!canMoveUp} onClick={() => void handleMoveSavedQuery(saved, -1)}>↑</button>
-                <button className="icon-button" type="button" aria-label={`move ${saved.name} later`} title="move later" disabled={!canMoveDown} onClick={() => void handleMoveSavedQuery(saved, 1)}>↓</button>
-                <button className="icon-button" type="button" aria-label={`${saved.pinned ? "unpin" : "pin"} ${saved.name}`} onClick={() => void handleToggleSavedPin(saved)}>
-                  {saved.pinned ? "•" : "○"}
-                </button>
-                <button className="icon-button" type="button" aria-label={`delete ${saved.name}`} onClick={() => void handleDeleteSavedQuery(saved)}>×</button>
-              </div>
-            </div>
-            );
-          })}
-          {activeSite?.capabilities.collections && (
-            <NavButton active={view === "pools"} label="pools" icon="book" onClick={() => changeView("pools")} />
-          )}
-          {activeSite?.capabilities.favorite_list && (
-            <NavButton active={view === "favorites"} label="favorites" icon="heart" onClick={() => changeView("favorites")} />
-          )}
-          <NavButton active={view === "downloads"} label="downloads" icon="download" onClick={() => changeView("downloads")} />
-          <span className="view-status">
-            <span className="connection-dot" aria-hidden="true" />
-            <span>{activeSiteSafeOnly ? `${activeSite?.name ?? "site"} · safe mode` : `${activeSite?.name ?? "site"} connected`}</span>
-          </span>
-          </nav>
+          <MainNavigation
+            view={view}
+            savedQueries={savedQueriesQuery.data ?? []}
+            selectedSavedQueryId={selectedSavedQueryId}
+            supportsPools={activeSite?.capabilities.collections === true}
+            supportsFavorites={activeSite?.capabilities.favorite_list === true}
+            siteName={activeSite?.name ?? "site"}
+            safeOnly={activeSiteSafeOnly}
+            onChangeView={changeView}
+            onOpenSavedQuery={openSavedQuery}
+            onEditSavedQuery={editSavedQuery}
+            onMoveSavedQuery={(saved, direction) => void handleMoveSavedQuery(saved, direction)}
+            onToggleSavedPin={(saved) => void handleToggleSavedPin(saved)}
+            onDeleteSavedQuery={(saved) => void handleDeleteSavedQuery(saved)}
+            isRunnable={savedQueryIsRunnable}
+            description={savedQueryDescription}
+          />
           <section className="content-heading">
             <div>
               <p className="eyebrow">explore freely</p>
@@ -1164,60 +1026,58 @@ function App() {
             <div className="heading-actions">
               {isBrowseView && <>
               <div className="heading-primary-actions">
-                <button className="button button-outlined" type="button" onClick={() => {
+                <Button variant="outlined" onClick={() => {
                   setSelectionMode((current) => !current);
                   setSelectedPostIds(new Set());
                 }}>
                   {selectionMode ? "cancel selection" : "select posts"}
-                </button>
+                </Button>
                 {view === "search" && submittedSearch && (
-                  <button className="button button-outlined" type="button" onClick={() => void handleSaveQuery()}>save query</button>
+                  <Button variant="outlined" onClick={() => void handleSaveQuery()}>save query</Button>
                 )}
               </div>
               {view === "popular" && (
                 <div className="popular-controls" aria-label="popular period and date">
-                  <label className="period-picker">
-                    <span>period</span>
-                    <select value={popularPeriod} onChange={(event) => {
+                  <FormControl size="small">
+                    <InputLabel id="popular-period-label">period</InputLabel>
+                    <Select labelId="popular-period-label" label="period" value={popularPeriod} onChange={(event) => {
                       const nextPeriod = event.target.value as PopularPeriod;
                       setPopularPeriod(nextPeriod);
                       setPopularAnchorDate((current) => normalizePopularAnchor(current, nextPeriod));
                     }}>
-                      <option value="Day">day</option>
-                      <option value="Week">week</option>
-                      <option value="Month">month</option>
-                    </select>
-                  </label>
-                  <button
-                    className="button button-outlined"
-                    type="button"
+                      <MenuItem value="Day">day</MenuItem>
+                      <MenuItem value="Week">week</MenuItem>
+                      <MenuItem value="Month">month</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <Button
+                    variant="outlined"
                     aria-label={`Earlier popular ${popularPeriod.toLowerCase()}`}
                     onClick={() => setPopularAnchorDate(shiftPopularAnchor(popularAnchorDate, popularPeriod, -1))}
                   >
                     earlier
-                  </button>
-                  <label className="period-picker period-date">
-                    <span>date</span>
-                    <input
-                      type="date"
-                      value={popularAnchorDate}
-                      max={today()}
-                      onChange={(event) => {
-                        if (event.target.value && event.target.value <= today()) {
-                          setPopularAnchorDate(normalizePopularAnchor(event.target.value, popularPeriod));
-                        }
-                      }}
-                    />
-                  </label>
-                  <button
-                    className="button button-outlined"
-                    type="button"
+                  </Button>
+                  <TextField
+                    className="period-date"
+                    label="date"
+                    type="date"
+                    value={popularAnchorDate}
+                    size="small"
+                    slotProps={{ htmlInput: { max: today() }, inputLabel: { shrink: true } }}
+                    onChange={(event) => {
+                      if (event.target.value && event.target.value <= today()) {
+                        setPopularAnchorDate(normalizePopularAnchor(event.target.value, popularPeriod));
+                      }
+                    }}
+                  />
+                  <Button
+                    variant="outlined"
                     aria-label={`Later popular ${popularPeriod.toLowerCase()}`}
                     disabled={shiftPopularAnchor(popularAnchorDate, popularPeriod, 1) > normalizePopularAnchor(today(), popularPeriod)}
                     onClick={() => setPopularAnchorDate(shiftPopularAnchor(popularAnchorDate, popularPeriod, 1))}
                   >
                     later
-                  </button>
+                  </Button>
                 </div>
               )}
               <span className="content-policy">{contentPolicyLabel(activeContentPolicy)}</span>
@@ -1228,10 +1088,10 @@ function App() {
           {isBrowseView && selectionMode && (
             <div className="batch-toolbar" role="toolbar" aria-label="Batch download">
               <strong>{selectedPosts.length} selected</strong>
-              <button className="button button-text" type="button" onClick={selectCurrentPage}>select loaded posts</button>
-              <button className="button button-primary" type="button" disabled={!selectedPosts.length || batchDownloading} onClick={() => void handleBatchDownload()}>
+              <Button variant="text" onClick={selectCurrentPage}>select loaded posts</Button>
+              <Button variant="contained" disabled={!selectedPosts.length || batchDownloading} onClick={() => void handleBatchDownload()}>
                 {batchDownloading ? "queueing…" : "download selected"}
-              </button>
+              </Button>
             </div>
           )}
 
@@ -1241,7 +1101,7 @@ function App() {
             <>
           {loading && images.length === 0 && <GallerySkeleton count={Math.min(pageSize, 12)} />}
               {queryError ? (
-                <ErrorState
+                <PopupErrorState
                   message={queryError}
                   onRetry={() => void imagesQuery.refetch()}
                   onOpenSite={activeSite ? () => void openSite(activeSiteId).catch((reason) => setError(`could not open site: ${errorMessage(reason)}`)) : undefined}
@@ -1390,26 +1250,32 @@ function App() {
             downloadVariant={configQuery.data?.download_variant ?? "Full"}
           />
         )}
-      </div>
+      </AppLayout>
 
       {settingsOpen && (
-        <SettingsDialog
+        <PopupSettingsDialog
           config={configQuery.data ?? null}
           themeMode={themeMode}
           onThemeChange={setThemeMode}
           onCancel={() => setSettingsOpen(false)}
           onSave={handleSaveConfig}
+          onDetectProxy={detectProxy}
+          formatError={errorMessage}
         />
       )}
       {advancedSearchOpen && (
-        <AdvancedQueryDialog
+        <PopupAdvancedQueryDialog
           contentPolicy={contentPolicy}
           initialExpression={submittedSearch || searchDraft}
           onClose={() => setAdvancedSearchOpen(false)}
           onApply={applyAdvancedQuery}
+          parseQuery={parseAdvancedQuery}
+          buildQuery={buildAdvancedQuery}
+          today={today}
+          formatError={errorMessage}
         />
       )}
-      {toast && <Toast state={toast} onClose={() => setToast(null)} />}
+      {toast && <PopupToast state={toast} onClose={() => setToast(null)} />}
       </div>
     </ThemeProvider>
   );
@@ -1426,171 +1292,6 @@ interface DownloadInput {
   siteId: string;
   postId: string;
   variant: MediaVariant;
-}
-
-interface NavButtonProps {
-  active?: boolean;
-  disabled?: boolean;
-  hint?: string;
-  icon: IconName;
-  label: string;
-  onClick?: () => void;
-}
-
-function NavButton({ active, disabled, hint, icon, label, onClick }: NavButtonProps) {
-  return (
-    <button className={`nav-item${active ? " active" : ""}`} disabled={disabled} onClick={onClick} title={hint} role="tab" aria-selected={active}>
-      <span className="nav-icon"><Icon name={icon} /></span>
-      <span>{label}</span>
-      {hint && <small>{hint}</small>}
-    </button>
-  );
-}
-
-interface AdvancedQueryDialogProps {
-  contentPolicy: ContentPolicy;
-  initialExpression: string;
-  onClose: () => void;
-  onApply: (expression: string) => void;
-}
-
-function AdvancedQueryDialog({ contentPolicy, initialExpression, onClose, onApply }: AdvancedQueryDialogProps) {
-  const [form, setForm] = useState<AdvancedQueryForm>(() => parseAdvancedQuery(initialExpression));
-  const [error, setError] = useState("");
-
-  function update<K extends keyof AdvancedQueryForm>(key: K, value: AdvancedQueryForm[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
-  }
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    try {
-      onApply(buildAdvancedQuery(form, contentPolicy));
-    } catch (reason) {
-      setError(errorMessage(reason));
-    }
-  }
-
-  return (
-    <div className="settings-overlay" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose();
-    }}>
-      <form className="settings-dialog shell-surface query-dialog" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="query-title">
-        <div className="inspector-heading">
-          <div><p className="eyebrow">moebooru query vocabulary</p><h2 id="query-title">advanced search</h2></div>
-          <button className="icon-button" type="button" aria-label="close advanced search" onClick={onClose}><Icon name="close" /></button>
-        </div>
-        <p className="helper-text">build or edit a reusable tag query with the same filters supported by the vendored moebooru client. unknown terms stay in the raw tag field.</p>
-        {error && <div className="panel-error" role="alert"><p>{error}</p></div>}
-        <div className="settings-section">
-          <p className="section-label">tags and ordering</p>
-          <label className="field">tags or raw terms<input value={form.tags} onChange={(event) => update("tags", event.target.value)} placeholder="artist_name -sketch" autoFocus /></label>
-          <div className="field-grid">
-            <label className="field">Order
-              <select value={form.order} onChange={(event) => update("order", event.target.value as QueryOrder)}>
-                <option value="">site default</option>
-                <option value="score">highest score</option>
-                <option value="score_asc">lowest score</option>
-                <option value="id_desc">newest id</option>
-                <option value="id">oldest id</option>
-                <option value="mpixels">largest pixels</option>
-                <option value="mpixels_asc">smallest pixels</option>
-                <option value="landscape">landscape</option>
-                <option value="portrait">portrait</option>
-                <option value="vote">most votes</option>
-                <option value="random">random</option>
-              </select>
-            </label>
-            <label className="field">rating
-              <select value={form.rating} onChange={(event) => update("rating", event.target.value as AdvancedQueryForm["rating"])}>
-                <option value="">policy default</option>
-                <option value="s">safe</option>
-                <option value="q">questionable</option>
-                <option value="e">explicit</option>
-                <option value="-s">exclude safe</option>
-                <option value="-q">exclude questionable</option>
-                <option value="-e">exclude explicit</option>
-              </select>
-            </label>
-          </div>
-        </div>
-        <div className="settings-section">
-          <p className="section-label">numeric ranges</p>
-          <label className="field">exact score<input type="number" value={form.score} onChange={(event) => update("score", event.target.value)} placeholder="e.g. 10" /></label>
-          <div className="field-grid">
-            <label className="field">minimum width<input type="number" min="0" value={form.widthMin} onChange={(event) => update("widthMin", event.target.value)} /></label>
-            <label className="field">maximum width<input type="number" min="0" value={form.widthMax} onChange={(event) => update("widthMax", event.target.value)} /></label>
-            <label className="field">minimum height<input type="number" min="0" value={form.heightMin} onChange={(event) => update("heightMin", event.target.value)} /></label>
-            <label className="field">maximum height<input type="number" min="0" value={form.heightMax} onChange={(event) => update("heightMax", event.target.value)} /></label>
-          </div>
-          <div className="field-grid">
-            <label className="field">minimum score<input type="number" value={form.scoreMin} onChange={(event) => update("scoreMin", event.target.value)} /></label>
-            <label className="field">maximum score<input type="number" value={form.scoreMax} onChange={(event) => update("scoreMax", event.target.value)} /></label>
-            <label className="field">minimum post id<input type="number" min="0" value={form.idMin} onChange={(event) => update("idMin", event.target.value)} /></label>
-            <label className="field">maximum post id<input type="number" min="0" value={form.idMax} onChange={(event) => update("idMax", event.target.value)} /></label>
-            <label className="field">minimum votes<input type="number" min="0" value={form.voteMin} onChange={(event) => update("voteMin", event.target.value)} /></label>
-            <label className="field">maximum votes<input type="number" min="0" value={form.voteMax} onChange={(event) => update("voteMax", event.target.value)} /></label>
-            <label className="field">minimum megapixels<input type="number" min="0" step="0.1" value={form.mpixelsMin} onChange={(event) => update("mpixelsMin", event.target.value)} /></label>
-            <label className="field">maximum megapixels<input type="number" min="0" step="0.1" value={form.mpixelsMax} onChange={(event) => update("mpixelsMax", event.target.value)} /></label>
-          </div>
-        </div>
-        <div className="settings-section">
-          <p className="section-label">date and identity</p>
-          <div className="field-grid">
-            <label className="field">date from<input type="date" value={form.dateFrom} max={today()} onChange={(event) => update("dateFrom", event.target.value)} /></label>
-            <label className="field">date to<input type="date" value={form.dateTo} max={today()} onChange={(event) => update("dateTo", event.target.value)} /></label>
-            <label className="field">user / author tag<input value={form.user} onChange={(event) => update("user", event.target.value)} placeholder="user name" /></label>
-            <label className="field">source<input value={form.source} onChange={(event) => update("source", event.target.value)} /></label>
-            <label className="field">parent id<input inputMode="numeric" value={form.parent} onChange={(event) => update("parent", event.target.value)} /></label>
-            <label className="field">pool id<input inputMode="numeric" value={form.pool} onChange={(event) => update("pool", event.target.value)} /></label>
-          </div>
-          <label className="field">md5 checksum<input value={form.md5} onChange={(event) => update("md5", event.target.value)} /></label>
-        </div>
-        <div className="dialog-actions">
-          <button className="button button-text" type="button" onClick={onClose}>cancel</button>
-          <button className="button button-primary" type="submit">search</button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-interface ErrorStateProps {
-  message: string;
-  onRetry: () => void;
-  onOpenSite?: () => void;
-  siteName?: string;
-}
-
-function ErrorState({ message, onRetry, onOpenSite, siteName }: ErrorStateProps) {
-  return (
-    <div className="error-state" role="alert">
-      <span className="error-symbol" aria-hidden="true">!</span>
-      <div>
-        <h3>couldn’t load this feed</h3>
-        <p>{message.replace("Failed to load images: ", "")}</p>
-      </div>
-      <button className="button button-outlined" type="button" onClick={onRetry}>try again</button>
-      {onOpenSite && <button className="button button-outlined" type="button" onClick={onOpenSite}>open {siteName}</button>}
-    </div>
-  );
-}
-
-interface ToastProps {
-  state: ToastState;
-  onClose: () => void;
-}
-
-function Toast({ state, onClose }: ToastProps) {
-  return (
-    <aside className={`toast toast-${state.tone}`} role="status" aria-live="polite">
-      <div>
-        <strong>{state.title}</strong>
-        <p>{state.message}</p>
-      </div>
-      <button className="icon-button" type="button" aria-label="dismiss notification" onClick={onClose}><Icon name="close" /></button>
-    </aside>
-  );
 }
 
 interface LoadMoreProps {
@@ -1619,7 +1320,7 @@ function LoadMore({ autoLoad = true, hasNext, loading, onLoadMore }: LoadMorePro
   if (!hasNext && !loading) return <div className="load-more-end">you’ve reached the end.</div>;
   return (
     <div className="load-more" ref={sentinel}>
-      {loading ? <Skeleton variant="rounded" width={148} height={44} animation="wave" /> : <button className="button button-outlined" type="button" onClick={requestMore}>load more</button>}
+      {loading ? <Skeleton variant="rounded" width={148} height={44} animation="wave" /> : <Button variant="outlined" onClick={requestMore}>load more</Button>}
     </div>
   );
 }
@@ -1648,9 +1349,8 @@ function ImageCard({ post, selectionMode, selected, downloading, onDownload, onS
         <span className="dimensions">{post.width ?? "?"}×{post.height ?? "?"}</span>
         <span className="rating-pill">{post.rating.toLowerCase()}</span>
         {selectionMode && (
-          <button
+          <IconButton
             className="selection-toggle"
-            type="button"
             aria-label={`${selected ? "deselect" : "select"} post ${post.post.id}`}
             aria-pressed={selected}
             onClick={(event) => {
@@ -1659,27 +1359,27 @@ function ImageCard({ post, selectionMode, selected, downloading, onDownload, onS
             }}
           >
             {selected && <Icon name="check" />}
-          </button>
+          </IconButton>
         )}
       </div>
       <div className="card-details">
         <div className="tag-list">
           {post.tags.slice(0, 4).map((tag) => (
-            <button key={tag} className="tag-chip" type="button" onClick={(event) => {
+            <Chip key={tag} component="button" clickable label={tag} onClick={(event) => {
               event.stopPropagation();
               onTag(tag);
-            }}>{tag}</button>
+            }} />
           ))}
           {post.tags.length > 4 && <span className="tag-overflow">+{post.tags.length - 4}</span>}
         </div>
         <div className="card-footer">
           <span className="post-meta">#{post.post.id}{post.score !== null ? ` · ${post.score} score` : ""}</span>
-          <button className="button button-primary" disabled={downloading} onClick={(event) => {
+          <Button variant="contained" disabled={downloading} onClick={(event) => {
             event.stopPropagation();
             void onDownload(post);
           }}>
             {downloading ? "saving…" : "download"}
-          </button>
+          </Button>
         </div>
       </div>
     </article>
@@ -1758,32 +1458,29 @@ interface PostInspectorProps {
 function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onOpenPost, onOpenSimilarSearch, similarSearchSupported, onDownload, onFavorite, onTag, relatedTagsSupported, relatedTagsOpen, relatedTags, relatedTagsLoading, relatedTagsError, onToggleRelatedTags, downloadVariant }: PostInspectorProps) {
   const originalUrl = post.full_url;
   return (
-    <div className="detail-overlay" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose();
-    }}>
-      <aside className="detail-panel" role="dialog" aria-modal="true" aria-label="post details" onMouseDown={(event) => event.stopPropagation()}>
+    <Dialog open fullScreen onClose={onClose} className="detail-overlay" slotProps={{ paper: { className: "detail-panel", "aria-label": "post details" } }}>
         <div className="detail-stage">
           <div className="detail-stage-heading">
             <div>
               <p className="eyebrow">post details</p>
               <h2>#{post.post.id}</h2>
             </div>
-            <button className="icon-button" type="button" aria-label="close details" onClick={onClose}><Icon name="close" /></button>
+            <IconButton aria-label="close details" onClick={onClose}><Icon name="close" /></IconButton>
           </div>
           <div className="detail-preview">
             <DetailImage key={post.post.id} post={post} />
           </div>
           <div className="detail-navigation" aria-label="post preview navigation">
-            <button className="icon-button detail-nav-button" type="button" aria-label="previous post" title="previous post" disabled={!canGoPrevious} onClick={onPrevious}><Icon name="back" /></button>
+            <IconButton className="detail-nav-button" aria-label="previous post" title="previous post" disabled={!canGoPrevious} onClick={onPrevious}><Icon name="back" /></IconButton>
             <span>{previewPosition && previewTotal ? `${previewPosition} of ${previewTotal}` : "single post"}</span>
-            <button className="icon-button detail-nav-button" type="button" aria-label="next post" title="next post" disabled={!canGoNext} onClick={onNext}><Icon name="forward" /></button>
+            <IconButton className="detail-nav-button" aria-label="next post" title="next post" disabled={!canGoNext} onClick={onNext}><Icon name="forward" /></IconButton>
           </div>
         </div>
         <section className="detail-sheet" aria-label="post actions and exploration">
           <div className="detail-summary">
             <span>{siteName} post #{post.post.id}</span>
-            <button className="button button-outlined detail-post-link" type="button" onClick={() => void onOpenPost(post)}>open {siteName} post</button>
-            {similarSearchSupported && <button className="button button-outlined detail-post-link" type="button" onClick={() => void onOpenSimilarSearch()}>open similar search</button>}
+            <Button variant="outlined" className="detail-post-link" onClick={() => void onOpenPost(post)}>open {siteName} post</Button>
+            {similarSearchSupported && <Button variant="outlined" className="detail-post-link" onClick={() => void onOpenSimilarSearch()}>open similar search</Button>}
             {originalUrl && <a href={originalUrl} target="_blank" rel="noreferrer">open original</a>}
             {post.source && <a href={post.source} target="_blank" rel="noreferrer">open source</a>}
           </div>
@@ -1791,31 +1488,31 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
           {detailError && <p className="detail-helper" role="alert">couldn’t refresh the post; showing the feed snapshot. {detailError}</p>}
           <div className="detail-primary-actions">
             {favoriteSupported && (
-              <button className="button button-outlined" type="button" onClick={() => void onFavorite(post)}>
+              <Button variant="outlined" onClick={() => void onFavorite(post)}>
                 {favorited ? `remove from ${siteName} favorites` : `add to ${siteName} favorites`}
-              </button>
+              </Button>
             )}
-            <button className="button button-primary" disabled={downloading} onClick={() => void onDownload(post)}>
+            <Button variant="contained" disabled={downloading} onClick={() => void onDownload(post)}>
               {downloading ? "saving…" : `download ${downloadVariant.toLowerCase()} quality`}
-            </button>
+            </Button>
           </div>
           <div className="detail-explore">
             <span className="section-label">explore</span>
             <div className="tag-list" aria-label="post tags">
-              {post.tags.map((tag) => <button key={tag} className="tag-chip" type="button" onClick={() => onTag(tag)}>{tag}</button>)}
+              {post.tags.map((tag) => <Chip key={tag} component="button" clickable label={tag} onClick={() => onTag(tag)} />)}
             </div>
             {relatedTagsSupported && (
               <div className="detail-related-tags">
-                <button className="button button-outlined detail-post-link" type="button" onClick={onToggleRelatedTags}>
+                <Button variant="outlined" className="detail-post-link" onClick={onToggleRelatedTags}>
                   {relatedTagsOpen ? "hide related tags" : "show related tags"}
-                </button>
+                </Button>
                 {relatedTagsOpen && <p className="detail-helper">site metadata may include tags outside the current rating filter; post results still follow content policy.</p>}
                 {relatedTagsOpen && relatedTagsLoading && <p className="detail-helper" role="status">loading related tags…</p>}
                 {relatedTagsOpen && relatedTagsError && <p className="detail-helper" role="alert">couldn’t load related tags. {relatedTagsError}</p>}
                 {relatedTagsOpen && !relatedTagsLoading && !relatedTagsError && relatedTags.length > 0 && (
                   <div className="tag-list" aria-label="related tags">
                     {relatedTags.map((tag) => (
-                      <button key={tag.name} className="tag-chip" type="button" title={tag.post_count === null ? undefined : `${tag.post_count.toLocaleString()} posts`} onClick={() => onTag(tag.name)}>{tag.name}</button>
+                      <Chip key={tag.name} component="button" clickable label={tag.name} title={tag.post_count === null ? undefined : `${tag.post_count.toLocaleString()} posts`} onClick={() => onTag(tag.name)} />
                     ))}
                   </div>
                 )}
@@ -1823,13 +1520,14 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
               </div>
             )}
           </div>
-          <details className="detail-more-data">
-            <summary>more data</summary>
+          <Accordion className="detail-more-data">
+            <AccordionSummary expandIcon={<Icon name="chevron" />}>more data</AccordionSummary>
+            <AccordionDetails>
             <div className="detail-more-data-content">
               {(post.parent_id || post.has_children) && (
                 <div className="detail-related-actions" aria-label="related posts">
-                  {post.parent_id && <button className="button button-outlined detail-post-link" type="button" onClick={() => onTag(`id:${post.parent_id}`)}>find parent #{post.parent_id}</button>}
-                  {post.has_children && <button className="button button-outlined detail-post-link" type="button" onClick={() => onTag(`parent:${post.post.id}`)}>find child posts</button>}
+                  {post.parent_id && <Button variant="outlined" className="detail-post-link" onClick={() => onTag(`id:${post.parent_id}`)}>find parent #{post.parent_id}</Button>}
+                  {post.has_children && <Button variant="outlined" className="detail-post-link" onClick={() => onTag(`parent:${post.post.id}`)}>find child posts</Button>}
                 </div>
               )}
               <dl className="metadata">
@@ -1846,10 +1544,10 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
               </dl>
               {!detailLoading && !detailError && <p className="detail-helper">post details are hydrated from the site API.</p>}
             </div>
-          </details>
+            </AccordionDetails>
+          </Accordion>
         </section>
-      </aside>
-    </div>
+    </Dialog>
   );
 }
 
@@ -1878,7 +1576,7 @@ function DetailImage({ post }: { post: Post }) {
   if (error) return <div className="detail-image-state" role="alert">full image unavailable<p>{error}</p></div>;
   return (
     <div className="detail-image-frame">
-      {(!source || !loaded) && <div className="detail-image-loading" role="status" aria-label="loading full artwork" />}
+      {(!source || !loaded) && <Skeleton className="detail-image-loading" variant="rectangular" animation="wave" role="status" aria-label="loading full artwork" />}
       {source && <img
           className={`detail-image${loaded ? " is-loaded" : ""}`}
           src={source}
@@ -1988,9 +1686,9 @@ function DownloadRow({ record, onCancel, onRetry, onOpen }: DownloadRowProps) {
       {record.error && <p className="download-error">{record.error}</p>}
       {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
       {(canCancel || canRetry || canOpen) && <div className="download-row-actions">
-        {canCancel && <button className="button button-text" type="button" onClick={() => void onCancel(record.id)}>cancel</button>}
-        {canRetry && <button className="button button-outlined" type="button" onClick={() => void onRetry(record.id)}>retry</button>}
-        {canOpen && <button className="button button-outlined" type="button" onClick={() => void onOpen(record.target_path!)}>open file</button>}
+        {canCancel && <Button variant="text" onClick={() => void onCancel(record.id)}>cancel</Button>}
+        {canRetry && <Button variant="outlined" onClick={() => void onRetry(record.id)}>retry</Button>}
+        {canOpen && <Button variant="outlined" onClick={() => void onOpen(record.target_path!)}>open file</Button>}
       </div>}
     </article>
   );
@@ -2015,8 +1713,8 @@ function ArchiveRow({ record, onCancel, onOpen }: ArchiveRowProps) {
       {record.error && <p className="download-error">{record.error}</p>}
       {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
       {(canCancel || canOpen) && <div className="download-row-actions">
-        {canCancel && <button className="button button-text" type="button" onClick={() => void onCancel(record.id)}>cancel</button>}
-        {canOpen && <button className="button button-outlined" type="button" onClick={() => void onOpen(record.target_path!)}>open file</button>}
+        {canCancel && <Button variant="text" onClick={() => void onCancel(record.id)}>cancel</Button>}
+        {canOpen && <Button variant="outlined" onClick={() => void onOpen(record.target_path!)}>open file</Button>}
       </div>}
     </article>
   );
@@ -2058,12 +1756,12 @@ function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool
         <div className="inspector-heading">
           <div><p className="eyebrow">{siteName} pool</p><h2>{selectedPool.name}</h2></div>
           <div className="inspector-actions">
-            {collectionDownloads && <button className="button button-outlined" type="button" onClick={() => onDownloadZip(selectedPool)}>download zip</button>}
-            <button className="button button-outlined button-with-icon" type="button" onClick={onBack}><Icon name="back" /><span>all pools</span></button>
+            {collectionDownloads && <Button variant="outlined" onClick={() => onDownloadZip(selectedPool)}>download zip</Button>}
+            <Button variant="outlined" startIcon={<Icon name="back" />} onClick={onBack}>all pools</Button>
           </div>
         </div>
         <p className="helper-text">{selectedPool.post_count} ordered post{selectedPool.post_count === 1 ? "" : "s"} from {siteName}.</p>
-        {postsError && <div className="panel-error" role="alert"><p>{postsError}</p><button className="button button-outlined" type="button" onClick={onRetryPosts}>try again</button></div>}
+        {postsError && <Alert className="panel-error" severity="error" action={<Button color="inherit" size="small" onClick={onRetryPosts}>try again</Button>}>{postsError}</Alert>}
         {postsLoading && posts.length === 0 && <GallerySkeleton count={8} />}
         {!postsLoading && !postsError && posts.length === 0 && <div className="panel-empty">this pool has no visible posts.</div>}
         <div className="gallery-grid">
@@ -2092,19 +1790,19 @@ function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool
         <div><p className="eyebrow">{siteName} collections</p><h2>pools</h2></div>
       </div>
       <form className="pool-search" role="search" onSubmit={(event) => { event.preventDefault(); onSubmitPoolSearch(); }}>
-        <input aria-label="search pools" placeholder="search pools…" value={poolSearch} onChange={(event) => onPoolSearchChange(event.target.value)} />
-        <button className="button button-primary" type="submit">search</button>
-        {poolSearch && <button className="button button-text" type="button" onClick={onClearPoolSearch}>clear</button>}
+        <TextField aria-label="search pools" placeholder="search pools…" value={poolSearch} onChange={(event) => onPoolSearchChange(event.target.value)} size="small" />
+        <Button variant="contained" type="submit">search</Button>
+        {poolSearch && <Button variant="text" type="button" onClick={onClearPoolSearch}>clear</Button>}
       </form>
       <p className="helper-text">public pools group ordered posts from {siteName}. open a pool to browse its ordered posts{collectionDownloads ? " or request its authenticated zip archive" : ""}.</p>
       {poolsLoading && pools.length === 0 && <RowSkeleton />}
-      {poolsError && <div className="panel-error" role="alert"><p>{poolsError}</p><button className="button button-outlined" type="button" onClick={onRetryPools}>try again</button></div>}
+      {poolsError && <Alert className="panel-error" severity="error" action={<Button color="inherit" size="small" onClick={onRetryPools}>try again</Button>}>{poolsError}</Alert>}
       {!poolsLoading && !poolsError && pools.length === 0 && <div className="panel-empty">no public pools found.</div>}
       <div className="collection-list">
         {pools.map((pool) => (
           <article className="collection-row" key={pool.id}>
             <div><strong>{pool.name}</strong><p>{pool.post_count} post{pool.post_count === 1 ? "" : "s"}</p></div>
-            <button className="button button-outlined" type="button" onClick={() => onBrowse(pool)}>browse</button>
+            <Button variant="outlined" onClick={() => onBrowse(pool)}>browse</Button>
           </article>
         ))}
       </div>
@@ -2139,7 +1837,7 @@ function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favor
       {auth?.authenticated ? (
         <>
           <p className="account-connected"><span className="connection-dot" /> {auth.username ? `${auth.username} connected` : "yandere account connected"}</p>
-          {favoritesError && <div className="panel-error" role="alert"><p>{favoritesError}</p><button className="button button-outlined" type="button" onClick={onRetry}>try again</button></div>}
+          {favoritesError && <Alert className="panel-error" severity="error" action={<Button color="inherit" size="small" onClick={onRetry}>try again</Button>}>{favoritesError}</Alert>}
           {favoritesLoading && favorites.length === 0 && <GallerySkeleton count={8} />}
           {!favoritesLoading && favorites.length === 0 && <div className="panel-empty">no favorites found.</div>}
           <div className="gallery-grid">
@@ -2158,13 +1856,13 @@ function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favor
             ))}
           </div>
           <LoadMore hasNext={favoritesHasNext} loading={favoritesLoading && favorites.length > 0} onLoadMore={onLoadMore} />
-          <button className="button button-outlined" type="button" onClick={() => void onSignOut()}>sign out</button>
+          <Button variant="outlined" onClick={() => void onSignOut()}>sign out</Button>
         </>
       ) : (
         <>
           <p className="helper-text">sign in through yandere’s own page. Dreamland reads only the safe auth state and keeps the browser session in Rust.</p>
-          <button className="button button-primary button-wide" type="button" onClick={onBeginAuth}>sign in to yandere</button>
-          <button className="button button-outlined button-wide" type="button" disabled={loading} onClick={onRefresh}>{loading ? "checking…" : "check login"}</button>
+          <Button variant="contained" fullWidth onClick={onBeginAuth}>sign in to yandere</Button>
+          <Button variant="outlined" fullWidth disabled={loading} onClick={onRefresh}>{loading ? "checking…" : "check login"}</Button>
         </>
       )}
     </section>
@@ -2180,118 +1878,6 @@ function downloadStatusLabel(status: DownloadStatus): string {
     case "Failed": return "failed";
     case "Cancelled": return "cancelled";
   }
-}
-
-interface SettingsDialogProps {
-  config: AppConfig | null;
-  themeMode: ThemeMode;
-  onThemeChange: (theme: ThemeMode) => void;
-  onCancel: () => void;
-  onSave: (downloadPath: string, contentPolicy: ContentPolicy, downloadVariant: MediaVariant, network: NetworkPolicy) => Promise<void>;
-}
-
-function SettingsDialog({ config, themeMode, onThemeChange, onCancel, onSave }: SettingsDialogProps) {
-  const [downloadPath, setDownloadPath] = useState(config?.download_path ?? "");
-  const [contentPolicy, setContentPolicy] = useState<ContentPolicy>(config?.content_policy ?? "SafeOnly");
-  const [downloadVariant, setDownloadVariant] = useState<MediaVariant>(config?.download_variant ?? "Full");
-  const configuredProxy = config?.network.proxy ?? "Auto";
-  const [proxyMode, setProxyMode] = useState<"Auto" | "Direct" | "Manual">(
-    typeof configuredProxy === "string" ? configuredProxy : "Manual",
-  );
-  const [proxyUrl, setProxyUrl] = useState(typeof configuredProxy === "string" ? "" : configuredProxy.Manual.url);
-  const [maxRetries, setMaxRetries] = useState(config?.network.max_retries ?? 2);
-  const [retryDelayMs, setRetryDelayMs] = useState(config?.network.retry_delay_ms ?? 500);
-  const [maxRetryDelayMs, setMaxRetryDelayMs] = useState(config?.network.max_retry_delay_ms ?? 8000);
-  const [proxyDetection, setProxyDetection] = useState<string | null>(null);
-  const [detecting, setDetecting] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaving(true);
-    const proxy: ProxyMode = proxyMode === "Manual" ? { Manual: { url: proxyUrl } } : proxyMode;
-    await onSave(downloadPath, contentPolicy, downloadVariant, { proxy, max_retries: maxRetries, retry_delay_ms: retryDelayMs, max_retry_delay_ms: maxRetryDelayMs });
-    setSaving(false);
-  }
-
-  async function handleDetectProxy() {
-    setDetecting(true);
-    try {
-      const result = await detectProxy();
-      setProxyDetection(result.detected ? `detected ${result.endpoint ?? "a system proxy"} (${result.source ?? "system"})` : "no proxy detected");
-    } catch (reason) {
-      setProxyDetection(`detection failed: ${errorMessage(reason)}`);
-    } finally {
-      setDetecting(false);
-    }
-  }
-
-  return (
-    <div className="settings-overlay" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onCancel();
-    }}>
-      <form className="settings-dialog shell-surface" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="settings-title">
-        <div className="inspector-heading">
-          <div><p className="eyebrow">app preferences</p><h2 id="settings-title">settings</h2></div>
-          <button className="icon-button" type="button" aria-label="close settings" onClick={onCancel}><Icon name="close" /></button>
-        </div>
-        <div className="settings-section">
-          <p className="section-label">appearance</p>
-          <label className="field">theme
-            <select value={themeMode} onChange={(event) => onThemeChange(event.target.value as ThemeMode)}>
-              <option value="system">follow system</option>
-              <option value="light">light</option>
-              <option value="dark">dark</option>
-            </select>
-          </label>
-          <p className="helper-text">system follows macOS or Windows appearance; light and dark stay fixed.</p>
-        </div>
-        <div className="settings-section">
-          <p className="section-label">storage & site</p>
-          <label className="field">download path<input required value={downloadPath} onChange={(event) => setDownloadPath(event.target.value)} /></label>
-          <label className="field">content policy
-            <select value={contentPolicy} onChange={(event) => setContentPolicy(event.target.value as ContentPolicy)}>
-              <option value="SafeOnly">safe only (default)</option>
-              <option value="AllowQuestionable">allow questionable</option>
-              <option value="AllowExplicit">allow explicit</option>
-              <option value="ExplicitOnly">explicit only</option>
-            </select>
-          </label>
-          <label className="field">download quality
-            <select value={downloadVariant} onChange={(event) => setDownloadVariant(event.target.value as MediaVariant)}>
-              <option value="Full">best available (full)</option>
-              <option value="Sample">sample</option>
-              <option value="Preview">preview</option>
-            </select>
-          </label>
-          <p className="helper-text">this controls which ratings appear in feeds and searches.</p>
-        </div>
-        <div className="settings-section">
-          <p className="section-label">connection resilience</p>
-          <label className="field">proxy
-            <select value={proxyMode} onChange={(event) => setProxyMode(event.target.value as "Auto" | "Direct" | "Manual")}>
-              <option value="Auto">use system / environment</option>
-              <option value="Direct">direct connection</option>
-              <option value="Manual">manual proxy</option>
-            </select>
-          </label>
-          {proxyMode === "Manual" && <label className="field">proxy url<input required placeholder="http://127.0.0.1:7890" value={proxyUrl} onChange={(event) => setProxyUrl(event.target.value)} /></label>}
-          <button className="button button-outlined" type="button" disabled={detecting} onClick={() => void handleDetectProxy()}>{detecting ? "detecting…" : "detect proxy"}</button>
-          {proxyDetection && <p className="helper-text" role="status">{proxyDetection}</p>}
-          <div className="field-grid">
-            <label className="field">max retries<input type="number" min="0" max="8" value={maxRetries} onChange={(event) => setMaxRetries(Number(event.target.value))} /></label>
-            <label className="field">initial delay<input type="number" min="100" value={retryDelayMs} onChange={(event) => setRetryDelayMs(Number(event.target.value))} /></label>
-          </div>
-          <label className="field">maximum retry delay<input type="number" min="100" value={maxRetryDelayMs} onChange={(event) => setMaxRetryDelayMs(Number(event.target.value))} /></label>
-          <p className="helper-text">429 and temporary server responses retry with a bounded delay.</p>
-        </div>
-        <div className="dialog-actions">
-          <button className="button button-text" type="button" onClick={onCancel}>cancel</button>
-          <button className="button button-primary" type="submit" disabled={saving}>{saving ? "saving…" : "save settings"}</button>
-        </div>
-      </form>
-    </div>
-  );
 }
 
 export default App;
