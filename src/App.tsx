@@ -461,7 +461,8 @@ function App() {
   const authQuery = useQuery({
     queryKey: ["auth", activeSiteId],
     queryFn: authStatus,
-    enabled: activeSite?.capabilities.authentication === true,
+    enabled: selectedSiteId === "yandere" || activeSite?.id === "yandere",
+    refetchInterval: (query) => query.state.data?.authenticated && query.state.data.username ? false : 2_000,
   });
 
   async function handleBeginAuth() {
@@ -1386,7 +1387,7 @@ function App() {
               favoritesLoading={favoritesQuery.isPending || favoritesQuery.isFetching}
               favoritesError={favoritesQuery.error ? errorMessage(favoritesQuery.error) : ""}
               favoritesHasNext={Boolean(favoritesQuery.hasNextPage)}
-              loading={authQuery.isFetching}
+              loading={authQuery.isPending}
               authFlowStarted={authFlowStarted}
               onBeginAuth={() => void handleBeginAuth()}
               onRefresh={() => void handleCheckAuth()}
@@ -1995,7 +1996,7 @@ function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool
             />
           ))}
         </div>
-        {posts.length > 0 && <LoadMore autoLoad={false} hasNext={postsHasNext} loading={postsLoading} onLoadMore={onLoadMorePosts} />}
+        {posts.length > 0 && <LoadMore hasNext={postsHasNext} loading={postsLoading} onLoadMore={onLoadMorePosts} />}
       </section>
     );
   }
@@ -2052,7 +2053,12 @@ interface AccountPanelProps {
 function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favoritesHasNext, loading, authFlowStarted, onBeginAuth, onRefresh, onRetry, onLoadMore, onSelect, onDownload, favoriteSupported, favorited, favoriteUpdating, onFavorite, onTag, onSignOut }: AccountPanelProps) {
   return (
     <section className="workspace-panel shell-surface" aria-label="favorites account">
-      {auth?.authenticated ? (
+      {loading && !auth?.authenticated ? (
+        <div className="account-loading" role="status">
+          <Skeleton variant="rounded" width="9rem" height={28} animation="wave" />
+          <p>checking saved session…</p>
+        </div>
+      ) : auth?.authenticated ? (
         <>
           <p className="account-connected"><span className="connection-dot" /> {auth.username ? `${auth.username} connected` : "yandere account connected"}</p>
           {favoritesError && <Alert className="panel-error" severity="error" action={<Button color="inherit" size="small" onClick={onRetry}>try again</Button>}>{favoritesError}</Alert>}
