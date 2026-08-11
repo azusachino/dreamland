@@ -364,7 +364,6 @@ function App() {
   const [batchDownloading, setBatchDownloading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [toast, setToast] = useState<ToastState | null>(null);
   const toastId = useRef(0);
   const searchInput = useRef<HTMLInputElement>(null);
@@ -541,7 +540,6 @@ function App() {
     onSuccess: (nextConfig) => {
       queryClient.setQueryData(["config"], nextConfig);
       setSettingsOpen(false);
-      setNotice("settings saved");
       showToast("settings saved", "your preferences are now active.");
     },
     onError: (reason) => setError(`failed to save settings: ${errorMessage(reason)}`),
@@ -551,7 +549,6 @@ function App() {
     onSuccess: (record) => {
       void queryClient.invalidateQueries({ queryKey: ["downloads"] });
       downloadStatuses.current.set(record.id, record.status);
-      setNotice(`added post #${record.post_id} to the download queue`);
       showToast("download queued", `post #${record.post_id} will be saved at the configured path.`);
     },
     onError: (reason) => setError(`download failed: ${errorMessage(reason)}`),
@@ -656,7 +653,6 @@ function App() {
     setSelectedSiteId(site.id);
     setSiteMenuAnchor(null);
     setError("");
-    setNotice("");
     setView("latest");
     setSelectedSavedQueryId(null);
     setEditingSavedQueryId(null);
@@ -688,7 +684,6 @@ function App() {
 
   function changeView(nextView: ViewMode) {
     setError("");
-    setNotice("");
     setView(nextView);
     setSelectedSavedQueryId(null);
     setEditingSavedQueryId(null);
@@ -707,7 +702,6 @@ function App() {
       return;
     }
     setError("");
-    setNotice("");
     setSubmittedSearch(expression);
     setSelectedSavedQueryId(null);
     setEditingSavedQueryId(null);
@@ -750,7 +744,6 @@ function App() {
     setSubmittedSearch(expression);
     setView("search");
     setError("");
-    setNotice("");
   }
 
   function editSavedQuery(saved: SavedQuery) {
@@ -763,7 +756,6 @@ function App() {
     setView("search");
     setAdvancedSearchOpen(true);
     setError("");
-    setNotice("");
   }
 
   async function handleSaveQuery() {
@@ -785,7 +777,7 @@ function App() {
       });
       await savedQueriesQuery.refetch();
       setSelectedSavedQueryId(saved.id);
-      setNotice(`saved query “${saved.name}”`);
+      showToast("saved query", `“${saved.name}” is ready in your saved searches.`);
     } catch (reason) {
       setError(`could not save query: ${errorMessage(reason)}`);
     }
@@ -840,7 +832,6 @@ function App() {
     if (selectedPosts.length === 0) return;
     setBatchDownloading(true);
     setError("");
-    setNotice("");
     let queued = 0;
     for (const post of selectedPosts) {
       try {
@@ -896,7 +887,6 @@ function App() {
   async function handleDownload(post: Post) {
     setDownloadingId(post.post.id);
     setError("");
-    setNotice("");
     try {
       await downloadMutation.mutateAsync({ siteId: post.post.site, postId: post.post.id, variant: configQuery.data?.download_variant ?? "Full" });
     } catch {
@@ -913,7 +903,6 @@ function App() {
     network: NetworkPolicy,
   ) {
     setError("");
-    setNotice("");
     try {
       await saveConfigMutation.mutateAsync({ downloadPath, contentPolicy, downloadVariant, network });
     } catch {
@@ -1096,7 +1085,6 @@ function App() {
           )}
 
           {error && !queryError && <p className="message message-error" role="alert">{error}</p>}
-          {notice && <p className="message message-success" role="status">{notice}</p>}
           {isBrowseView ? (
             <>
           {loading && images.length === 0 && <GallerySkeleton count={Math.min(pageSize, 12)} />}

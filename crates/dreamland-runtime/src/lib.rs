@@ -88,12 +88,50 @@ pub async fn download_image(
     network: &NetworkPolicy,
     cancellation: &DownloadCancellation,
 ) -> anyhow::Result<DownloadOutcome> {
+    download_image_with_detail_cache(
+        url,
+        site_id,
+        identifier,
+        download_dir,
+        cache_dir,
+        None,
+        network,
+        cancellation,
+    )
+    .await
+}
+
+pub async fn download_image_with_detail_cache(
+    url: &str,
+    site_id: &str,
+    identifier: &str,
+    download_dir: &std::path::Path,
+    cache_dir: &std::path::Path,
+    detail_cache_root: Option<&std::path::Path>,
+    network: &NetworkPolicy,
+    cancellation: &DownloadCancellation,
+) -> anyhow::Result<DownloadOutcome> {
     validate_image_identifier(identifier)?;
     validate_path_component(site_id, "site")?;
     let posts_dir = download_dir.join(site_id).join("posts");
     tokio::fs::create_dir_all(&posts_dir).await?;
     if let Some(path) = existing_image_path(&posts_dir, identifier).await? {
         return Ok(DownloadOutcome::ExistingTarget(path));
+    }
+    if let Some(detail_cache_root) = detail_cache_root {
+        if let Some(path) =
+            existing_image_path(&detail_cache_root.join(site_id).join("posts"), identifier).await?
+        {
+            return promote_cached_image(
+                &path,
+                identifier,
+                &posts_dir,
+                cache_dir,
+                site_id,
+                cancellation,
+            )
+            .await;
+        }
     }
     match download_file(
         url,
@@ -126,6 +164,44 @@ pub async fn download_image(
             Ok(DownloadOutcome::Completed(final_path))
         }
     }
+}
+
+async fn promote_cached_image(
+    cached_path: &std::path::Path,
+    identifier: &str,
+    target_dir: &std::path::Path,
+    cache_dir: &std::path::Path,
+    site_id: &str,
+    cancellation: &DownloadCancellation,
+) -> anyhow::Result<DownloadOutcome> {
+    if cancellation.is_cancelled() {
+        return Ok(DownloadOutcome::Cancelled);
+    }
+    let extension = cached_path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("jpg");
+    let final_path = target_dir.join(image_filename(identifier, extension)?);
+    if tokio::fs::try_exists(&final_path).await? {
+        return Ok(DownloadOutcome::ExistingTarget(final_path));
+    }
+    let staging_dir = cache_dir.join(site_id);
+    tokio::fs::create_dir_all(&staging_dir).await?;
+    let temporary_path = staging_dir.join(format!("{}.{}.part", identifier, uuid::Uuid::new_v4()));
+    if let Err(error) = tokio::fs::copy(cached_path, &temporary_path).await {
+        let _ = tokio::fs::remove_file(&temporary_path).await;
+        return Err(error.into());
+    }
+    if cancellation.is_cancelled() {
+        let _ = tokio::fs::remove_file(&temporary_path).await;
+        return Ok(DownloadOutcome::Cancelled);
+    }
+    if tokio::fs::try_exists(&final_path).await? {
+        let _ = tokio::fs::remove_file(&temporary_path).await;
+        return Ok(DownloadOutcome::ExistingTarget(final_path));
+    }
+    tokio::fs::rename(&temporary_path, &final_path).await?;
+    Ok(DownloadOutcome::Completed(final_path))
 }
 
 pub async fn download_archive(
@@ -598,6 +674,43 @@ mod tests {
         assert_eq!(tokio::fs::read(target).await.unwrap(), b"cached");
         let _ = tokio::fs::remove_dir_all(root).await;
         let _ = tokio::fs::remove_dir_all(cache).await;
+    }
+
+    #[tokio::test]
+    async fn download_promotes_detail_cache_without_remote_request() {
+        let root = std::env::temp_dir().join(format!("dreamland-root-{}", uuid::Uuid::new_v4()));
+        let cache = std::env::temp_dir().join(format!("dreamland-cache-{}", uuid::Uuid::new_v4()));
+        let detail =
+            std::env::temp_dir().join(format!("dreamland-detail-{}", uuid::Uuid::new_v4()));
+        let cached = detail.join("yandere/posts/123.jpg");
+        tokio::fs::create_dir_all(cached.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&cached, b"detail-cache").await.unwrap();
+
+        let outcome = download_image_with_detail_cache(
+            "http://127.0.0.1:1/unreachable.jpg",
+            "yandere",
+            "123",
+            &root,
+            &cache,
+            Some(&detail),
+            &NetworkPolicy {
+                proxy: ProxyMode::Direct,
+                ..NetworkPolicy::default()
+            },
+            &DownloadCancellation::default(),
+        )
+        .await
+        .unwrap();
+
+        let target = root.join("yandere/posts/123.jpg");
+        assert_eq!(outcome, DownloadOutcome::Completed(target.clone()));
+        assert_eq!(tokio::fs::read(target).await.unwrap(), b"detail-cache");
+        assert!(!cache.join("yandere/123.jpg").exists());
+        let _ = tokio::fs::remove_dir_all(root).await;
+        let _ = tokio::fs::remove_dir_all(cache).await;
+        let _ = tokio::fs::remove_dir_all(detail).await;
     }
 
     #[tokio::test]

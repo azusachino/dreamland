@@ -860,6 +860,13 @@ pub fn run() {
         .manage(runtime_state)
         .setup(|app| {
             let downloads = app.state::<RuntimeState>().downloads.clone();
+            let detail_cache_root = app
+                .path()
+                .cache_dir()
+                .expect("Dreamland detail cache directory must be available")
+                .join("dreamland")
+                .join("detail");
+            downloads.set_detail_cache_root(detail_cache_root);
             tauri::async_runtime::spawn(downloads.worker());
             tauri::async_runtime::spawn(downloads.archive_worker());
             Ok(())

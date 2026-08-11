@@ -12,7 +12,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 
-use crate::{download_archive, download_image, DownloadOutcome};
+use crate::{download_archive, download_image_with_detail_cache, DownloadOutcome};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum DownloadStatus {
@@ -806,6 +806,7 @@ pub(crate) struct StoredDownload {
 pub struct DownloadManager {
     store: LocalStateStore,
     cache_root: Arc<PathBuf>,
+    detail_cache_root: Arc<RwLock<Option<PathBuf>>>,
     network: Arc<RwLock<NetworkPolicy>>,
     active: Arc<Mutex<HashMap<String, DownloadCancellation>>>,
     archive_cookies: Arc<Mutex<HashMap<String, String>>>,
@@ -824,6 +825,7 @@ impl DownloadManager {
         Ok(Self {
             store,
             cache_root: Arc::new(cache_root.into()),
+            detail_cache_root: Arc::new(RwLock::new(None)),
             network: Arc::new(RwLock::new(network)),
             active: Arc::new(Mutex::new(HashMap::new())),
             archive_cookies: Arc::new(Mutex::new(HashMap::new())),
@@ -846,6 +848,13 @@ impl DownloadManager {
             .network
             .write()
             .expect("download network lock poisoned") = network;
+    }
+
+    pub fn set_detail_cache_root(&self, path: impl Into<PathBuf>) {
+        *self
+            .detail_cache_root
+            .write()
+            .expect("detail cache lock poisoned") = Some(path.into());
     }
 
     pub async fn enqueue(&self, request: DownloadRequest) -> Result<DownloadRecord> {
@@ -1010,12 +1019,18 @@ impl DownloadManager {
                 .expect("download network lock poisoned")
                 .clone();
             let cache_root = self.cache_root.clone();
-            let result = download_image(
+            let detail_cache_root = self
+                .detail_cache_root
+                .read()
+                .expect("detail cache lock poisoned")
+                .clone();
+            let result = download_image_with_detail_cache(
                 &job.source_url,
                 job.record.site.as_str(),
                 &job.record.post_id,
                 &job.download_root,
                 &cache_root,
+                detail_cache_root.as_deref(),
                 &network,
                 &cancellation,
             )
@@ -1045,11 +1060,9 @@ impl DownloadManager {
                 Ok(DownloadOutcome::Completed(path)) => {
                     (DownloadStatus::Completed, Some(path), None)
                 }
-                Ok(DownloadOutcome::ExistingTarget(path)) => (
-                    DownloadStatus::ExistingTarget,
-                    Some(path),
-                    Some("Target already exists".to_owned()),
-                ),
+                Ok(DownloadOutcome::ExistingTarget(path)) => {
+                    (DownloadStatus::ExistingTarget, Some(path), None)
+                }
                 Ok(DownloadOutcome::Cancelled) => (
                     DownloadStatus::Cancelled,
                     None,
@@ -1135,11 +1148,9 @@ impl DownloadManager {
                 Ok(DownloadOutcome::Completed(path)) => {
                     (DownloadStatus::Completed, Some(path), None)
                 }
-                Ok(DownloadOutcome::ExistingTarget(path)) => (
-                    DownloadStatus::ExistingTarget,
-                    Some(path),
-                    Some("Target already exists".to_owned()),
-                ),
+                Ok(DownloadOutcome::ExistingTarget(path)) => {
+                    (DownloadStatus::ExistingTarget, Some(path), None)
+                }
                 Ok(DownloadOutcome::Cancelled) => (
                     DownloadStatus::Cancelled,
                     None,
