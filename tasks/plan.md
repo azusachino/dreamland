@@ -77,7 +77,7 @@ network policy, and cancellation/stale-result session primitives are present.
 SQLite-backed saved-query/history persistence and full continuation sealing
 remain open.
 
-### Slice 3 — SQLite local state and download queue
+### Slice 3 — SQLite local state and download queue — in progress
 
 Add the runtime-owned SQLite store and migrations for saved queries, query
 history, site cache, download queue, and download history. Replace the current
@@ -97,6 +97,13 @@ Acceptance:
 
 Verify: SQLite migration tests, queue state-machine tests, path/security tests,
 and an integration test using a local HTTP fixture server.
+
+Current checkpoint: SQLite migrations, durable queue/history rows, restart
+recovery, asynchronous worker, cancellation, retry, cache staging, canonical
+site/post paths, existing-target protection, network policy, typed Tauri/IPC
+commands, and the Downloads panel are present. Saved-query/query-history
+tables, runtime-owned file opening, full byte-progress events, and cache
+reconciliation remain open.
 
 ### Slice 4 — Tauri command surface and default exploration UI — in progress
 

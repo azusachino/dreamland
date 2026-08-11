@@ -38,9 +38,15 @@ React + TypeScript (src/) ── typed Tauri IPC ── commands (src-tauri/src/
 ```
 
 The frontend calls `load_config`, `save_config`, `query_posts`,
-`continue_query`, `cancel_query`, `suggest_tags`, and `download_image`. Native
-filesystem and network access stays in Rust. Network settings are applied on
-the next operation without restarting the app.
+`continue_query`, `cancel_query`, `suggest_tags`, `enqueue_download`,
+`cancel_download`, `retry_download`, and `list_downloads`. Native filesystem,
+SQLite, and network access stays in Rust. Network settings are applied on the
+next operation without restarting the app.
+
+Download queue state is stored in the runtime-owned SQLite database under the
+platform data directory. Temporary `.part` files are written under the
+runtime-owned cache; completed files are committed below the configured
+download root and existing targets terminate as `ExistingTarget`.
 
 Architecture rationale is recorded in [DECISIONS.md](DECISIONS.md) and
 [adr/](adr/). The API boundary is still governed by [API-V1.md](API-V1.md).

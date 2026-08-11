@@ -18,6 +18,7 @@ path = "src/main.rs"
 tauri-build.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 dreamland-core = { path = "../crates/dreamland-core" }
 dreamland-sites = { path = "../crates/dreamland-sites" }
 dreamland-runtime = { path = "../crates/dreamland-runtime" }

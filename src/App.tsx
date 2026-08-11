@@ -2,13 +2,18 @@ import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   detectProxy,
-  downloadImage,
+  enqueueDownload,
+  listDownloads,
+  cancelDownload,
+  retryDownload,
   loadConfig,
   queryPosts,
   saveConfig,
   suggestTags,
   type AppConfig,
   type DiscoverySource,
+  type DownloadRecord,
+  type DownloadStatus,
   type MediaVariant,
   type NetworkPolicy,
   type Post,
@@ -36,6 +41,7 @@ function App() {
   const [submittedSearch, setSubmittedSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -70,6 +76,12 @@ function App() {
     queryFn: () => queryPosts(request),
     enabled: configQuery.isSuccess,
   });
+  const downloadsQuery = useQuery({
+    queryKey: ["downloads"],
+    queryFn: () => listDownloads(50),
+    enabled: configQuery.isSuccess,
+    refetchInterval: 1_500,
+  });
   const suggestionsQuery = useQuery({
     queryKey: ["tag-suggestions", searchDraft.trim()],
     queryFn: () => suggestTags(searchDraft.trim(), 7),
@@ -87,8 +99,11 @@ function App() {
     onError: (reason) => setError(`Failed to save settings: ${errorMessage(reason)}`),
   });
   const downloadMutation = useMutation({
-    mutationFn: ({ postId, variant }: DownloadInput) => downloadImage(postId, variant),
-    onSuccess: (path) => setNotice(`Downloaded to ${path}`),
+    mutationFn: ({ postId, variant }: DownloadInput) => enqueueDownload(postId, variant),
+    onSuccess: (record) => {
+      void queryClient.invalidateQueries({ queryKey: ["downloads"] });
+      setNotice(`Added post #${record.post_id} to the download queue`);
+    },
     onError: (reason) => setError(`Download failed: ${errorMessage(reason)}`),
   });
 
@@ -99,6 +114,7 @@ function App() {
       : "";
   const images = imagesQuery.data?.posts ?? [];
   const loading = configQuery.isPending || imagesQuery.isFetching;
+  const downloadRecords = downloadsQuery.data ?? [];
   const title = view === "search" ? "Search results" : view === "popular" ? "Popular" : "Latest posts";
   const subtitle = view === "search"
     ? `Matching “${submittedSearch}”`
@@ -120,6 +136,7 @@ function App() {
     setNotice("");
     setPage(1);
     setView(nextView);
+    setDownloadsOpen(false);
   }
 
   function submitSearch(event?: FormEvent<HTMLFormElement>) {
@@ -247,6 +264,7 @@ function App() {
           <NavButton active={view === "latest"} label="Latest" icon="◷" onClick={() => changeView("latest")} />
           <NavButton active={view === "popular"} label="Popular" icon="↗" onClick={() => changeView("popular")} />
           <p className="nav-heading nav-heading-spaced">Your space</p>
+          <NavButton active={downloadsOpen} label="Downloads" icon="⇩" onClick={() => setDownloadsOpen(true)} />
           <NavButton disabled label="Pools" icon="▦" hint="Gated" />
           <NavButton disabled label="Favorites" icon="♡" hint="Gated" />
           <div className="nav-footer">
@@ -332,6 +350,20 @@ function App() {
           config={configQuery.data ?? null}
           onCancel={() => setSettingsOpen(false)}
           onSave={handleSaveConfig}
+        />
+      )}
+      {downloadsOpen && (
+        <DownloadPanel
+          records={downloadRecords}
+          onClose={() => setDownloadsOpen(false)}
+          onCancel={async (id) => {
+            await cancelDownload(id);
+            await queryClient.invalidateQueries({ queryKey: ["downloads"] });
+          }}
+          onRetry={async (id) => {
+            await retryDownload(id);
+            await queryClient.invalidateQueries({ queryKey: ["downloads"] });
+          }}
         />
       )}
     </div>
@@ -452,6 +484,70 @@ function PostInspector({ post, downloading, onClose, onDownload, onTag }: PostIn
       </button>
     </aside>
   );
+}
+
+interface DownloadPanelProps {
+  records: DownloadRecord[];
+  onClose: () => void;
+  onCancel: (id: string) => Promise<void>;
+  onRetry: (id: string) => Promise<void>;
+}
+
+function DownloadPanel({ records, onClose, onCancel, onRetry }: DownloadPanelProps) {
+  const active = records.filter((record) => record.status === "Queued" || record.status === "Running");
+  return (
+    <aside className="download-panel shell-surface" aria-label="Downloads">
+      <div className="inspector-heading">
+        <div><p className="eyebrow">Local state</p><h2>Downloads</h2></div>
+        <button className="icon-button" type="button" aria-label="Close downloads" onClick={onClose}>×</button>
+      </div>
+      <p className="helper-text">{active.length ? `${active.length} item${active.length === 1 ? "" : "s"} in progress` : "Nothing is downloading"}</p>
+      {records.length === 0 ? (
+        <div className="panel-empty">Your download history will appear here.</div>
+      ) : (
+        <div className="download-list">
+          {records.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} />)}
+        </div>
+      )}
+    </aside>
+  );
+}
+
+interface DownloadRowProps {
+  record: DownloadRecord;
+  onCancel: (id: string) => Promise<void>;
+  onRetry: (id: string) => Promise<void>;
+}
+
+function DownloadRow({ record, onCancel, onRetry }: DownloadRowProps) {
+  const canCancel = record.status === "Queued" || record.status === "Running";
+  const canRetry = record.status === "Failed" || record.status === "Cancelled";
+  return (
+    <article className="download-row">
+      <div className="download-row-heading">
+        <strong>#{record.post_id}</strong>
+        <span className={`download-status status-${record.status.toLowerCase()}`}>{downloadStatusLabel(record.status)}</span>
+      </div>
+      <p>{record.variant} quality · attempt {record.attempts || 1}</p>
+      {record.error && <p className="download-error">{record.error}</p>}
+      {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
+      {(canCancel || canRetry) && <div className="download-row-actions">
+        {canCancel && <button className="button button-text" type="button" onClick={() => void onCancel(record.id)}>Cancel</button>}
+        {canRetry && <button className="button button-outlined" type="button" onClick={() => void onRetry(record.id)}>Retry</button>}
+      </div>}
+    </article>
+  );
+}
+
+function downloadStatusLabel(status: DownloadStatus): string {
+  switch (status) {
+    case "ExistingTarget": return "Already exists";
+    case "Queued": return "Queued";
+    case "Running": return "Downloading";
+    case "Completed": return "Completed";
+    case "Failed": return "Failed";
+    case "Cancelled": return "Cancelled";
+  }
 }
 
 interface SettingsDialogProps {

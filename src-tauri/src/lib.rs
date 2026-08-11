@@ -5,10 +5,10 @@ use dreamland_core::{
     MediaVariant, NetworkPolicy, Post, PostQueryRequest, QuerySessionId, SiteId, SitePage,
     TagSuggestion, TagSuggestionRequest,
 };
-use dreamland_runtime::AppConfig;
+use dreamland_runtime::{AppConfig, DownloadRecord, DownloadRequest};
 use dreamland_sites::SiteDescriptor;
 use serde::Deserialize;
-use tauri::State;
+use tauri::{Manager, State};
 
 /// Posts from the most recent typed query, keyed by post id. Downloads resolve
 /// their URL from here rather than trusting a client-supplied one -- the
@@ -16,14 +16,20 @@ use tauri::State;
 struct RuntimeState {
     posts: Mutex<HashMap<String, Post>>,
     sessions: dreamland_runtime::QuerySessionStore,
+    downloads: dreamland_runtime::DownloadManager,
 }
 
-impl Default for RuntimeState {
-    fn default() -> Self {
-        Self {
+impl RuntimeState {
+    fn new(config: &AppConfig) -> anyhow::Result<Self> {
+        Ok(Self {
             posts: Mutex::new(HashMap::new()),
             sessions: dreamland_runtime::QuerySessionStore::default(),
-        }
+            downloads: dreamland_runtime::DownloadManager::open(
+                dreamland_runtime::default_state_path(),
+                dreamland_runtime::default_cache_path(),
+                config.network.clone(),
+            )?,
+        })
     }
 }
 
@@ -55,14 +61,16 @@ fn load_config() -> Result<AppConfig, String> {
 
 #[tauri::command]
 fn save_config(
+    state: State<'_, RuntimeState>,
     download_path: String,
     api_url: String,
     network: NetworkPolicy,
 ) -> Result<AppConfig, String> {
     let mut config =
         AppConfig::from_user_input(download_path, api_url).map_err(|error| error.to_string())?;
-    config.network = network;
+    config.network = network.clone();
     config.save().map_err(|error| error.to_string())?;
+    state.downloads.set_network_policy(network);
     Ok(config)
 }
 
@@ -180,12 +188,12 @@ async fn suggest_tags(input: TagSuggestionInput) -> Result<Vec<TagSuggestion>, S
 }
 
 #[tauri::command]
-async fn download_image(
+async fn enqueue_download(
     state: State<'_, RuntimeState>,
     site_id: String,
     post_id: String,
     variant: MediaVariant,
-) -> Result<String, String> {
+) -> Result<DownloadRecord, String> {
     if !dreamland_sites::is_active_browse_site(&site_id) {
         return Err(format!(
             "'{site_id}' is not a registered, browse-capable site"
@@ -209,20 +217,66 @@ async fn download_image(
             post.post.id
         )
     })?;
-    let final_path = dreamland_runtime::download_image(
-        url,
-        &post.post.id,
-        &config.download_path,
-        &config.network,
-    )
-    .await
-    .map_err(|error| error.to_string())?;
-    Ok(final_path.display().to_string())
+    state
+        .downloads
+        .enqueue(DownloadRequest {
+            site: SiteId::new(site_id),
+            post_id: post.post.id.clone(),
+            variant,
+            source_url: url.to_owned(),
+            download_root: config.download_path,
+            metadata: post,
+        })
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn cancel_download(state: State<'_, RuntimeState>, id: String) -> Result<(), String> {
+    state
+        .downloads
+        .cancel(&id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn retry_download(
+    state: State<'_, RuntimeState>,
+    id: String,
+) -> Result<DownloadRecord, String> {
+    state
+        .downloads
+        .retry(&id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn list_downloads(
+    state: State<'_, RuntimeState>,
+    limit: u32,
+) -> Result<Vec<DownloadRecord>, String> {
+    state
+        .downloads
+        .records(limit.min(100))
+        .await
+        .map_err(|error| error.to_string())
 }
 
 pub fn run() {
+    let default_url = dreamland_sites::default_api_url(dreamland_sites::DEFAULT_SITE_ID)
+        .expect("the active default site must provide a default API URL");
+    let config = AppConfig::load_or_default(&default_url)
+        .expect("Dreamland runtime configuration must be loadable");
+    let runtime_state =
+        RuntimeState::new(&config).expect("Dreamland local SQLite state must be initializable");
     tauri::Builder::default()
-        .manage(RuntimeState::default())
+        .manage(runtime_state)
+        .setup(|app| {
+            app.state::<RuntimeState>().downloads.spawn_worker();
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             list_sites,
             load_config,
@@ -232,7 +286,10 @@ pub fn run() {
             continue_query,
             cancel_query,
             suggest_tags,
-            download_image
+            enqueue_download,
+            cancel_download,
+            retry_download,
+            list_downloads
         ])
         .run(tauri::generate_context!())
         .expect("error while running Dreamland");

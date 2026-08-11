@@ -91,6 +91,30 @@ export interface TagSuggestion {
   aliases: string[];
 }
 
+export type DownloadStatus =
+  | "Queued"
+  | "Running"
+  | "Completed"
+  | "Failed"
+  | "Cancelled"
+  | "ExistingTarget";
+
+export interface DownloadRecord {
+  id: string;
+  site: string;
+  post_id: string;
+  variant: MediaVariant;
+  status: DownloadStatus;
+  target_path: string | null;
+  error: string | null;
+  attempts: number;
+  bytes_downloaded: number;
+  total_bytes: number | null;
+  created_at_ms: number;
+  updated_at_ms: number;
+  metadata: Post;
+}
+
 export function loadConfig(): Promise<AppConfig> {
   return invoke<AppConfig>("load_config");
 }
@@ -137,10 +161,22 @@ export function cancelQuery(session: string): Promise<void> {
   return invoke<void>("cancel_query", { session });
 }
 
-export function downloadImage(postId: string, variant: MediaVariant): Promise<string> {
-  return invoke<string>("download_image", {
+export function enqueueDownload(postId: string, variant: MediaVariant): Promise<DownloadRecord> {
+  return invoke<DownloadRecord>("enqueue_download", {
     siteId: ACTIVE_SITE_ID,
     postId,
     variant,
   });
+}
+
+export function cancelDownload(id: string): Promise<void> {
+  return invoke<void>("cancel_download", { id });
+}
+
+export function retryDownload(id: string): Promise<DownloadRecord> {
+  return invoke<DownloadRecord>("retry_download", { id });
+}
+
+export function listDownloads(limit = 50): Promise<DownloadRecord[]> {
+  return invoke<DownloadRecord[]>("list_downloads", { limit });
 }

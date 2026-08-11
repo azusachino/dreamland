@@ -30,6 +30,11 @@ Derived from [`plan.md`](plan.md), ordered by dependency.
     `ExistingTarget`, metadata snapshots, and history work.
   - Verify: migration, queue, path-security, and local HTTP integration tests.
   - Files: `crates/dreamland-runtime/`.
+  - Checkpoint: queue/history migrations, restart recovery, async worker,
+    cancellation/retry, cache staging, canonical paths, existing-target
+    protection, typed commands, and the Downloads panel are present; saved
+    query/history tables, `open_download`, full progress events, and cache
+    reconciliation remain.
 
 - [ ] Slice 4: Replace legacy IPC with v1 commands and build exploration UI.
   - Acceptance: US-Y-01..US-Y-08 pass with active-site data and no raw site
