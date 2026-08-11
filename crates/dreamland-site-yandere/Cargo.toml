@@ -11,3 +11,4 @@ dreamland-core = { path = "../dreamland-core" }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+toml.workspace = true

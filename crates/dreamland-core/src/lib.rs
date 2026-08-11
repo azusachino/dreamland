@@ -37,3 +37,37 @@ pub struct SiteDescriptor {
     pub name: String,
     pub capabilities: SiteCapabilities,
 }
+
+/// Site-neutral post shape crossing the Tauri boundary. Site adapters parse
+/// their own wire format internally and map into this type; the frontend
+/// never sees a site's raw response shape.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Post {
+    pub post: PostRef,
+    pub tags: Vec<String>,
+    pub width: u32,
+    pub height: u32,
+    pub rating: Rating,
+    pub score: Option<i32>,
+    pub preview_url: String,
+    pub sample_url: String,
+    pub full_url: String,
+    pub file_size: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum Rating {
+    Safe,
+    Questionable,
+    Explicit,
+    Unknown,
+}
+
+/// The variant a download command may request. The frontend selects one of
+/// these against a `PostRef`; it never supplies a URL directly.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum MediaVariant {
+    Preview,
+    Sample,
+    Full,
+}

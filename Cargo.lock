@@ -705,6 +705,7 @@ dependencies = [
 name = "dreamland"
 version = "0.1.0"
 dependencies = [
+ "dreamland-core",
  "dreamland-runtime",
  "dreamland-site-yandere",
  "dreamland-sites",
@@ -755,6 +756,7 @@ dependencies = [
  "reqwest 0.11.27",
  "serde",
  "serde_json",
+ "toml 0.8.2",
 ]
 
 [[package]]

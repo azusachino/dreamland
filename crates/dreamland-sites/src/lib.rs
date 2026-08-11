@@ -11,9 +11,20 @@ pub fn skeleton_descriptors() -> Vec<SiteDescriptor> {
     ]
 }
 
+/// The gate `src-tauri` must check before dispatching a browse/download
+/// command to a site adapter. With a single active site this looks
+/// redundant, but it is what stops the registry from being purely
+/// decorative once a second site is wired in -- adding a descriptor here
+/// does nothing on its own; a command still has to consult this first.
+pub fn is_active_browse_site(site_id: &str) -> bool {
+    descriptors()
+        .iter()
+        .any(|site| site.id.as_str() == site_id && site.capabilities.browse)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::descriptors;
+    use super::{descriptors, is_active_browse_site};
 
     #[test]
     fn registry_contains_yandere() {
@@ -33,5 +44,12 @@ mod tests {
                 && !site.capabilities.post_search
                 && !site.capabilities.post_lookup
         }));
+    }
+
+    #[test]
+    fn only_registered_browse_capable_sites_pass_the_gate() {
+        assert!(is_active_browse_site("yandere"));
+        assert!(!is_active_browse_site("pixiv"));
+        assert!(!is_active_browse_site("does-not-exist"));
     }
 }
