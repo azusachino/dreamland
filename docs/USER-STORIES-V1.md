@@ -43,6 +43,7 @@ v1 stories.
 | US-Y-11 | As a user, I browse a Yande pool and request its ZIP. | Public pool metadata and ordered posts are visible; ZIP is a distinct archive queue target and requires site auth when Yande redirects anonymous users. | `list_remote_collections`, `list_remote_collection_posts`, collection download; Y-09, G-09 |
 | US-Y-12 | As a user, I inspect download history and open a completed file. | History shows outcome, path, checksum, immutable metadata snapshot, and failure reason; opening a file is runtime-owned and does not expose arbitrary paths to React. | `download_history`, `open_download`; G-08 |
 | US-Y-13 | As a user, I configure the runtime safely. | I can set download directory, quality, concurrency, cache, logging, and site non-secret options; validation happens before apply/persist. | `load_config`, `validate_site_config`, `save_config`; G-01 |
+| US-Y-14 | As a user, I follow an author tag from a post and return to my previous exploration. | Opening a post adds a detail entry; selecting its author tag adds a search entry; Back returns search → detail → the originating feed with its site, popular period/date, loaded results, selected position, and scroll context. Forward retraces the same path. | React navigation history + TanStack Query cache; no new site API |
 
 ## Failure and boundary coverage
 
@@ -65,6 +66,7 @@ following behavior.
 | Path traversal, reserved name, excessive component, or Unicode oddity | Normalize path components and keep all writes beneath the configured directory. | US-Y-07/13, G-08 |
 | Worker crash or app restart | Durable SQLite state makes queued/running work recoverable; temporary cache files are reconciled by the runtime, not exposed as library files. | US-Y-07/12, G-08 |
 | User changes config/auth while a query/download runs | Existing operation keeps its bound context or is cancelled explicitly; stale capabilities and continuation tokens cannot be reused. | US-Y-02/09/13, G-01/G-10 |
+| Detail-to-tag navigation loses its source feed | Keep a replayable feed/search intent and live feed snapshot in the navigation entry; never depend on an expired continuation token to reconstruct Back. | US-Y-03/04/06/14 |
 
 ## Deliberate non-stories
 
@@ -74,6 +76,9 @@ following behavior.
   after the single-download lifecycle is proven.
 - No tags or posting-account names in canonical directory keys.
 - No generic creator-profile screen in the Yande release.
+- No route-history persistence across application restart; the query intent may
+  be replayed, but the exact scroll position and loaded-page snapshot are
+  session-local.
 - No assumption that a pool ZIP is equivalent to selecting and downloading
   individual cards.
 

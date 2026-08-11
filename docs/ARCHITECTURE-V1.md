@@ -52,6 +52,31 @@ user intent
   → React view state
 ```
 
+### Exploration navigation
+
+The UI uses an in-memory application history for exploration context. A feed
+is a source screen, a post detail is a destination entry, and following a tag
+from detail creates another destination entry:
+
+```text
+Forward: popular feed snapshot ──> post detail ──> tag search
+Back:    popular feed snapshot <── post detail <── tag search
+```
+
+Each entry stores replayable intent and UI context: site, view/source,
+popular period and anchor date, search expression, selected post, selected
+position, and scroll offset. Loaded feed pages remain in the TanStack Query
+cache for the live session. Back therefore restores the previous popular feed
+where exploration stopped; if the cache is cold, the runtime replays the
+intent rather than using an expired continuation token. Forward retraces the
+same entries.
+
+Opening an adjacent post with the detail arrows, loading another feed page,
+or refreshing a feed does not create a history entry. Closing detail and the
+Escape key perform the same action as Back. Route history is session-local and
+is not persisted in SQLite; query history stores replayable searches, not
+scroll positions or opaque cursors.
+
 `dreamland-sites` is the composition root: it assembles the active registered
 site crates and keeps descriptor-only Pixiv/Twitter skeletons separate from
 the active registry. It is the only site-discovery dependency the Tauri shell
