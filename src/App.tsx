@@ -78,7 +78,7 @@ import { Icon } from "./components/Icon";
 import { AppLayout } from "./components/AppLayout";
 import { MainNavigation } from "./components/MainNavigation";
 import { AdvancedQueryDialog as PopupAdvancedQueryDialog, ErrorState as PopupErrorState, SettingsDialog as PopupSettingsDialog, Toast as PopupToast } from "./components/Popups";
-import { isPostPath, pathForView, postPath, searchPath, viewFromPath } from "./navigation";
+import { isPostPath, pathForView, popularPath, postPath, searchPath, viewFromPath } from "./navigation";
 
 import type { ViewMode } from "./view-model";
 type PopularPeriod = "Day" | "Week" | "Month";
@@ -345,7 +345,7 @@ function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const [view, setView] = useState<ViewMode>(() => viewFromPath(location.pathname));
-  const [selectedSiteId, setSelectedSiteId] = useState(() => window.localStorage.getItem("dreamland.site") ?? "yandere");
+  const [selectedSiteId, setSelectedSiteId] = useState(() => new URLSearchParams(location.search).get("site") ?? window.localStorage.getItem("dreamland.site") ?? "yandere");
   const [themeMode, setThemeMode] = useState<ThemeMode>(readThemeMode);
   const [popularPeriod, setPopularPeriod] = useState<PopularPeriod>("Week");
   const [popularAnchorDate, setPopularAnchorDate] = useState(() => normalizePopularAnchor(today(), "Week"));
@@ -373,6 +373,19 @@ function App() {
   const searchInput = useRef<HTMLInputElement>(null);
   const downloadStatuses = useRef(new Map<string, DownloadStatus>());
   const activeQuerySession = useRef<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const routeSite = params.get("site");
+    if (routeSite && routeSite !== selectedSiteId) setSelectedSiteId(routeSite);
+    if (location.pathname === "/popular") {
+      const routePeriod = params.get("period");
+      const nextPeriod = routePeriod === "Day" || routePeriod === "Month" ? routePeriod : "Week";
+      const routeDate = params.get("date") ?? today();
+      setPopularPeriod(nextPeriod);
+      setPopularAnchorDate(normalizePopularAnchor(routeDate, nextPeriod));
+    }
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     if (isPostPath(location.pathname)) return;
@@ -677,6 +690,7 @@ function App() {
     setSelectedSiteId(site.id);
     setSiteMenuAnchor(null);
     setError("");
+    navigate(pathForView("latest", { siteId: site.id }));
     setView("latest");
     setSelectedSavedQueryId(null);
     setEditingSavedQueryId(null);
@@ -721,8 +735,14 @@ function App() {
 
   function changeView(nextView: ViewMode) {
     setError("");
-    if (location.pathname !== pathForView(nextView)) {
-      navigate(pathForView(nextView));
+    const nextPath = pathForView(nextView, {
+      siteId: selectedSiteId,
+      tags: nextView === "search" ? submittedSearch : undefined,
+      period: nextView === "popular" ? popularPeriod : undefined,
+      date: nextView === "popular" ? popularAnchorDate : undefined,
+    });
+    if (`${location.pathname}${location.search}` !== nextPath) {
+      navigate(nextPath);
     }
     setView(nextView);
     setSelectedSavedQueryId(null);
@@ -734,6 +754,13 @@ function App() {
     setSelectionMode(false);
   }
 
+  function updatePopularWindow(period: PopularPeriod, anchor: string) {
+    const nextAnchor = normalizePopularAnchor(anchor, period);
+    setPopularPeriod(period);
+    setPopularAnchorDate(nextAnchor);
+    navigate(popularPath(activeSiteId, period, nextAnchor), { replace: true });
+  }
+
   function submitSearch(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     const expression = searchDraft.trim();
@@ -742,7 +769,7 @@ function App() {
       return;
     }
     setError("");
-    navigate(searchPath(expression));
+    navigate(searchPath(expression, activeSiteId));
     setSubmittedSearch(expression);
     setSelectedSavedQueryId(null);
     setEditingSavedQueryId(null);
@@ -757,7 +784,7 @@ function App() {
     setSubmittedSearch(tag);
     setSelectedSavedQueryId(null);
     setEditingSavedQueryId(null);
-    navigate(searchPath(tag));
+    navigate(searchPath(tag, activeSiteId));
     setView("search");
     setSearchFocused(false);
     setSelectedPost(null);
@@ -770,7 +797,7 @@ function App() {
     setSubmittedSearch(expression);
     setSelectedSavedQueryId(editingSavedQueryId);
     setEditingSavedQueryId(null);
-    navigate(searchPath(expression));
+    navigate(searchPath(expression, activeSiteId));
     setView("search");
     setSearchFocused(false);
     setSelectedPostIds(new Set());
@@ -785,7 +812,7 @@ function App() {
     setEditingSavedQueryId(null);
     setSearchDraft(expression);
     setSubmittedSearch(expression);
-    navigate(searchPath(expression));
+    navigate(searchPath(expression, activeSiteId));
     setView("search");
     setError("");
   }
@@ -797,7 +824,7 @@ function App() {
     setEditingSavedQueryId(saved.id);
     setSearchDraft(expression);
     setSubmittedSearch(expression);
-    navigate(searchPath(expression));
+    navigate(searchPath(expression, activeSiteId));
     setView("search");
     setAdvancedSearchOpen(true);
     setError("");
@@ -1076,8 +1103,7 @@ function App() {
                     <InputLabel id="popular-period-label">period</InputLabel>
                     <Select labelId="popular-period-label" label="period" value={popularPeriod} onChange={(event) => {
                       const nextPeriod = event.target.value as PopularPeriod;
-                      setPopularPeriod(nextPeriod);
-                      setPopularAnchorDate((current) => normalizePopularAnchor(current, nextPeriod));
+                      updatePopularWindow(nextPeriod, popularAnchorDate);
                     }}>
                       <MenuItem value="Day">day</MenuItem>
                       <MenuItem value="Week">week</MenuItem>
@@ -1087,7 +1113,7 @@ function App() {
                   <Button
                     variant="outlined"
                     aria-label={`Earlier popular ${popularPeriod.toLowerCase()}`}
-                    onClick={() => setPopularAnchorDate(shiftPopularAnchor(popularAnchorDate, popularPeriod, -1))}
+                    onClick={() => updatePopularWindow(popularPeriod, shiftPopularAnchor(popularAnchorDate, popularPeriod, -1))}
                   >
                     earlier
                   </Button>
@@ -1100,7 +1126,7 @@ function App() {
                     slotProps={{ htmlInput: { max: today() }, inputLabel: { shrink: true } }}
                     onChange={(event) => {
                       if (event.target.value && event.target.value <= today()) {
-                        setPopularAnchorDate(normalizePopularAnchor(event.target.value, popularPeriod));
+                        updatePopularWindow(popularPeriod, event.target.value);
                       }
                     }}
                   />
@@ -1108,7 +1134,7 @@ function App() {
                     variant="outlined"
                     aria-label={`Later popular ${popularPeriod.toLowerCase()}`}
                     disabled={shiftPopularAnchor(popularAnchorDate, popularPeriod, 1) > normalizePopularAnchor(today(), popularPeriod)}
-                    onClick={() => setPopularAnchorDate(shiftPopularAnchor(popularAnchorDate, popularPeriod, 1))}
+                    onClick={() => updatePopularWindow(popularPeriod, shiftPopularAnchor(popularAnchorDate, popularPeriod, 1))}
                   >
                     later
                   </Button>
