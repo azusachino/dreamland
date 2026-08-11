@@ -26,11 +26,17 @@ pub async fn query_posts(
     }
 }
 
-pub async fn lookup_post(site_id: &str, post_id: &str, network: &NetworkPolicy) -> Result<Post> {
+pub async fn lookup_post(
+    site_id: &str,
+    post_id: &str,
+    content_policy: ContentPolicy,
+    network: &NetworkPolicy,
+) -> Result<Post> {
     match site_id {
         dreamland_site_konachan::SITE_ID => {
             let config = dreamland_site_konachan::default_config();
-            dreamland_site_konachan::lookup_post(&config.api_url, post_id, network).await
+            dreamland_site_konachan::lookup_post(&config.api_url, post_id, content_policy, network)
+                .await
         }
         _ => bail!("site '{site_id}' has no active post lookup adapter"),
     }

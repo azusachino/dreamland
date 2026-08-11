@@ -21,8 +21,7 @@ runtime, composition, site, and shell members:
 - `dreamland-runtime` — configuration, persistence, download orchestration,
   and runtime-owned I/O;
 - `dreamland-site-yandere` — the Yandere adapter and response fixtures;
-- `dreamland-site-konachan` — the safe-mode Konachan adapter and response
-  fixtures;
+- `dreamland-site-konachan` — the Konachan adapter and response fixtures;
 - `src-tauri` — Tauri commands, window lifecycle, and desktop capabilities.
 
 The workspace owns the single `Cargo.lock` and shared build output. Site

@@ -1,7 +1,5 @@
-# Konachan has separate explicit (.com) and safe (.net) hosts. The .com API
-# currently challenges non-browser clients, so the adapter uses the safe API
-# origin for its initial browse/search release and keeps the browser URL for
-# user-facing recovery when bot protection blocks requests.
-api_url = "https://konachan.net/post.json"
+# Konachan's real site and API are hosted on .com. Requests may still be
+# challenged by bot protection, but the adapter must not silently replace the
+# real site with the safe-only .net mirror.
+api_url = "https://konachan.com/post.json"
 browser_url = "https://konachan.com/post"
-safe_only = true

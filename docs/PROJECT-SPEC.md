@@ -23,7 +23,7 @@ site set, API pagination, settings, and image-download behavior.
 - `dist/` — Vite build output loaded by Tauri
 - `crates/` — core, shared Moebooru protocol, runtime, sites composition root,
   and site adapter crates
-  (`dreamland-site-yandere` and the safe-mode `dreamland-site-konachan`
+  (`dreamland-site-yandere` and `dreamland-site-konachan`
   adapters active; `dreamland-site-pixiv`/`-twitter` remain descriptor-only
   skeletons)
 - `src-tauri/` — Tauri application and command boundary

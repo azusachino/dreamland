@@ -493,7 +493,7 @@ function App() {
   });
   const postDetailQuery = useQuery({
     queryKey: ["post-detail", activeSiteId, selectedPost?.post.id],
-    queryFn: () => lookupPost(activeSiteId, selectedPost!.post.id),
+    queryFn: () => lookupPost(activeSiteId, selectedPost!.post.id, activeContentPolicy),
     enabled: Boolean(selectedPost) && activeSite?.capabilities.post_lookup === true,
     staleTime: 60_000,
   });
@@ -619,7 +619,7 @@ function App() {
     }
     window.addEventListener("keydown", handlePreviewKey);
     return () => window.removeEventListener("keydown", handlePreviewKey);
-  }, [canGoNext, canGoPrevious, previewPosts, selectedPost, selectedPreviewIndex]);
+  }, [activeContentPolicy, canGoNext, canGoPrevious, previewPosts, selectedPost, selectedPreviewIndex]);
 
   function selectSite(site: SiteDescriptor) {
     if (!site.capabilities.browse || site.id === activeSiteId) return;
@@ -1699,7 +1699,7 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
         <div><dt>children</dt><dd>{post.has_children ? "yes" : "no"}</dd></div>
         <div><dt>created</dt><dd>{post.created_at ? new Date(post.created_at).toLocaleString() : "—"}</dd></div>
       </dl>
-      {!detailLoading && !detailError && <p className="detail-helper">post details are hydrated from the site’s safe API.</p>}
+      {!detailLoading && !detailError && <p className="detail-helper">post details are hydrated from the site API.</p>}
       {favoriteSupported && (
         <button className="button button-outlined button-wide" type="button" onClick={() => void onFavorite(post)}>
           {favorited ? `remove from ${siteName} favorites` : `add to ${siteName} favorites`}

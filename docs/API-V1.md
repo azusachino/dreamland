@@ -64,12 +64,12 @@ through /post/vote.json. The current popular endpoints return fixed-size result
 windows and do not honor ordinary page/limit navigation, but their date
 parameters select different day/week/month windows.
 
-Konachan is the second real Moebooru adapter. Its current safe API origin is
-`https://konachan.net/post.json`; the explicit `.com` browser route is kept as
-the user-facing site URL because direct API requests there can be challenged
-by bot protection. The initial adapter advertises anonymous safe browse/search
-and tag suggestions only. It rejects non-safe content policies rather than
-silently claiming that the safe host can retrieve the explicit site.
+Konachan is the second real Moebooru adapter. Its API and browser origin are
+`https://konachan.com`; the adapter accepts the full `ContentPolicy` range.
+Direct API requests can be challenged by bot protection, so the site-owned
+browser route remains the recovery path. A challenge is an availability
+failure, not a reason to silently replace Konachan with the unrelated
+safe-only `.net` mirror.
 
 ## Boundaries
 
@@ -1435,8 +1435,8 @@ pub struct EnqueueDownloadResult {
 The current Tauri shell uses `open_site` for an explicit site-owned browser
 route and for feed-error recovery. It validates the registered browse
 capability first; the frontend cannot supply an arbitrary URL. For Konachan
-this route is `https://konachan.com/post`, while feed/search transport remains
-the safe `https://konachan.net/post.json` adapter configuration.
+this route is `https://konachan.com/post`, matching its feed/search transport
+origin.
 The post-detail action uses the same site-owned route boundary for
 `https://konachan.com/post/show/<id>` and validates the site/post reference
 before opening it.
@@ -1552,7 +1552,7 @@ the operation_id and preserves retryable separately from the safe message.
 | TagSuggestionCapability | The same Moebooru tag JSON shape, normalized at the adapter boundary. |
 | RelatedTagCapability | Explicit post-detail related-tag lookup through `/tag/related.json`; tuple counts are normalized and resulting searches still use the safe content policy. |
 | PostLookupCapability | Exact numeric IDs are resolved with the safe `.net` API's `id:<post-id>` tag expression and verified against the returned post ID. |
-| Browser post route | The detail action opens the site-owned `https://konachan.com/post/show/<id>` page; this is a browser recovery route, not a safe API request. |
+| Browser post route | The detail action opens the site-owned `https://konachan.com/post/show/<id>` page; this is a browser route for bot-protected access, not a substitute API transport. |
 | Similar search | The detail action opens the site-owned `https://konachan.com/post/similar` form; no direct API or query parameter is assumed. |
 | RemoteCollectionCapability | Searchable public pool metadata from `/pool.json?query=…` with page/limit pagination, plus ordered safe-visible posts from `/pool/show.json?id=…`; the API may return the complete visible pool in one response. |
 | Content policy | Safe only for the initial release; explicit-host access is not advertised because `.com` API requests are bot-protection sensitive. |

@@ -290,8 +290,8 @@ export function queryPosts(siteId: string, request: PostQueryRequest): Promise<S
   });
 }
 
-export function lookupPost(siteId: string, postId: string): Promise<Post> {
-  return invoke<Post>("lookup_post", { siteId, postId });
+export function lookupPost(siteId: string, postId: string, contentPolicy: ContentPolicy): Promise<Post> {
+  return invoke<Post>("lookup_post", { siteId, postId, contentPolicy });
 }
 
 export function suggestTags(siteId: string, query: string, limit = 5): Promise<TagSuggestion[]> {

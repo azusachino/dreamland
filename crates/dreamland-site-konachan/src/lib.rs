@@ -14,7 +14,6 @@ const DEFAULT_CONFIG_TOML: &str = include_str!("../config/default.toml");
 pub struct SiteDefaults {
     pub api_url: String,
     pub browser_url: String,
-    pub safe_only: bool,
 }
 
 pub fn default_config() -> SiteDefaults {
@@ -37,7 +36,7 @@ pub fn descriptor() -> SiteDescriptor {
             page_numbers: true,
             cursors: false,
             multiple_download_variants: true,
-            safe_content_only: true,
+            safe_content_only: false,
             authentication: false,
             remote_favorites: false,
             favorite_list: false,
@@ -64,7 +63,6 @@ pub async fn query_posts(
     request: &PostQueryRequest,
     network: &NetworkPolicy,
 ) -> Result<SitePage> {
-    ensure_supported_policy(request.query.content_policy)?;
     dreamland_moe::query_posts(api_url, request, network, SITE_ID, "konachan")
         .await
         .map_err(map_transport_error)
@@ -76,16 +74,21 @@ pub async fn query_posts(
         })
 }
 
-pub async fn lookup_post(api_url: &str, post_id: &str, network: &NetworkPolicy) -> Result<Post> {
-    let request = lookup_post_request(post_id)?;
+pub async fn lookup_post(
+    api_url: &str,
+    post_id: &str,
+    content_policy: ContentPolicy,
+    network: &NetworkPolicy,
+) -> Result<Post> {
+    let request = lookup_post_request(post_id, content_policy)?;
     let page = query_posts(api_url, &request, network).await?;
     page.posts
         .into_iter()
         .find(|post| post.post.id == post_id)
-        .ok_or_else(|| anyhow::anyhow!("Konachan post #{post_id} was not found in the safe API"))
+        .ok_or_else(|| anyhow::anyhow!("Konachan post #{post_id} was not found in the API"))
 }
 
-fn lookup_post_request(post_id: &str) -> Result<PostQueryRequest> {
+fn lookup_post_request(post_id: &str, content_policy: ContentPolicy) -> Result<PostQueryRequest> {
     if post_id.is_empty() || !post_id.chars().all(|value| value.is_ascii_digit()) {
         bail!("Konachan post id must be numeric");
     }
@@ -94,7 +97,7 @@ fn lookup_post_request(post_id: &str) -> Result<PostQueryRequest> {
             source: dreamland_core::DiscoverySource::Search {
                 expression: format!("id:{post_id}"),
             },
-            content_policy: ContentPolicy::SafeOnly,
+            content_policy,
         },
         pagination: dreamland_core::PaginationRequest::First { page_size: 1 },
     })
@@ -256,13 +259,6 @@ pub async fn query_pool_posts(
     })
 }
 
-fn ensure_supported_policy(policy: ContentPolicy) -> Result<()> {
-    if default_config().safe_only && policy != ContentPolicy::SafeOnly {
-        bail!("konachan safe API supports Safe only; open the konachan browser page for explicit-host access")
-    }
-    Ok(())
-}
-
 fn map_transport_error(error: anyhow::Error) -> anyhow::Error {
     let message = error.to_string();
     if message.contains("HTTP 403") || message.contains("HTTP 503") {
@@ -300,24 +296,33 @@ mod tests {
     }"#;
 
     #[test]
-    fn descriptor_is_browse_capable_but_safe_only_is_explicit() {
+    fn descriptor_exposes_real_konachan_content_policy() {
         assert_eq!(SITE_ID, "konachan");
         assert!(descriptor().capabilities.browse);
         assert!(descriptor().capabilities.collections);
         assert!(descriptor().capabilities.post_lookup);
         assert!(!descriptor().capabilities.collection_downloads);
-        assert!(default_config().safe_only);
-        assert!(ensure_supported_policy(ContentPolicy::AllowExplicit).is_err());
+        assert!(!descriptor().capabilities.safe_content_only);
     }
 
     #[test]
     fn lookup_requires_numeric_id() {
-        assert!(lookup_post_request("not-a-number").is_err());
+        assert!(lookup_post_request("not-a-number", ContentPolicy::AllowExplicit).is_err());
         assert_eq!(
-            lookup_post_request("407162").unwrap().query.source,
+            lookup_post_request("407162", ContentPolicy::AllowExplicit)
+                .unwrap()
+                .query
+                .source,
             dreamland_core::DiscoverySource::Search {
                 expression: "id:407162".to_owned()
             }
+        );
+        assert_eq!(
+            lookup_post_request("407162", ContentPolicy::AllowExplicit)
+                .unwrap()
+                .query
+                .content_policy,
+            ContentPolicy::AllowExplicit
         );
     }
 
@@ -333,10 +338,10 @@ mod tests {
     }
 
     #[test]
-    fn config_keeps_browser_and_safe_api_origins_separate() {
+    fn config_uses_real_api_and_browser_origins() {
         let config = default_config();
 
-        assert_eq!(config.api_url, "https://konachan.net/post.json");
+        assert_eq!(config.api_url, "https://konachan.com/post.json");
         assert_eq!(config.browser_url, "https://konachan.com/post");
         assert_eq!(
             browser_post_url(&config.browser_url, "407162").unwrap(),
@@ -350,20 +355,20 @@ mod tests {
     }
 
     #[test]
-    fn pool_endpoints_are_owned_by_the_safe_api_origin() {
+    fn pool_endpoints_are_owned_by_the_real_api_origin() {
         let config = default_config();
 
         assert_eq!(
             pool_endpoint(&config.api_url).unwrap(),
-            "https://konachan.net/pool.json"
+            "https://konachan.com/pool.json"
         );
         assert_eq!(
             pool_posts_endpoint(&config.api_url).unwrap(),
-            "https://konachan.net/pool/show.json"
+            "https://konachan.com/pool/show.json"
         );
         assert_eq!(
             related_tag_endpoint(&config.api_url).unwrap(),
-            "https://konachan.net/tag/related.json"
+            "https://konachan.com/tag/related.json"
         );
         assert!(validate_pool_id("not-a-number").is_err());
     }

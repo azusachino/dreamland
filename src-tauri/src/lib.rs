@@ -582,6 +582,7 @@ async fn lookup_post(
     state: State<'_, RuntimeState>,
     site_id: String,
     post_id: String,
+    content_policy: ContentPolicy,
 ) -> Result<Post, String> {
     let site = dreamland_sites::descriptors()
         .into_iter()
@@ -591,7 +592,7 @@ async fn lookup_post(
         return Err(format!("site '{site_id}' does not support post lookup"));
     }
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
-    let post = dreamland_sites::lookup_post(&site_id, &post_id, &config.network)
+    let post = dreamland_sites::lookup_post(&site_id, &post_id, content_policy, &config.network)
         .await
         .map_err(|error| error.to_string())?;
     state
