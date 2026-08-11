@@ -155,6 +155,16 @@ pub fn resolve_media_url<'a>(
     }
 }
 
+pub fn browser_url(site_id: &str) -> Result<String> {
+    match site_id {
+        dreamland_site_yandere::SITE_ID => Ok(dreamland_site_yandere::default_config().browser_url),
+        dreamland_site_konachan::SITE_ID => {
+            Ok(dreamland_site_konachan::default_config().browser_url)
+        }
+        _ => bail!("site '{site_id}' has no active browser route"),
+    }
+}
+
 pub fn descriptors() -> Vec<SiteDescriptor> {
     vec![
         dreamland_site_yandere::descriptor(),
@@ -182,7 +192,7 @@ pub fn is_active_browse_site(site_id: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{descriptors, is_active_browse_site};
+    use super::{browser_url, descriptors, is_active_browse_site};
 
     #[test]
     fn registry_contains_yandere() {
@@ -211,5 +221,15 @@ mod tests {
         assert!(is_active_browse_site("konachan"));
         assert!(!is_active_browse_site("pixiv"));
         assert!(!is_active_browse_site("does-not-exist"));
+    }
+
+    #[test]
+    fn browser_routes_are_owned_by_the_site_adapters() {
+        assert_eq!(browser_url("yandere").unwrap(), "https://yande.re/post");
+        assert_eq!(
+            browser_url("konachan").unwrap(),
+            "https://konachan.com/post"
+        );
+        assert!(browser_url("pixiv").is_err());
     }
 }

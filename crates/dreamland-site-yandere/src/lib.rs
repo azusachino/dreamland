@@ -19,6 +19,7 @@ const DEFAULT_CONFIG_TOML: &str = include_str!("../config/default.toml");
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct SiteDefaults {
     pub api_url: String,
+    pub browser_url: String,
 }
 
 pub fn default_config() -> SiteDefaults {

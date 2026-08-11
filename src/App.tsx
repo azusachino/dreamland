@@ -20,6 +20,7 @@ import {
   listSites,
   moveSavedQuery,
   openDownload,
+  openSite,
   retryDownload,
   loadConfig,
   queryPosts,
@@ -1044,7 +1045,12 @@ function App() {
             <>
               {loading && <div className="loading-line" role="status"><span /> Finding something good…</div>}
               {queryError ? (
-                <ErrorState message={queryError} onRetry={() => void imagesQuery.refetch()} />
+                <ErrorState
+                  message={queryError}
+                  onRetry={() => void imagesQuery.refetch()}
+                  onOpenSite={activeSite ? () => void openSite(activeSiteId).catch((reason) => setError(`Could not open site: ${errorMessage(reason)}`)) : undefined}
+                  siteName={activeSite?.name}
+                />
               ) : !loading && images.length === 0 ? (
                 <div className="empty-state">
                   <span className="empty-symbol" aria-hidden="true">✦</span>
@@ -1329,9 +1335,11 @@ function AdvancedQueryDialog({ contentPolicy, initialExpression, onClose, onAppl
 interface ErrorStateProps {
   message: string;
   onRetry: () => void;
+  onOpenSite?: () => void;
+  siteName?: string;
 }
 
-function ErrorState({ message, onRetry }: ErrorStateProps) {
+function ErrorState({ message, onRetry, onOpenSite, siteName }: ErrorStateProps) {
   return (
     <div className="error-state" role="alert">
       <span className="error-symbol" aria-hidden="true">!</span>
@@ -1340,6 +1348,7 @@ function ErrorState({ message, onRetry }: ErrorStateProps) {
         <p>{message.replace("Failed to load images: ", "")}</p>
       </div>
       <button className="button button-outlined" type="button" onClick={onRetry}>Try again</button>
+      {onOpenSite && <button className="button button-outlined" type="button" onClick={onOpenSite}>Open {siteName}</button>}
     </div>
   );
 }

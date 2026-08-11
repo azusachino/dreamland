@@ -210,6 +210,10 @@ export function beginAuth(): Promise<void> {
   return invoke<void>("begin_auth");
 }
 
+export function openSite(siteId: string): Promise<void> {
+  return invoke<void>("open_site", { siteId });
+}
+
 export function authStatus(): Promise<AuthStatus> {
   return invoke<AuthStatus>("auth_status");
 }

@@ -3,3 +3,4 @@
 # not a Rust source-code literal. The Yandere adapter owns this endpoint;
 # application settings do not expose or override it.
 api_url = "https://yande.re/post.json"
+browser_url = "https://yande.re/post"
