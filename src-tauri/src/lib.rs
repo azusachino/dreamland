@@ -12,7 +12,7 @@ use dreamland_runtime::{
 };
 use dreamland_sites::SiteDescriptor;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 /// Posts from the most recent typed query, keyed by site and post id.
 /// Downloads resolve their URL from here rather than trusting a client-supplied
@@ -128,15 +128,16 @@ fn detect_proxy() -> dreamland_runtime::ProxyDetection {
     dreamland_runtime::detect_proxy()
 }
 
-#[tauri::command]
-fn begin_auth(app: AppHandle) -> Result<(), String> {
+fn yande_auth_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
     if let Some(window) = app.get_webview_window("yande-auth") {
-        window.show().map_err(|error| error.to_string())?;
-        window.set_focus().map_err(|error| error.to_string())?;
-        return Ok(());
+        if visible {
+            window.show().map_err(|error| error.to_string())?;
+            window.set_focus().map_err(|error| error.to_string())?;
+        }
+        return Ok(window);
     }
     WebviewWindowBuilder::new(
-        &app,
+        app,
         "yande-auth",
         WebviewUrl::External(
             "https://yande.re/user/login"
@@ -146,9 +147,14 @@ fn begin_auth(app: AppHandle) -> Result<(), String> {
     )
     .title("Sign in to yandere")
     .inner_size(480.0, 760.0)
+    .visible(visible)
     .build()
-    .map(|_| ())
     .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn begin_auth(app: AppHandle) -> Result<(), String> {
+    yande_auth_window(&app, true).map(|_| ())
 }
 
 #[tauri::command]
@@ -243,12 +249,7 @@ fn open_similar_search(app: AppHandle, site_id: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn auth_status(app: AppHandle, state: State<'_, RuntimeState>) -> Result<AuthStatus, String> {
-    let Some(window) = app.get_webview_window("yande-auth") else {
-        return Ok(AuthStatus {
-            authenticated: false,
-            username: None,
-        });
-    };
+    let window = yande_auth_window(&app, false)?;
     let cookies = window
         .cookies_for_url(
             "https://yande.re/"

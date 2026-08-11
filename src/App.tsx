@@ -2007,7 +2007,7 @@ function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favor
         <>
           <Alert className="auth-guide" severity="info">
             <strong>sign in in the yande.re window</strong>
-            <p>Dreamland never asks for your password here. Complete the site’s own sign-in, keep the window open, then check the session.</p>
+            <p>Dreamland never asks for your password here. Complete the site’s own sign-in, then check the session. Your sign-in cookie is kept locally for the next launch.</p>
           </Alert>
           {authFlowStarted && <p className="account-status" role="status">sign-in window is open. After you finish, choose “check login”.</p>}
           <div className="account-actions">
