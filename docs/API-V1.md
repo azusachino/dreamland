@@ -1513,7 +1513,7 @@ the operation_id and preserves retryable separately from the safe message.
 | TagSuggestionCapability | Live Yande `/tag.json` with name/count/type/ambiguity metadata; the pinned MoeLoaderP adapter's `/tag.xml` behavior is source evidence, not the v1 endpoint contract. |
 | PostLookupCapability | ID-filtered post query, subject to verified response behavior. |
 | RemoteFavoriteCapability | Authenticated POST /post/vote.json; Yande maps favorite add/remove to score 3/2. |
-| RemoteCollectionCapability | Public pools and ordered pool posts. |
+| RemoteCollectionCapability | Searchable public pool metadata from `/pool.json?query=…` with ordered pool posts. |
 | RemoteFavoriteListCapability | Not advertised until authorized current-user favorite-list semantics are verified. |
 | CollectionDownloadCapability | Yande pool ZIP is exposed at `/pool/zip/:id`; the public pool page links it, but the observed request redirects anonymous users to login. |
 | SiteAuth | Browser session at /user/login, user_id cookie detection, secret-store-backed session. |
@@ -1527,7 +1527,7 @@ the operation_id and preserves retryable separately from the safe message.
 | Pagination | Page-numbered `post.json` requests with the requested limit. |
 | TagSuggestionCapability | The same Moebooru tag JSON shape, normalized at the adapter boundary. |
 | PostLookupCapability | Exact numeric IDs are resolved with the safe `.net` API's `id:<post-id>` tag expression and verified against the returned post ID. |
-| RemoteCollectionCapability | Public pool metadata from `/pool.json` and ordered safe-visible posts from `/pool/show.json?id=…`; the API may return the complete visible pool in one response. |
+| RemoteCollectionCapability | Searchable public pool metadata from `/pool.json?query=…` with page/limit pagination, plus ordered safe-visible posts from `/pool/show.json?id=…`; the API may return the complete visible pool in one response. |
 | Content policy | Safe only for the initial release; explicit-host access is not advertised because `.com` API requests are bot-protection sensitive. |
 | Media | Preview, sample, full URL, dimensions, rating, score, author, source, checksum, and normalized timestamps where present. |
 | Auth/favorites/pool ZIP | Not advertised in this slice; browser-session auth and remote favorites remain unverified, and Konachan does not expose a ZIP download capability. |

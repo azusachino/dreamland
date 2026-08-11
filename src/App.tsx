@@ -336,6 +336,8 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
   const [selectedPool, setSelectedPool] = useState<Pool | null>(null);
+  const [poolSearchDraft, setPoolSearchDraft] = useState("");
+  const [submittedPoolSearch, setSubmittedPoolSearch] = useState("");
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
@@ -465,9 +467,9 @@ function App() {
     staleTime: 30_000,
   });
   const poolsQuery = useInfiniteQuery({
-    queryKey: ["pools", activeSiteId],
+    queryKey: ["pools", activeSiteId, submittedPoolSearch],
     initialPageParam: 1,
-    queryFn: ({ pageParam }) => listPools(activeSiteId, pageParam, 30),
+    queryFn: ({ pageParam }) => listPools(activeSiteId, submittedPoolSearch, pageParam, 30),
     getNextPageParam: (lastPage, pages) => lastPage.has_next ? pages.length + 1 : undefined,
     enabled: view === "pools" && selectedPool === null && activeSite?.capabilities.collections === true,
   });
@@ -618,9 +620,22 @@ function App() {
     setSelectedSavedQueryId(null);
     setEditingSavedQueryId(null);
     setSelectedPool(null);
+    setPoolSearchDraft("");
+    setSubmittedPoolSearch("");
     setSelectedPost(null);
     setSelectedPostIds(new Set());
     setSelectionMode(false);
+  }
+
+  function submitPoolSearch(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    setSelectedPool(null);
+    setSubmittedPoolSearch(poolSearchDraft.trim());
+  }
+
+  function clearPoolSearch() {
+    setPoolSearchDraft("");
+    setSubmittedPoolSearch("");
   }
 
   function selectAdjacentPost(offset: -1 | 1) {
@@ -1196,6 +1211,10 @@ function App() {
               downloadingId={downloadingId}
               siteName={activeSite?.name ?? "site"}
               collectionDownloads={activeSite?.capabilities.collection_downloads === true}
+              poolSearch={poolSearchDraft}
+              onPoolSearchChange={setPoolSearchDraft}
+              onSubmitPoolSearch={submitPoolSearch}
+              onClearPoolSearch={clearPoolSearch}
             />
           ) : (
             <AccountPanel
@@ -1781,9 +1800,13 @@ interface PoolPanelProps {
   downloadingId: string | null;
   siteName: string;
   collectionDownloads: boolean;
+  poolSearch: string;
+  onPoolSearchChange: (value: string) => void;
+  onSubmitPoolSearch: () => void;
+  onClearPoolSearch: () => void;
 }
 
-function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool, posts, postsLoading, postsError, postsHasNext, onRetryPools, onRetryPosts, onLoadMorePools, onLoadMorePosts, onBack, onBrowse, onDownloadZip, onSelectPost, onDownload, onTag, downloadingId, siteName, collectionDownloads }: PoolPanelProps) {
+function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool, posts, postsLoading, postsError, postsHasNext, onRetryPools, onRetryPosts, onLoadMorePools, onLoadMorePosts, onBack, onBrowse, onDownloadZip, onSelectPost, onDownload, onTag, downloadingId, siteName, collectionDownloads, poolSearch, onPoolSearchChange, onSubmitPoolSearch, onClearPoolSearch }: PoolPanelProps) {
   if (selectedPool) {
     return (
       <section className="workspace-panel shell-surface" aria-label={`${selectedPool.name} pool`}>
@@ -1823,6 +1846,11 @@ function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool
       <div className="inspector-heading">
         <div><p className="eyebrow">{siteName} collections</p><h2>pools</h2></div>
       </div>
+      <form className="pool-search" role="search" onSubmit={(event) => { event.preventDefault(); onSubmitPoolSearch(); }}>
+        <input aria-label="search pools" placeholder="search pools…" value={poolSearch} onChange={(event) => onPoolSearchChange(event.target.value)} />
+        <button className="button button-primary" type="submit">search</button>
+        {poolSearch && <button className="button button-text" type="button" onClick={onClearPoolSearch}>clear</button>}
+      </form>
       <p className="helper-text">public pools group ordered posts from {siteName}. open a pool to browse its ordered posts{collectionDownloads ? " or request its authenticated zip archive" : ""}.</p>
       {poolsLoading && pools.length === 0 && <p className="loading-line" role="status"><span /> loading pools…</p>}
       {poolsError && <div className="panel-error" role="alert"><p>{poolsError}</p><button className="button button-outlined" type="button" onClick={onRetryPools}>try again</button></div>}

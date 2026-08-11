@@ -15,6 +15,7 @@ that Cloudflare bot protection has been solved.
 | K-06 | The app exposes `konachan` in the site selector and provides an explicit `open site` action for the site-owned `https://konachan.com/post` browser route; feed errors offer the same recovery | Pass; static/runtime command coverage, live visual acceptance pending |
 | K-07 | Public pool metadata uses `/pool.json`; ordered safe-visible posts use `/pool/show.json?id=…`; the app exposes browsing but not pool ZIP downloads | Pass; live response shape and adapter fixtures verified |
 | K-08 | Selecting a Konachan result hydrates the exact post through the safe API's `id:<post-id>` query, rejects non-numeric IDs, and keeps the feed snapshot visible on lookup failure | Pass; live `id:407162` response and adapter/runtime tests verified |
+| K-09 | Pool browsing accepts a title query and resets page-number pagination for a new search; the UI exposes `search pools` and `clear` | Pass; live `Kona_Garage` query returned one match on page 1 and none on page 2; shared transport test and typecheck pass |
 
 ## Not advertised yet
 

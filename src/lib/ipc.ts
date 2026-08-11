@@ -226,8 +226,8 @@ export function listSites(): Promise<SiteDescriptor[]> {
   return invoke<SiteDescriptor[]>("list_sites");
 }
 
-export function listPools(siteId: string, page = 1, pageSize = 20): Promise<PoolPage> {
-  return invoke<PoolPage>("list_pools", { siteId, page, pageSize });
+export function listPools(siteId: string, query = "", page = 1, pageSize = 20): Promise<PoolPage> {
+  return invoke<PoolPage>("list_pools", { siteId, query, page, pageSize });
 }
 
 export function queryPoolPosts(siteId: string, poolId: string, page = 1, pageSize = 20): Promise<SitePage> {

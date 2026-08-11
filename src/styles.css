@@ -877,6 +877,28 @@ select:focus-visible {
   gap: 0.65rem;
 }
 
+.pool-search {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.pool-search input {
+  background: var(--surface-container);
+  border: 1px solid var(--outline);
+  border-radius: 0.65rem;
+  min-height: 2.5rem;
+  min-width: 0;
+  padding: 0.55rem 0.7rem;
+  width: 100%;
+}
+
+.pool-search input:focus {
+  border-color: var(--primary);
+  outline: 0.18rem solid rgb(183 203 208 / 13%);
+  outline-offset: 0.08rem;
+}
+
 .load-more,
 .load-more-end {
   align-items: center;

@@ -154,8 +154,9 @@ Read-only probes on 2026-08-10 found:
   `order:score` plus a date expression, and its normal page source provides
   infinite scroll within that selected window;
 - `GET /pool.json` returns public pool records with ID, name, date, owner,
-  visibility, and post count; `tags=pool:<id>` returns the pool's posts with
-  normal page semantics;
+  visibility, and post count; `query` filters by title and `page`/`limit`
+  paginate the result; `tags=pool:<id>` returns the pool's posts with normal
+  page semantics;
 - the public pool page links to `/pool/zip/<id>` for a ZIP archive; an
   unauthenticated request currently redirects to the login page;
 - post responses expose preview, sample, JPEG, and original URLs with separate

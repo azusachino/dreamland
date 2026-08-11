@@ -58,6 +58,7 @@ pub async fn suggest_tags(
 
 pub async fn list_pools(
     site_id: &str,
+    query: &str,
     page: u32,
     page_size: u16,
     network: &NetworkPolicy,
@@ -65,11 +66,13 @@ pub async fn list_pools(
     match site_id {
         dreamland_site_yandere::SITE_ID => {
             let config = dreamland_site_yandere::default_config();
-            dreamland_site_yandere::fetch_pools(&config.api_url, page, page_size, network).await
+            dreamland_site_yandere::fetch_pools(&config.api_url, query, page, page_size, network)
+                .await
         }
         dreamland_site_konachan::SITE_ID => {
             let config = dreamland_site_konachan::default_config();
-            dreamland_site_konachan::fetch_pools(&config.api_url, page, page_size, network).await
+            dreamland_site_konachan::fetch_pools(&config.api_url, query, page, page_size, network)
+                .await
         }
         _ => bail!("site '{site_id}' has no active pool adapter"),
     }

@@ -526,6 +526,14 @@ pub async fn fetch_bytes(
     get_bytes(&client, endpoint, params, network, site_name).await
 }
 
+pub fn pool_query_params(query: &str, page: u32, page_size: u16) -> Vec<(&'static str, String)> {
+    let mut params = vec![("page", page.to_string()), ("limit", page_size.to_string())];
+    if !query.trim().is_empty() {
+        params.push(("query", query.trim().to_owned()));
+    }
+    params
+}
+
 fn map_tag_category(category: Option<u8>) -> Option<TagCategory> {
     category.map(|value| match value {
         0 => TagCategory::General,
@@ -660,5 +668,21 @@ mod tests {
 
         assert_eq!(tags[0].category, Some(TagCategory::Artist));
         assert_eq!(tags[0].post_count, Some(12));
+    }
+
+    #[test]
+    fn pool_queries_preserve_title_search_and_pagination() {
+        assert_eq!(
+            pool_query_params(" Kona_Garage ", 2, 20),
+            vec![
+                ("page", "2".to_owned()),
+                ("limit", "20".to_owned()),
+                ("query", "Kona_Garage".to_owned()),
+            ]
+        );
+        assert_eq!(
+            pool_query_params("  ", 1, 20),
+            vec![("page", "1".to_owned()), ("limit", "20".to_owned())]
+        );
     }
 }

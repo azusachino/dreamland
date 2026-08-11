@@ -141,6 +141,7 @@ pub fn decode_pools(body: &[u8]) -> Result<Vec<Pool>> {
 
 pub async fn fetch_pools(
     api_url: &str,
+    query: &str,
     page: u32,
     page_size: u16,
     network: &NetworkPolicy,
@@ -151,7 +152,7 @@ pub async fn fetch_pools(
     let endpoint = pool_endpoint(api_url)?;
     let client = build_client(network)?;
     let page_size = page_size.min(MAX_POOL_PAGE_SIZE);
-    let params = [("page", page.to_string()), ("limit", page_size.to_string())];
+    let params = dreamland_moe::pool_query_params(query, page, page_size);
     let pools = decode_pools(&get_bytes(&client, &endpoint, &params, network).await?)?;
     Ok(PoolPage {
         has_next: pools.len() == usize::from(page_size),
