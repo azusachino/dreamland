@@ -4,11 +4,12 @@ Status: design gate, 2026-08-11. These stories describe the first useful
 desktop workflow. They are the UX acceptance layer above [API v1](API-V1.md)
 and the [Yande release gate](YANDE-RELEASE-GATE.md).
 
-"v1" here means the complete Yande site-profile design -- what the site
-adapter should eventually support end to end. It is not the same scope as
-[ROADMAP.md](ROADMAP.md)'s "Phase 1 foundation" milestone. Search (US-Y-04)
-and remote favorites (US-Y-09/US-Y-10) are specified here as part of that
-full profile, but ship in ROADMAP's Phase 2/3, not Phase 1 -- see
+"v1" here is the same milestone as [ROADMAP.md](ROADMAP.md)'s "Proposed
+0.1.0 gate" and [YANDE-RELEASE-GATE.md](YANDE-RELEASE-GATE.md)'s "the Yande
+release" -- one gate, not three. Search (US-Y-04) and remote favorites
+(US-Y-09/US-Y-10) ship as part of v0.1.0, scoped to Yande; ROADMAP's Phase
+2/3 are for generalizing them to a second site and for local
+tags/notes/batch workflows, which remain deferred -- see
 [DECISIONS.md](DECISIONS.md#pending-gates).
 
 ## Product boundary

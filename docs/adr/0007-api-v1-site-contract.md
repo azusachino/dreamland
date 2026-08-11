@@ -22,7 +22,10 @@ models. A remote favorite is not a local bookmark.
 ## Proposal under review
 
 The current proposal is one required post-query capability and several
-optional capabilities:
+optional capabilities. This list is reconciled with
+[ARCHITECTURE-V1.md](../ARCHITECTURE-V1.md)'s feature-to-flow bindings, which
+already required the last three entries for Y-07/Y-09 before this ADR listed
+them:
 
 - `PostQueryCapability` handles explicit browse, site query-expression
   search, and Yande’s day/week/month popular modes. Page/limit pagination is
@@ -34,6 +37,12 @@ optional capabilities:
   site-scoped post reference.
 - `SiteAuth` is optional; Yande uses a browser session and `user_id`
   cookie rather than a generic username/password request.
+- `RemoteFavoriteListCapability` is optional and reads the authenticated
+  current user's remote favorites, distinct from setting favorite state.
+- `RemoteCollectionCapability` is optional and exposes pool metadata and
+  ordered pool posts.
+- `CollectionDownloadCapability` is optional and resolves a pool's archive
+  (ZIP) download target.
 
 The base `SiteAdapter` owns identity and exposes the required and optional
 capability trait objects. The registry validates that descriptor capability
@@ -58,7 +67,8 @@ site-wide matrix review.
 - Yande can be implemented without pretending that its tag grammar is
   portable full-text search.
 - The first site remains complete enough for browse, safe/explicit
-  filtering, tag suggestions, lookup, and direct downloads.
+  filtering, tag suggestions, lookup, direct downloads, the remote favorite
+  list, and pool browse/ZIP.
 - A future cursor-based or authenticated site requires a deliberate
   contract extension instead of hidden state or fake optional methods.
 - Local product features can evolve without coupling storage to site DTOs.

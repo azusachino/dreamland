@@ -44,61 +44,70 @@ Reference rationale: [REFERENCE-LEARNINGS.md](REFERENCE-LEARNINGS.md).
 
 ## Proposed 0.1.0 gate
 
-This is a development milestone proposal, not a release commitment. Before
-calling the foundation complete, Dreamland should have:
+This is the same milestone as [YANDE-RELEASE-GATE.md](YANDE-RELEASE-GATE.md)'s
+"the Yande release" -- not a narrower technical-only foundation that precedes
+it. Before calling v0.1.0 complete, Dreamland should have:
 
 - an approved and implemented API/runtime design v1;
 - a site registry and one complete `yande.re` adapter behind it;
 - site-neutral browse, pagination, settings, validation, and download
   commands;
+- Yande tag search and tag suggestions (Y-02/Y-03);
+- Yande day/week/month popular browsing (Y-04);
+- browser-session login and remote favorite add/remove/list (Y-05/Y-06/Y-07);
+- Yande pool browse and pool ZIP download (Y-09);
 - TOML runtime configuration with the legacy JSON fallback;
 - Rust tests for site normalization, command serialization, configuration,
   and safe downloads;
-- passing daily checks on macOS and a native Windows validation run.
+- passing daily checks on macOS and a native Windows validation run;
+- every G-01 through G-10 gate in YANDE-RELEASE-GATE.md at `PASS` or an
+  explicitly approved non-live exception.
 
-Search, favorites, local tags, and batch downloads remain subsequent roadmap
-phases. They are not prerequisites for this foundation milestone, and no
-release packaging is implied by the `0.1.0` label.
+Local tags/notes, multi-site search and favorites generalization, and batch
+downloads remain subsequent roadmap phases. They are not prerequisites for
+this milestone, and no release packaging is implied by the `0.1.0` label.
 
 ## Phase 1 — site and runtime foundation
 
-Blocked until [API and runtime design v1](API-V1.md) is approved. Then preserve
-and formalize the existing API/runtime behavior before adding product features:
+Blocked until [API and runtime design v1](API-V1.md) is approved. This phase
+delivers the full Yande release scope above (Y-01 through Y-09), not just
+registry plumbing:
 
 - implement the approved site contract and registry;
-- keep `yande.re` as one complete site adapter;
+- implement `yande.re` as one complete site adapter, including tag search,
+  popular browsing, auth, remote favorites, and pool/ZIP;
 - represent site capabilities explicitly, especially pagination and search,
   instead of assuming every site behaves like yande.re;
 - move user configuration from JSON to TOML with a legacy JSON fallback;
 - keep site requests, validation, persistence, and downloads in Rust;
 - expose site-neutral commands to React.
 
-## Phase 2 — discovery
+## Phase 2 — discovery, generalized
 
-Already specified in [USER-STORIES-V1.md](USER-STORIES-V1.md) (US-Y-04) as
-part of the full Yande site profile; this phase is when it ships, not when
-it gets designed.
+Yande's own tag search and popular browsing ship in v0.1.0 (US-Y-03/04, part
+of Phase 1 above). This phase is about generalizing that to a second site,
+not introducing search for the first time:
 
-Add the first user-facing product expansion:
-
-- site-aware search;
-- tag browsing and tag-based filtering;
-- clear loading, empty, site-error, and unavailable-capability states;
-- preserve pagination semantics per site.
+- a second site's search/tag capabilities, exposed through the same
+  site-neutral commands;
+- clear loading, empty, site-error, and unavailable-capability states across
+  more than one site;
+- preserve pagination semantics per site, including sites without Yande's
+  fixed-window popular behavior.
 
 Search and tags must follow site capabilities. The UI should not present a
 search control for a site that cannot implement it.
 
-## Phase 3 — personal organization
+## Phase 3 — personal organization, generalized
 
-Already specified in [USER-STORIES-V1.md](USER-STORIES-V1.md) (US-Y-09/10)
-as remote favorite state on the active site, not a local bookmark; this
-phase is when it ships, not when it gets designed.
+Yande's own remote favorites ship in v0.1.0 (US-Y-09/10, part of Phase 1
+above). This phase is about generalizing favorites across sites and adding
+local organization on top, not introducing favorites for the first time:
 
-- favorite posts across sites;
-- view and filter favorites;
-- local tags/notes attached to favorites where the product model supports it;
-- stable site/post identifiers so favorites survive site refreshes.
+- favorite posts across more than one site, with stable per-site identifiers
+  so favorites survive site refreshes;
+- view and filter favorites across sites;
+- local tags/notes attached to favorites where the product model supports it.
 
 Before implementation, choose the storage model for application data. TOML is
 not the default for mutable favorites and tags; the options need to be weighed
