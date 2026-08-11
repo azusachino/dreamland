@@ -944,50 +944,6 @@ function App() {
               <h1>Dreamland</h1>
             </div>
           </div>
-          <div className="site-picker" ref={sitePicker}>
-            <span>browse site</span>
-            <div className="site-picker-controls">
-              <div className="site-menu">
-                <button
-                  className="site-menu-trigger"
-                  type="button"
-                  aria-label="choose image board site"
-                  aria-expanded={siteMenuOpen}
-                  onClick={() => setSiteMenuOpen((current) => !current)}
-                >
-                  <span>{activeSite?.name ?? "choose site"}</span>
-                  <Icon name="chevron" />
-                </button>
-                {siteMenuOpen && <div className="site-menu-popover" role="menu">
-                {(sitesQuery.data ?? []).map((site) => (
-                  <button
-                    key={site.id}
-                    className={`site-menu-option${site.id === activeSiteId ? " active" : ""}`}
-                    type="button"
-                    role="menuitem"
-                    disabled={!site.capabilities.browse}
-                    onClick={() => selectSite(site)}
-                    title={site.capabilities.browse ? `browse ${site.name}` : `${site.name} coming later`}
-                  >
-                    <span>{site.name}</span>
-                    <small>{site.capabilities.browse ? "ready" : "later"}</small>
-                  </button>
-                ))}
-                <button
-                  className="site-menu-open"
-                  type="button"
-                  disabled={!activeSite}
-                  onClick={() => {
-                    setSiteMenuOpen(false);
-                    void handleOpenSite();
-                  }}
-                >
-                  open current site
-                </button>
-                </div>}
-              </div>
-            </div>
-          </div>
         </div>
         <form className="search-bar" onSubmit={submitSearch} role="search">
           <span className="search-icon"><Icon name="search" /></span>
@@ -1037,6 +993,50 @@ function App() {
           )}
         </form>
         <div className="header-actions">
+          <div className="site-picker" ref={sitePicker}>
+            <span>browse site</span>
+            <div className="site-picker-controls">
+              <div className="site-menu">
+                <button
+                  className="site-menu-trigger"
+                  type="button"
+                  aria-label="choose image board site"
+                  aria-expanded={siteMenuOpen}
+                  onClick={() => setSiteMenuOpen((current) => !current)}
+                >
+                  <span>{activeSite?.name ?? "choose site"}</span>
+                  <Icon name="chevron" />
+                </button>
+                {siteMenuOpen && <div className="site-menu-popover" role="menu">
+                  {(sitesQuery.data ?? []).map((site) => (
+                    <button
+                      key={site.id}
+                      className={`site-menu-option${site.id === activeSiteId ? " active" : ""}`}
+                      type="button"
+                      role="menuitem"
+                      disabled={!site.capabilities.browse}
+                      onClick={() => selectSite(site)}
+                      title={site.capabilities.browse ? `browse ${site.name}` : `${site.name} coming later`}
+                    >
+                      <span>{site.name}</span>
+                      <small>{site.capabilities.browse ? "ready" : "later"}</small>
+                    </button>
+                  ))}
+                  <button
+                    className="site-menu-open"
+                    type="button"
+                    disabled={!activeSite}
+                    onClick={() => {
+                      setSiteMenuOpen(false);
+                      void handleOpenSite();
+                    }}
+                  >
+                    open current site
+                  </button>
+                </div>}
+              </div>
+            </div>
+          </div>
           <button
             className="icon-button"
             type="button"

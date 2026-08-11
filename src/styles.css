@@ -130,8 +130,7 @@ select:focus-visible {
 }
 
 .header-identity {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  display: flex;
   gap: clamp(0.75rem, 2vw, 1.5rem);
   min-width: 0;
 }
@@ -1475,7 +1474,6 @@ select:focus-visible {
 
   .header-identity {
     gap: 0.7rem;
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .site-picker > span {
