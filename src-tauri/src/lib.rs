@@ -206,6 +206,37 @@ fn open_post(app: AppHandle, site_id: String, post_id: String) -> Result<(), Str
 }
 
 #[tauri::command]
+fn open_similar_search(app: AppHandle, site_id: String) -> Result<(), String> {
+    let site = dreamland_sites::descriptors()
+        .into_iter()
+        .find(|site| site.id.as_str() == site_id)
+        .ok_or_else(|| format!("site '{site_id}' is not registered"))?;
+    if !site.capabilities.similar_search {
+        return Err(format!("site '{site_id}' does not support similar search"));
+    }
+    let url = dreamland_sites::browser_similar_url(&site_id).map_err(|error| error.to_string())?;
+    let label = format!("site-{site_id}-similar");
+    if let Some(window) = app.get_webview_window(&label) {
+        window.show().map_err(|error| error.to_string())?;
+        window.set_focus().map_err(|error| error.to_string())?;
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(
+        &app,
+        &label,
+        WebviewUrl::External(
+            url.parse()
+                .map_err(|error| format!("invalid similar-search URL: {error}"))?,
+        ),
+    )
+    .title(format!("Dreamland · {site_id} similar search"))
+    .inner_size(1100.0, 800.0)
+    .build()
+    .map(|_| ())
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 async fn auth_status(app: AppHandle, state: State<'_, RuntimeState>) -> Result<AuthStatus, String> {
     let Some(window) = app.get_webview_window("yande-auth") else {
         return Ok(AuthStatus {
@@ -785,6 +816,7 @@ pub fn run() {
             begin_auth,
             open_site,
             open_post,
+            open_similar_search,
             auth_status,
             sign_out,
             list_pools,

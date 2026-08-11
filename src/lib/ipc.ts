@@ -38,6 +38,7 @@ export interface SiteCapabilities {
   related_tags: boolean;
   tag_query: boolean;
   post_lookup: boolean;
+  similar_search: boolean;
   page_numbers: boolean;
   cursors: boolean;
   multiple_download_variants: boolean;
@@ -222,6 +223,10 @@ export function openSite(siteId: string): Promise<void> {
 
 export function openPost(siteId: string, postId: string): Promise<void> {
   return invoke<void>("open_post", { siteId, postId });
+}
+
+export function openSimilarSearch(siteId: string): Promise<void> {
+  return invoke<void>("open_similar_search", { siteId });
 }
 
 export function authStatus(): Promise<AuthStatus> {

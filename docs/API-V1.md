@@ -1553,6 +1553,7 @@ the operation_id and preserves retryable separately from the safe message.
 | RelatedTagCapability | Explicit post-detail related-tag lookup through `/tag/related.json`; tuple counts are normalized and resulting searches still use the safe content policy. |
 | PostLookupCapability | Exact numeric IDs are resolved with the safe `.net` API's `id:<post-id>` tag expression and verified against the returned post ID. |
 | Browser post route | The detail action opens the site-owned `https://konachan.com/post/show/<id>` page; this is a browser recovery route, not a safe API request. |
+| Similar search | The detail action opens the site-owned `https://konachan.com/post/similar` form; no direct API or query parameter is assumed. |
 | RemoteCollectionCapability | Searchable public pool metadata from `/pool.json?query=…` with page/limit pagination, plus ordered safe-visible posts from `/pool/show.json?id=…`; the API may return the complete visible pool in one response. |
 | Content policy | Safe only for the initial release; explicit-host access is not advertised because `.com` API requests are bot-protection sensitive. |
 | Media | Preview, sample, full URL, dimensions, rating, score, author, source, checksum, and normalized timestamps where present. |

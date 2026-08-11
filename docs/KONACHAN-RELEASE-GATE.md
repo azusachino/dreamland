@@ -20,6 +20,7 @@ that Cloudflare bot protection has been solved.
 | K-11 | Post detail author identity is an exact `user:<name>` search action, kept distinct from artwork tag chips | Pass; live Konachan `otaku_emmy` and Yande `moonian` queries returned matching posts; TypeScript and full gate pass |
 | K-12 | Post detail parent/child state exposes exact `id:<parent-id>` and `parent:<post-id>` searches, returning to the result view | Pass; live Konachan `id:407153` and `parent:407153` queries returned the observed parent/child relationship; TypeScript and full gate pass |
 | K-13 | Post detail can explicitly load related tags from the site endpoint and use them as safe-policy searches | Pass; live `tag/related.json?tags=cirno` returned related tuples; decoder normalizes string/numeric counts and focused tests pass |
+| K-14 | Post detail exposes the site-owned similar-image search form without pretending it is a JSON API or pre-populating an unverified parameter | Pass; live route is observed at `/post/similar`; adapter, registry, Tauri command, and frontend wiring are covered |
 
 ## Not advertised yet
 

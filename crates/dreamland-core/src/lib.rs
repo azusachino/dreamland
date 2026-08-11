@@ -27,6 +27,7 @@ pub struct SiteCapabilities {
     pub related_tags: bool,
     pub tag_query: bool,
     pub post_lookup: bool,
+    pub similar_search: bool,
     pub page_numbers: bool,
     pub cursors: bool,
     pub multiple_download_variants: bool,

@@ -37,6 +37,7 @@ pub fn descriptor() -> SiteDescriptor {
             related_tags: true,
             tag_query: true,
             post_lookup: false,
+            similar_search: false,
             page_numbers: true,
             cursors: false,
             multiple_download_variants: true,

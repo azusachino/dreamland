@@ -23,6 +23,7 @@ import {
   openDownload,
   openPost,
   openSite,
+  openSimilarSearch,
   relatedTags,
   retryDownload,
   loadConfig,
@@ -908,6 +909,15 @@ function App() {
     }
   }
 
+  async function handleOpenSimilarSearch() {
+    setError("");
+    try {
+      await openSimilarSearch(activeSiteId);
+    } catch (reason) {
+      setError(`could not open ${activeSite?.name ?? "site"} similar search: ${errorMessage(reason)}`);
+    }
+  }
+
   return (
     <div className="app">
       <header className="app-header shell-surface">
@@ -1279,6 +1289,8 @@ function App() {
             onPrevious={() => selectAdjacentPost(-1)}
             onNext={() => selectAdjacentPost(1)}
             onOpenPost={handleOpenPost}
+            onOpenSimilarSearch={handleOpenSimilarSearch}
+            similarSearchSupported={activeSite?.capabilities.similar_search === true}
             onDownload={handleDownload}
             favorited={favoritePostIds.has(selectedPost.post.id)}
             onFavorite={handleFavorite}
@@ -1601,6 +1613,8 @@ interface PostInspectorProps {
   onPrevious: () => void;
   onNext: () => void;
   onOpenPost: (post: Post) => Promise<void>;
+  onOpenSimilarSearch: () => Promise<void>;
+  similarSearchSupported: boolean;
   onDownload: (post: Post) => Promise<void>;
   onFavorite: (post: Post) => Promise<void>;
   onTag: (tag: string) => void;
@@ -1613,7 +1627,7 @@ interface PostInspectorProps {
   downloadVariant: MediaVariant;
 }
 
-function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onOpenPost, onDownload, onFavorite, onTag, relatedTagsSupported, relatedTagsOpen, relatedTags, relatedTagsLoading, relatedTagsError, onToggleRelatedTags, downloadVariant }: PostInspectorProps) {
+function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onOpenPost, onOpenSimilarSearch, similarSearchSupported, onDownload, onFavorite, onTag, relatedTagsSupported, relatedTagsOpen, relatedTags, relatedTagsLoading, relatedTagsError, onToggleRelatedTags, downloadVariant }: PostInspectorProps) {
   const originalUrl = post.full_url ?? post.sample_url ?? post.preview_url;
   return (
     <aside className="detail-panel shell-surface" aria-label="post details">
@@ -1636,6 +1650,7 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
         <span>{siteName} post #{post.post.id}</span>
         {post.author && <button className="button button-text detail-author-link" type="button" title="search posts by this author" onClick={() => onTag(`user:${post.author}`)}>author: {post.author}</button>}
         <button className="button button-outlined detail-post-link" type="button" onClick={() => void onOpenPost(post)}>open {siteName} post</button>
+        {similarSearchSupported && <button className="button button-outlined detail-post-link" type="button" onClick={() => void onOpenSimilarSearch()}>open similar search</button>}
         {originalUrl && <a href={originalUrl} target="_blank" rel="noreferrer">open original</a>}
         {post.source && <a href={post.source} target="_blank" rel="noreferrer">open source</a>}
       </div>

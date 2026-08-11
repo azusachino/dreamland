@@ -33,6 +33,7 @@ pub fn descriptor() -> SiteDescriptor {
             related_tags: true,
             tag_query: true,
             post_lookup: true,
+            similar_search: true,
             page_numbers: true,
             cursors: false,
             multiple_download_variants: true,
@@ -148,6 +149,13 @@ pub fn browser_post_url(browser_url: &str, post_id: &str) -> Result<String> {
     validate_post_id(post_id)?;
     let mut url = reqwest::Url::parse(browser_url).context("parse Konachan browser URL")?;
     url.set_path(&format!("/post/show/{post_id}"));
+    url.set_query(None);
+    Ok(url.to_string())
+}
+
+pub fn browser_similar_url(browser_url: &str) -> Result<String> {
+    let mut url = reqwest::Url::parse(browser_url).context("parse Konachan browser URL")?;
+    url.set_path("/post/similar");
     url.set_query(None);
     Ok(url.to_string())
 }
@@ -333,6 +341,10 @@ mod tests {
         assert_eq!(
             browser_post_url(&config.browser_url, "407162").unwrap(),
             "https://konachan.com/post/show/407162"
+        );
+        assert_eq!(
+            browser_similar_url(&config.browser_url).unwrap(),
+            "https://konachan.com/post/similar"
         );
         assert!(browser_post_url(&config.browser_url, "not-a-number").is_err());
     }
