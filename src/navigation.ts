@@ -18,3 +18,15 @@ export function viewFromPath(pathname: string): ViewMode {
 export function pathForView(view: ViewMode): string {
   return viewPaths[view];
 }
+
+export function searchPath(expression: string): string {
+  return `/search?tags=${encodeURIComponent(expression)}`;
+}
+
+export function postPath(siteId: string, postId: string): string {
+  return `/posts/${encodeURIComponent(siteId)}/${encodeURIComponent(postId)}`;
+}
+
+export function isPostPath(pathname: string): boolean {
+  return /^\/posts\/[^/]+\/[^/]+$/.test(pathname);
+}

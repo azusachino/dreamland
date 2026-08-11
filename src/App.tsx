@@ -78,7 +78,7 @@ import { Icon } from "./components/Icon";
 import { AppLayout } from "./components/AppLayout";
 import { MainNavigation } from "./components/MainNavigation";
 import { AdvancedQueryDialog as PopupAdvancedQueryDialog, ErrorState as PopupErrorState, SettingsDialog as PopupSettingsDialog, Toast as PopupToast } from "./components/Popups";
-import { pathForView, viewFromPath } from "./navigation";
+import { isPostPath, pathForView, postPath, searchPath, viewFromPath } from "./navigation";
 
 import type { ViewMode } from "./view-model";
 type PopularPeriod = "Day" | "Week" | "Month";
@@ -375,9 +375,24 @@ function App() {
   const activeQuerySession = useRef<string | null>(null);
 
   useEffect(() => {
+    if (isPostPath(location.pathname)) return;
     const nextView = viewFromPath(location.pathname);
     setView((current) => current === nextView ? current : nextView);
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (location.pathname === "/search") {
+      const expression = new URLSearchParams(location.search).get("tags") ?? "";
+      setSearchDraft(expression);
+      setSubmittedSearch(expression);
+    }
+    if (isPostPath(location.pathname)) {
+      const routeState = location.state as { post?: Post } | null;
+      if (routeState?.post) setSelectedPost(routeState.post);
+    } else {
+      setSelectedPost(null);
+    }
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     if (themeMode === "system") document.documentElement.removeAttribute("data-theme");
@@ -634,13 +649,13 @@ function App() {
       if (target instanceof HTMLElement && ["INPUT", "SELECT", "TEXTAREA", "BUTTON"].includes(target.tagName)) return;
       if (event.key === "Escape") {
         event.preventDefault();
-        setSelectedPost(null);
+        closePostDetail();
       } else if (event.key === "ArrowLeft" && canGoPrevious) {
         event.preventDefault();
-        setSelectedPost(previewPosts[selectedPreviewIndex - 1] ?? null);
+        selectAdjacentPost(-1);
       } else if (event.key === "ArrowRight" && canGoNext) {
         event.preventDefault();
-        setSelectedPost(previewPosts[selectedPreviewIndex + 1] ?? null);
+        selectAdjacentPost(1);
       }
     }
     window.addEventListener("keydown", handlePreviewKey);
@@ -674,6 +689,16 @@ function App() {
     setSelectionMode(false);
   }
 
+  function openPostDetail(post: Post) {
+    setSelectedPost(post);
+    navigate(postPath(post.post.site, post.post.id), { state: { post } });
+  }
+
+  function closePostDetail() {
+    if (isPostPath(location.pathname)) navigate(-1);
+    else setSelectedPost(null);
+  }
+
   function submitPoolSearch(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
     setSelectedPool(null);
@@ -688,7 +713,10 @@ function App() {
   function selectAdjacentPost(offset: -1 | 1) {
     const nextIndex = selectedPreviewIndex + offset;
     const nextPost = previewPosts[nextIndex];
-    if (nextPost) setSelectedPost(nextPost);
+    if (nextPost) {
+      setSelectedPost(nextPost);
+      navigate(postPath(nextPost.post.site, nextPost.post.id), { replace: true, state: { post: nextPost } });
+    }
   }
 
   function changeView(nextView: ViewMode) {
@@ -714,6 +742,7 @@ function App() {
       return;
     }
     setError("");
+    navigate(searchPath(expression));
     setSubmittedSearch(expression);
     setSelectedSavedQueryId(null);
     setEditingSavedQueryId(null);
@@ -728,6 +757,7 @@ function App() {
     setSubmittedSearch(tag);
     setSelectedSavedQueryId(null);
     setEditingSavedQueryId(null);
+    navigate(searchPath(tag));
     setView("search");
     setSearchFocused(false);
     setSelectedPost(null);
@@ -740,6 +770,7 @@ function App() {
     setSubmittedSearch(expression);
     setSelectedSavedQueryId(editingSavedQueryId);
     setEditingSavedQueryId(null);
+    navigate(searchPath(expression));
     setView("search");
     setSearchFocused(false);
     setSelectedPostIds(new Set());
@@ -754,6 +785,7 @@ function App() {
     setEditingSavedQueryId(null);
     setSearchDraft(expression);
     setSubmittedSearch(expression);
+    navigate(searchPath(expression));
     setView("search");
     setError("");
   }
@@ -765,6 +797,7 @@ function App() {
     setEditingSavedQueryId(saved.id);
     setSearchDraft(expression);
     setSubmittedSearch(expression);
+    navigate(searchPath(expression));
     setView("search");
     setAdvancedSearchOpen(true);
     setError("");
@@ -811,7 +844,7 @@ function App() {
       await savedQueriesQuery.refetch();
       if (selectedSavedQueryId === saved.id) {
         setSelectedSavedQueryId(null);
-        setView("latest");
+        changeView("latest");
       }
     } catch (reason) {
       setError(`could not delete query: ${errorMessage(reason)}`);
@@ -861,7 +894,7 @@ function App() {
 
   async function handleFavorite(post: Post) {
     if (!authQuery.data?.authenticated) {
-      setView("favorites");
+      changeView("favorites");
       showToast("sign in required", "connect your yandere account before changing favorites.", "info");
       return;
     }
@@ -1124,7 +1157,7 @@ function App() {
                         selected={selectedPostIds.has(post.post.id)}
                         downloading={downloadingId === post.post.id}
                         onDownload={handleDownload}
-                        onSelect={setSelectedPost}
+                        onSelect={openPostDetail}
                         onToggleSelection={() => togglePostSelection(post.post.id)}
                         onTag={chooseTag}
                       />
@@ -1184,7 +1217,7 @@ function App() {
               onBack={() => setSelectedPool(null)}
               onBrowse={setSelectedPool}
               onDownloadZip={(pool) => void handlePoolZip(pool)}
-              onSelectPost={setSelectedPost}
+              onSelectPost={openPostDetail}
               onDownload={handleDownload}
               onTag={chooseTag}
               downloadingId={downloadingId}
@@ -1207,7 +1240,7 @@ function App() {
               onRefresh={() => void authQuery.refetch()}
               onRetry={() => void favoritesQuery.refetch()}
               onLoadMore={() => void favoritesQuery.fetchNextPage()}
-              onSelect={setSelectedPost}
+              onSelect={openPostDetail}
               onDownload={handleDownload}
               onTag={chooseTag}
               onSignOut={async () => {
@@ -1227,7 +1260,7 @@ function App() {
             downloading={downloadingId === selectedPost.post.id}
             siteName={activeSite?.name ?? selectedPost.post.site}
             favoriteSupported={activeSite?.capabilities.remote_favorites === true}
-            onClose={() => setSelectedPost(null)}
+            onClose={closePostDetail}
             canGoPrevious={canGoPrevious}
             canGoNext={canGoNext}
             previewPosition={selectedPreviewIndex >= 0 ? selectedPreviewIndex + 1 : undefined}
