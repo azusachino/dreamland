@@ -8,6 +8,7 @@ use dreamland_core::{
 use serde::{Deserialize, Serialize};
 
 pub const SITE_ID: &str = "yandere";
+const MAX_POOL_PAGE_SIZE: u16 = 20;
 const USER_AGENT: &str = concat!("Dreamland/", env!("CARGO_PKG_VERSION"));
 
 const DEFAULT_CONFIG_TOML: &str = include_str!("../config/default.toml");
@@ -261,6 +262,7 @@ pub async fn fetch_pools(
     }
     let endpoint = pool_endpoint(api_url)?;
     let client = build_client(network)?;
+    let page_size = page_size.min(MAX_POOL_PAGE_SIZE);
     let params = [("page", page.to_string()), ("limit", page_size.to_string())];
     let pools = decode_pools(&get_bytes(&client, &endpoint, &params, network).await?)?;
     Ok(PoolPage {
