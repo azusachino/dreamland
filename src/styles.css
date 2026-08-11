@@ -28,7 +28,7 @@
 }
 
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme]) {
     color-scheme: light;
     --ink: #1d282d;
     --ink-muted: #5a6970;
@@ -49,6 +49,28 @@
     --glass-surface: rgb(255 255 255 / 80%);
     --shadow: 0 1.2rem 3rem rgb(31 52 58 / 14%);
   }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --ink: #1d282d;
+  --ink-muted: #5a6970;
+  --ink-subtle: #78868c;
+  --surface: #f5f7f6;
+  --surface-raised: #ffffff;
+  --surface-container: #edf2f1;
+  --surface-high: #e1eae8;
+  --outline: #cbd5d5;
+  --outline-strong: #8b9a9d;
+  --primary: #52737b;
+  --primary-ink: #ffffff;
+  --secondary: #4f7468;
+  --tertiary: #9b5f56;
+  --success: #216b37;
+  --danger: #ba1a1a;
+  --glass-fallback: rgb(255 255 255 / 94%);
+  --glass-surface: rgb(255 255 255 / 80%);
+  --shadow: 0 1.2rem 3rem rgb(31 52 58 / 14%);
 }
 
 * {
@@ -700,7 +722,6 @@ select:focus-visible {
   border: 1px solid var(--outline-strong);
   border-left: 0.25rem solid var(--success);
   border-radius: var(--radius-md);
-  bottom: 1.5rem;
   box-shadow: var(--shadow);
   display: flex;
   gap: 1rem;
@@ -709,6 +730,7 @@ select:focus-visible {
   padding: 0.9rem 1rem;
   position: fixed;
   right: 1.5rem;
+  top: 1.5rem;
   width: 28rem;
   z-index: 30;
 }

@@ -55,6 +55,7 @@ import {
 type ViewMode = "latest" | "popular" | "search" | "downloads" | "pools" | "favorites";
 type PopularPeriod = "Day" | "Week" | "Month";
 type ToastTone = "success" | "info" | "error";
+type ThemeMode = "system" | "light" | "dark";
 type IconName = "clock" | "trend" | "download" | "book" | "heart" | "search" | "refresh" | "settings" | "close" | "back" | "forward" | "check" | "chevron";
 type QueryOrder = "" | "score" | "score_asc" | "id" | "id_desc" | "mpixels" | "mpixels_asc" | "landscape" | "portrait" | "vote" | "random";
 
@@ -93,6 +94,11 @@ interface ToastState {
 
 function errorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);
+}
+
+function readThemeMode(): ThemeMode {
+  const saved = window.localStorage.getItem("dreamland.theme");
+  return saved === "light" || saved === "dark" ? saved : "system";
 }
 
 function today(): string {
@@ -331,6 +337,7 @@ function App() {
   const queryClient = useQueryClient();
   const [view, setView] = useState<ViewMode>("latest");
   const [selectedSiteId, setSelectedSiteId] = useState(() => window.localStorage.getItem("dreamland.site") ?? "yandere");
+  const [themeMode, setThemeMode] = useState<ThemeMode>(readThemeMode);
   const [popularPeriod, setPopularPeriod] = useState<PopularPeriod>("Week");
   const [popularAnchorDate, setPopularAnchorDate] = useState(() => normalizePopularAnchor(today(), "Week"));
   const [selectedSavedQueryId, setSelectedSavedQueryId] = useState<string | null>(null);
@@ -359,6 +366,12 @@ function App() {
   const sitePicker = useRef<HTMLDivElement>(null);
   const downloadStatuses = useRef(new Map<string, DownloadStatus>());
   const activeQuerySession = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (themeMode === "system") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.dataset.theme = themeMode;
+    window.localStorage.setItem("dreamland.theme", themeMode);
+  }, [themeMode]);
 
   function showToast(title: string, message: string, tone: ToastTone = "success") {
     const id = ++toastId.current;
@@ -1356,6 +1369,8 @@ function App() {
       {settingsOpen && (
         <SettingsDialog
           config={configQuery.data ?? null}
+          themeMode={themeMode}
+          onThemeChange={setThemeMode}
           onCancel={() => setSettingsOpen(false)}
           onSave={handleSaveConfig}
         />
@@ -2072,11 +2087,13 @@ function downloadStatusLabel(status: DownloadStatus): string {
 
 interface SettingsDialogProps {
   config: AppConfig | null;
+  themeMode: ThemeMode;
+  onThemeChange: (theme: ThemeMode) => void;
   onCancel: () => void;
   onSave: (downloadPath: string, contentPolicy: ContentPolicy, downloadVariant: MediaVariant, network: NetworkPolicy) => Promise<void>;
 }
 
-function SettingsDialog({ config, onCancel, onSave }: SettingsDialogProps) {
+function SettingsDialog({ config, themeMode, onThemeChange, onCancel, onSave }: SettingsDialogProps) {
   const [downloadPath, setDownloadPath] = useState(config?.download_path ?? "");
   const [contentPolicy, setContentPolicy] = useState<ContentPolicy>(config?.content_policy ?? "SafeOnly");
   const [downloadVariant, setDownloadVariant] = useState<MediaVariant>(config?.download_variant ?? "Full");
@@ -2120,6 +2137,17 @@ function SettingsDialog({ config, onCancel, onSave }: SettingsDialogProps) {
         <div className="inspector-heading">
           <div><p className="eyebrow">app preferences</p><h2 id="settings-title">settings</h2></div>
           <button className="icon-button" type="button" aria-label="close settings" onClick={onCancel}><Icon name="close" /></button>
+        </div>
+        <div className="settings-section">
+          <p className="section-label">appearance</p>
+          <label className="field">theme
+            <select value={themeMode} onChange={(event) => onThemeChange(event.target.value as ThemeMode)}>
+              <option value="system">follow system</option>
+              <option value="light">light</option>
+              <option value="dark">dark</option>
+            </select>
+          </label>
+          <p className="helper-text">system follows macOS or Windows appearance; light and dark stay fixed.</p>
         </div>
         <div className="settings-section">
           <p className="section-label">storage & site</p>
