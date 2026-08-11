@@ -85,6 +85,7 @@ type PopularPeriod = "Day" | "Week" | "Month";
 type ToastTone = "success" | "info" | "error";
 type ThemeMode = "system" | "light" | "dark";
 type QueryOrder = "" | "score" | "score_asc" | "id" | "id_desc" | "mpixels" | "mpixels_asc" | "landscape" | "portrait" | "vote" | "random";
+const contentCacheTime = 5 * 60_000;
 
 interface AdvancedQueryForm {
   tags: string;
@@ -523,6 +524,8 @@ function App() {
       ? lastPage.session
       : undefined,
     enabled: configQuery.isSuccess && sitesQuery.isSuccess && Boolean(activeSite) && (view === "latest" || view === "popular" || view === "search"),
+    staleTime: contentCacheTime,
+    gcTime: 30 * 60_000,
   });
   useEffect(() => {
     activeQuerySession.current = imagesQuery.data?.pages.at(-1)?.session ?? null;
@@ -579,6 +582,8 @@ function App() {
     queryFn: ({ pageParam }) => listPools(activeSiteId, submittedPoolSearch, pageParam, 30),
     getNextPageParam: (lastPage, pages) => lastPage.has_next ? pages.length + 1 : undefined,
     enabled: view === "pools" && selectedPool === null && activeSite?.capabilities.collections === true,
+    staleTime: contentCacheTime,
+    gcTime: 30 * 60_000,
   });
   const poolPostsQuery = useInfiniteQuery({
     queryKey: ["pool-posts", selectedPool?.site, selectedPool?.id, contentPolicy],
@@ -592,6 +597,8 @@ function App() {
       return lastPage.posts.length >= lastPage.page_size ? pages.length + 1 : undefined;
     },
     enabled: view === "pools" && selectedPool !== null && configQuery.isSuccess && activeSite?.capabilities.collections === true,
+    staleTime: contentCacheTime,
+    gcTime: 30 * 60_000,
   });
   const postDetailQuery = useQuery({
     queryKey: ["post-detail", activeSiteId, selectedPost?.post.id],
@@ -621,6 +628,8 @@ function App() {
     queryFn: ({ pageParam }) => listFavorites(pageParam, 20),
     getNextPageParam: (lastPage, pages) => lastPage.posts.length >= lastPage.page_size ? pages.length + 1 : undefined,
     enabled: view === "favorites" && activeSite?.capabilities.favorite_list === true && authQuery.data?.authenticated === true && Boolean(authQuery.data.username),
+    staleTime: contentCacheTime,
+    gcTime: 30 * 60_000,
   });
   useEffect(() => {
     const posts = favoritesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
@@ -669,7 +678,7 @@ function App() {
   const canGoPrevious = selectedPreviewIndex > 0;
   const canGoNext = selectedPreviewIndex >= 0 && selectedPreviewIndex < previewPosts.length - 1;
   const loading = configQuery.isPending || sitesQuery.isPending || imagesQuery.isPending;
-  const browseLoading = loading || (imagesQuery.isFetching && !imagesQuery.isFetchingNextPage);
+  const browseLoading = loading && images.length === 0;
   const loadingMore = imagesQuery.isFetchingNextPage;
   const downloadRecords = useMemo(() => {
     const records = downloadsQuery.data?.pages.flatMap((page) => page) ?? [];
