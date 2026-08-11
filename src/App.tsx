@@ -148,10 +148,10 @@ function savedQueryExpression(saved: SavedQuery): string | null {
 
 function savedQueryDescription(saved: SavedQuery): string {
   const source = saved.query.source;
-  if (source === "Browse") return "Latest posts";
+  if (source === "Browse") return "latest posts";
   if ("Search" in source) return source.Search.expression;
-  if (source.Feed.kind === "Latest") return "Latest feed";
-  return `${source.Feed.kind.Popular.period} popular feed`;
+  if (source.Feed.kind === "Latest") return "latest feed";
+  return `${source.Feed.kind.Popular.period.toLowerCase()} popular feed`;
 }
 
 function savedQueryIsRunnable(saved: SavedQuery): boolean {
@@ -291,10 +291,10 @@ function parseAdvancedQuery(expression: string): AdvancedQueryForm {
 
 function contentPolicyLabel(policy: ContentPolicy): string {
   switch (policy) {
-    case "SafeOnly": return "Safe only";
-    case "AllowQuestionable": return "Safe + questionable";
-    case "AllowExplicit": return "All ratings";
-    case "ExplicitOnly": return "Explicit only";
+    case "SafeOnly": return "safe only";
+    case "AllowQuestionable": return "safe + questionable";
+    case "AllowExplicit": return "all ratings";
+    case "ExplicitOnly": return "explicit only";
   }
 }
 
@@ -446,11 +446,11 @@ function App() {
       const previous = downloadStatuses.current.get(record.id);
       if (previous && previous !== record.status) {
         if (record.status === "Completed") {
-          showToast("Download complete", `Post #${record.post_id} is ready in Downloads.`);
+          showToast("download complete", `post #${record.post_id} is ready in downloads.`);
         } else if (record.status === "ExistingTarget") {
-          showToast("Already downloaded", `Post #${record.post_id} was not overwritten.`, "info");
+          showToast("already downloaded", `post #${record.post_id} was not overwritten.`, "info");
         } else if (record.status === "Failed") {
-          showToast("Download failed", record.error ?? `Post #${record.post_id} could not be saved.`, "error");
+          showToast("download failed", record.error ?? `post #${record.post_id} could not be saved.`, "error");
         }
       }
       downloadStatuses.current.set(record.id, record.status);
@@ -494,29 +494,29 @@ function App() {
     onSuccess: (nextConfig) => {
       queryClient.setQueryData(["config"], nextConfig);
       setSettingsOpen(false);
-      setNotice("Settings saved");
-      showToast("Settings saved", "Your preferences are now active.");
+      setNotice("settings saved");
+      showToast("settings saved", "your preferences are now active.");
     },
-    onError: (reason) => setError(`Failed to save settings: ${errorMessage(reason)}`),
+    onError: (reason) => setError(`failed to save settings: ${errorMessage(reason)}`),
   });
   const downloadMutation = useMutation({
     mutationFn: ({ siteId, postId, variant }: DownloadInput) => enqueueDownload(siteId, postId, variant),
     onSuccess: (record) => {
       void queryClient.invalidateQueries({ queryKey: ["downloads"] });
       downloadStatuses.current.set(record.id, record.status);
-      setNotice(`Added post #${record.post_id} to the download queue`);
-      showToast("Download queued", `Post #${record.post_id} will be saved at the configured path.`);
+      setNotice(`added post #${record.post_id} to the download queue`);
+      showToast("download queued", `post #${record.post_id} will be saved at the configured path.`);
     },
-    onError: (reason) => setError(`Download failed: ${errorMessage(reason)}`),
+    onError: (reason) => setError(`download failed: ${errorMessage(reason)}`),
   });
 
   const isBrowseView = view === "latest" || view === "popular" || view === "search";
   const queryError = sitesQuery.error
-    ? `Failed to load sites: ${errorMessage(sitesQuery.error)}`
+    ? `failed to load sites: ${errorMessage(sitesQuery.error)}`
     : configQuery.error
-      ? `Failed to load configuration: ${errorMessage(configQuery.error)}`
+      ? `failed to load configuration: ${errorMessage(configQuery.error)}`
       : isBrowseView && imagesQuery.error
-        ? `Failed to load images: ${errorMessage(imagesQuery.error)}`
+        ? `failed to load images: ${errorMessage(imagesQuery.error)}`
         : "";
   const images = imagesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
   const favoritePosts = favoritesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
@@ -530,29 +530,29 @@ function App() {
     return [...new Map(records.map((record) => [record.id, record])).values()];
   }, [downloadsQuery.data]);
   const title = view === "search"
-    ? "Search results"
+    ? "search results"
     : view === "popular"
-      ? "Popular"
+      ? "popular"
       : view === "downloads"
-        ? "Downloads"
-        : view === "pools"
-          ? "Pools"
-          : view === "favorites"
-            ? "Favorites"
-            : "Latest posts";
+      ? "downloads"
+      : view === "pools"
+      ? "pools"
+      : view === "favorites"
+      ? "favorites"
+      : "latest posts";
   const subtitle = view === "search"
-    ? `Matching “${submittedSearch}”`
+    ? `matching “${submittedSearch}”`
     : view === "popular"
-      ? `Most popular this ${popularPeriod.toLowerCase()} · ${popularWindow(popularAnchorDate, popularPeriod).join(" to ")} · score-ranked`
+      ? `most popular this ${popularPeriod.toLowerCase()} · ${popularWindow(popularAnchorDate, popularPeriod).join(" to ")} · score-ranked`
       : view === "downloads"
-        ? "Local download history and active work"
-        : view === "pools"
-          ? `Ordered public collections from ${activeSite?.name ?? "the active site"}`
-          : view === "favorites"
-            ? authQuery.data?.authenticated ? `Saved by ${authQuery.data.username ?? "your yandere account"}` : "Sign in to browse your saved posts"
-            : activeSiteSafeOnly
-              ? "Safe-mode browse from the active site"
-              : "A calm feed for finding something worth keeping";
+      ? "local download history and active work"
+      : view === "pools"
+      ? `ordered public collections from ${activeSite?.name ?? "the active site"}`
+      : view === "favorites"
+      ? authQuery.data?.authenticated ? `saved by ${authQuery.data.username ?? "your yandere account"}` : "sign in to browse your saved posts"
+      : activeSiteSafeOnly
+      ? "safe-mode browse from the active site"
+      : "a calm feed for finding something worth keeping";
 
   useEffect(() => {
     const site = sitesQuery.data?.find((candidate) => candidate.id === selectedSiteId);
@@ -659,7 +659,7 @@ function App() {
 
   async function handleSaveQuery() {
     if (view !== "search" || !submittedSearch) return;
-    const name = window.prompt("Name this saved query", activeSavedQuery?.name ?? submittedSearch.trim());
+    const name = window.prompt("name this saved query", activeSavedQuery?.name ?? submittedSearch.trim());
     if (!name?.trim()) return;
     try {
       const saved = await saveSavedQuery({
@@ -676,9 +676,9 @@ function App() {
       });
       await savedQueriesQuery.refetch();
       setSelectedSavedQueryId(saved.id);
-      setNotice(`Saved query “${saved.name}”`);
+      setNotice(`saved query “${saved.name}”`);
     } catch (reason) {
-      setError(`Could not save query: ${errorMessage(reason)}`);
+      setError(`could not save query: ${errorMessage(reason)}`);
     }
   }
 
@@ -687,12 +687,12 @@ function App() {
       await saveSavedQuery({ ...saved, pinned: !saved.pinned });
       await savedQueriesQuery.refetch();
     } catch (reason) {
-      setError(`Could not update saved query: ${errorMessage(reason)}`);
+      setError(`could not update saved query: ${errorMessage(reason)}`);
     }
   }
 
   async function handleDeleteSavedQuery(saved: SavedQuery) {
-    if (!window.confirm(`Delete “${saved.name}”?`)) return;
+    if (!window.confirm(`delete “${saved.name}”?`)) return;
     try {
       await deleteSavedQuery(activeSiteId, saved.id);
       await savedQueriesQuery.refetch();
@@ -701,7 +701,7 @@ function App() {
         setView("latest");
       }
     } catch (reason) {
-      setError(`Could not delete query: ${errorMessage(reason)}`);
+      setError(`could not delete query: ${errorMessage(reason)}`);
     }
   }
 
@@ -710,7 +710,7 @@ function App() {
       await moveSavedQuery(activeSiteId, saved.id, direction);
       await savedQueriesQuery.refetch();
     } catch (reason) {
-      setError(`Could not reorder saved query: ${errorMessage(reason)}`);
+      setError(`could not reorder saved query: ${errorMessage(reason)}`);
     }
   }
 
@@ -744,17 +744,17 @@ function App() {
     setBatchDownloading(false);
     setSelectedPostIds(new Set());
     setSelectionMode(false);
-    if (queued > 0) showToast("Batch queued", `${queued} post${queued === 1 ? "" : "s"} added to Downloads.`);
+    if (queued > 0) showToast("batch queued", `${queued} post${queued === 1 ? "" : "s"} added to downloads.`);
   }
 
   async function handleFavorite(post: Post) {
     if (!authQuery.data?.authenticated) {
       setView("favorites");
-      showToast("Sign in required", "Connect your yandere account before changing favorites.", "info");
+      showToast("sign in required", "connect your yandere account before changing favorites.", "info");
       return;
     }
     if (!activeSite?.capabilities.remote_favorites) {
-      setError(`${activeSite?.name ?? "This site"} does not support remote favorites.`);
+      setError(`${activeSite?.name ?? "this site"} does not support remote favorites.`);
       return;
     }
     const favorite = !favoritePostIds.has(post.post.id);
@@ -767,9 +767,9 @@ function App() {
         else next.delete(post.post.id);
         return next;
       });
-      showToast(favorite ? "Added to favorites" : "Removed from favorites", `Post #${post.post.id} updated on yandere.`);
+      showToast(favorite ? "added to favorites" : "removed from favorites", `post #${post.post.id} updated on yandere.`);
     } catch (reason) {
-      setError(`Favorite failed: ${errorMessage(reason)}`);
+      setError(`favorite failed: ${errorMessage(reason)}`);
     }
   }
 
@@ -778,9 +778,9 @@ function App() {
     try {
       await enqueuePoolZip(pool.id, pool.name);
       await archivesQuery.refetch();
-      showToast("Pool ZIP queued", `${pool.name} will be saved in Downloads.`);
+      showToast("pool zip queued", `${pool.name} will be saved in downloads.`);
     } catch (reason) {
-      setError(`Pool ZIP failed: ${errorMessage(reason)}`);
+      setError(`pool zip failed: ${errorMessage(reason)}`);
     }
   }
 
@@ -819,14 +819,14 @@ function App() {
           <div className="brand-lockup">
             <div className="brand-mark" aria-hidden="true">✦</div>
             <div>
-              <p className="eyebrow">Image board</p>
+              <p className="eyebrow">image board</p>
               <h1>Dreamland</h1>
             </div>
           </div>
           <label className="site-picker">
-            <span>Browse site</span>
+            <span>browse site</span>
             <select
-              aria-label="Choose image board site"
+              aria-label="choose image board site"
               value={activeSiteId}
               onChange={(event) => {
                 const site = sitesQuery.data?.find((candidate) => candidate.id === event.target.value);
@@ -845,7 +845,7 @@ function App() {
           <span className="search-icon"><Icon name="search" /></span>
           <input
             ref={searchInput}
-            aria-label="Search tags"
+            aria-label="search tags"
             placeholder="Search by tags…"
             value={searchDraft}
             onFocus={() => setSearchFocused(true)}
@@ -856,7 +856,7 @@ function App() {
             <button
               className="clear-search"
               type="button"
-              aria-label="Clear search"
+              aria-label="clear search"
               onClick={() => {
                 setSearchDraft("");
                 changeView("latest");
@@ -868,10 +868,10 @@ function App() {
           <button className="search-advanced" type="button" onClick={() => {
             setEditingSavedQueryId(null);
             setAdvancedSearchOpen(true);
-          }}>Filters</button>
+          }}>filters</button>
           {searchFocused && suggestionsQuery.data && suggestionsQuery.data.length > 0 && (
             <div className="suggestions" role="listbox">
-              <p className="suggestion-heading">Suggested tags</p>
+              <p className="suggestion-heading">suggested tags</p>
               {suggestionsQuery.data.map((tag) => (
                 <button
                   key={tag.name}
@@ -892,8 +892,8 @@ function App() {
           <button
             className="icon-button"
             type="button"
-            aria-label={`Refresh ${title.toLowerCase()}`}
-            title={`Refresh ${title.toLowerCase()}`}
+            aria-label={`refresh ${title.toLowerCase()}`}
+            title={`refresh ${title.toLowerCase()}`}
             disabled={loading}
             onClick={() => {
               if (isBrowseView) void imagesQuery.refetch();
@@ -906,7 +906,7 @@ function App() {
           </button>
           <button className="button button-tonal button-with-icon" type="button" onClick={() => setSettingsOpen(true)}>
             <Icon name="settings" />
-            <span>Settings</span>
+            <span>settings</span>
           </button>
         </div>
       </header>
@@ -914,8 +914,8 @@ function App() {
       <div className={`app-layout${selectedPost ? " has-detail" : ""}`}>
         <main className="content">
           <nav className="view-tabs shell-surface" aria-label="Dreamland sections" role="tablist">
-          <NavButton active={view === "latest"} label="Latest" icon="clock" onClick={() => changeView("latest")} />
-          <NavButton active={view === "popular"} label="Popular" icon="trend" onClick={() => changeView("popular")} />
+            <NavButton active={view === "latest"} label="latest" icon="clock" onClick={() => changeView("latest")} />
+            <NavButton active={view === "popular"} label="popular" icon="trend" onClick={() => changeView("popular")} />
           {savedQueriesQuery.data?.map((saved, index, savedQueries) => {
             const previous = savedQueries[index - 1];
             const next = savedQueries[index + 1];
@@ -934,36 +934,36 @@ function App() {
               >
                 <Icon name="search" />
                 <span>{saved.name}</span>
-                {!savedQueryIsRunnable(saved) && <small>Unavailable</small>}
-                {saved.pinned && savedQueryIsRunnable(saved) && <small>Pinned</small>}
+                {!savedQueryIsRunnable(saved) && <small>unavailable</small>}
+                {saved.pinned && savedQueryIsRunnable(saved) && <small>pinned</small>}
               </button>
               <div className="saved-query-actions">
-                <button className="icon-button" type="button" aria-label={`Edit ${saved.name}`} title="Edit query" disabled={!savedQueryIsRunnable(saved)} onClick={() => editSavedQuery(saved)}>✎</button>
-                <button className="icon-button" type="button" aria-label={`Move ${saved.name} earlier`} title="Move earlier" disabled={!canMoveUp} onClick={() => void handleMoveSavedQuery(saved, -1)}>↑</button>
-                <button className="icon-button" type="button" aria-label={`Move ${saved.name} later`} title="Move later" disabled={!canMoveDown} onClick={() => void handleMoveSavedQuery(saved, 1)}>↓</button>
-                <button className="icon-button" type="button" aria-label={`${saved.pinned ? "Unpin" : "Pin"} ${saved.name}`} onClick={() => void handleToggleSavedPin(saved)}>
+                <button className="icon-button" type="button" aria-label={`edit ${saved.name}`} title="edit query" disabled={!savedQueryIsRunnable(saved)} onClick={() => editSavedQuery(saved)}>✎</button>
+                <button className="icon-button" type="button" aria-label={`move ${saved.name} earlier`} title="move earlier" disabled={!canMoveUp} onClick={() => void handleMoveSavedQuery(saved, -1)}>↑</button>
+                <button className="icon-button" type="button" aria-label={`move ${saved.name} later`} title="move later" disabled={!canMoveDown} onClick={() => void handleMoveSavedQuery(saved, 1)}>↓</button>
+                <button className="icon-button" type="button" aria-label={`${saved.pinned ? "unpin" : "pin"} ${saved.name}`} onClick={() => void handleToggleSavedPin(saved)}>
                   {saved.pinned ? "•" : "○"}
                 </button>
-                <button className="icon-button" type="button" aria-label={`Delete ${saved.name}`} onClick={() => void handleDeleteSavedQuery(saved)}>×</button>
+                <button className="icon-button" type="button" aria-label={`delete ${saved.name}`} onClick={() => void handleDeleteSavedQuery(saved)}>×</button>
               </div>
             </div>
             );
           })}
           {activeSite?.capabilities.collections && (
-            <NavButton active={view === "pools"} label="Pools" icon="book" onClick={() => changeView("pools")} />
+            <NavButton active={view === "pools"} label="pools" icon="book" onClick={() => changeView("pools")} />
           )}
           {activeSite?.capabilities.favorite_list && (
-            <NavButton active={view === "favorites"} label="Favorites" icon="heart" onClick={() => changeView("favorites")} />
+            <NavButton active={view === "favorites"} label="favorites" icon="heart" onClick={() => changeView("favorites")} />
           )}
-          <NavButton active={view === "downloads"} label="Downloads" icon="download" onClick={() => changeView("downloads")} />
+          <NavButton active={view === "downloads"} label="downloads" icon="download" onClick={() => changeView("downloads")} />
           <span className="view-status">
             <span className="connection-dot" aria-hidden="true" />
-            <span>{activeSiteSafeOnly ? `${activeSite?.name ?? "Site"} · safe mode` : `${activeSite?.name ?? "Site"} connected`}</span>
+            <span>{activeSiteSafeOnly ? `${activeSite?.name ?? "site"} · safe mode` : `${activeSite?.name ?? "site"} connected`}</span>
           </span>
           </nav>
           <section className="content-heading">
             <div>
-              <p className="eyebrow">Explore freely</p>
+              <p className="eyebrow">explore freely</p>
               <h2>{title}</h2>
               <p className="subtitle">{subtitle}</p>
             </div>
@@ -973,20 +973,20 @@ function App() {
                 setSelectionMode((current) => !current);
                 setSelectedPostIds(new Set());
               }}>
-                {selectionMode ? "Cancel selection" : "Select posts"}
+                {selectionMode ? "cancel selection" : "select posts"}
               </button>
               {view === "popular" && (
-                <div className="popular-controls" aria-label="Popular period and date">
+                <div className="popular-controls" aria-label="popular period and date">
                   <label className="period-picker">
-                    <span>Period</span>
+                    <span>period</span>
                     <select value={popularPeriod} onChange={(event) => {
                       const nextPeriod = event.target.value as PopularPeriod;
                       setPopularPeriod(nextPeriod);
                       setPopularAnchorDate((current) => normalizePopularAnchor(current, nextPeriod));
                     }}>
-                      <option value="Day">Day</option>
-                      <option value="Week">Week</option>
-                      <option value="Month">Month</option>
+                      <option value="Day">day</option>
+                      <option value="Week">week</option>
+                      <option value="Month">month</option>
                     </select>
                   </label>
                   <button
@@ -995,10 +995,10 @@ function App() {
                     aria-label={`Earlier popular ${popularPeriod.toLowerCase()}`}
                     onClick={() => setPopularAnchorDate(shiftPopularAnchor(popularAnchorDate, popularPeriod, -1))}
                   >
-                    Earlier
+                    earlier
                   </button>
                   <label className="period-picker period-date">
-                    <span>Date</span>
+                    <span>date</span>
                     <input
                       type="date"
                       value={popularAnchorDate}
@@ -1017,12 +1017,12 @@ function App() {
                     disabled={shiftPopularAnchor(popularAnchorDate, popularPeriod, 1) > normalizePopularAnchor(today(), popularPeriod)}
                     onClick={() => setPopularAnchorDate(shiftPopularAnchor(popularAnchorDate, popularPeriod, 1))}
                   >
-                    Later
+                    later
                   </button>
                 </div>
               )}
               {view === "search" && submittedSearch && (
-                <button className="button button-outlined" type="button" onClick={() => void handleSaveQuery()}>Save query</button>
+                <button className="button button-outlined" type="button" onClick={() => void handleSaveQuery()}>save query</button>
               )}
               <span className="content-policy">{contentPolicyLabel(activeContentPolicy)}</span>
               </>}
@@ -1032,9 +1032,9 @@ function App() {
           {isBrowseView && selectionMode && (
             <div className="batch-toolbar" role="toolbar" aria-label="Batch download">
               <strong>{selectedPosts.length} selected</strong>
-              <button className="button button-text" type="button" onClick={selectCurrentPage}>Select loaded posts</button>
+              <button className="button button-text" type="button" onClick={selectCurrentPage}>select loaded posts</button>
               <button className="button button-primary" type="button" disabled={!selectedPosts.length || batchDownloading} onClick={() => void handleBatchDownload()}>
-                {batchDownloading ? "Queueing…" : "Download selected"}
+                {batchDownloading ? "queueing…" : "download selected"}
               </button>
             </div>
           )}
@@ -1043,19 +1043,19 @@ function App() {
           {notice && <p className="message message-success" role="status">{notice}</p>}
           {isBrowseView ? (
             <>
-              {loading && <div className="loading-line" role="status"><span /> Finding something good…</div>}
+          {loading && <div className="loading-line" role="status"><span /> finding something good…</div>}
               {queryError ? (
                 <ErrorState
                   message={queryError}
                   onRetry={() => void imagesQuery.refetch()}
-                  onOpenSite={activeSite ? () => void openSite(activeSiteId).catch((reason) => setError(`Could not open site: ${errorMessage(reason)}`)) : undefined}
+                  onOpenSite={activeSite ? () => void openSite(activeSiteId).catch((reason) => setError(`could not open site: ${errorMessage(reason)}`)) : undefined}
                   siteName={activeSite?.name}
                 />
               ) : !loading && images.length === 0 ? (
                 <div className="empty-state">
                   <span className="empty-symbol" aria-hidden="true">✦</span>
-                  <h3>No posts found</h3>
-                  <p>Try a broader tag search or switch back to the latest feed.</p>
+                  <h3>no posts found</h3>
+                  <p>try a broader tag search or switch back to the latest feed.</p>
                 </div>
               ) : (
                 <>
@@ -1100,7 +1100,7 @@ function App() {
                 try {
                   await openDownload(path);
                 } catch (reason) {
-                  setError(`Could not open file: ${errorMessage(reason)}`);
+                  setError(`could not open file: ${errorMessage(reason)}`);
                 }
               }}
               onLoadMore={() => void downloadsQuery.fetchNextPage()}
@@ -1254,78 +1254,78 @@ function AdvancedQueryDialog({ contentPolicy, initialExpression, onClose, onAppl
     }}>
       <form className="settings-dialog shell-surface query-dialog" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="query-title">
         <div className="inspector-heading">
-          <div><p className="eyebrow">MoeBooru query vocabulary</p><h2 id="query-title">Advanced search</h2></div>
-          <button className="icon-button" type="button" aria-label="Close advanced search" onClick={onClose}><Icon name="close" /></button>
+          <div><p className="eyebrow">moebooru query vocabulary</p><h2 id="query-title">advanced search</h2></div>
+          <button className="icon-button" type="button" aria-label="close advanced search" onClick={onClose}><Icon name="close" /></button>
         </div>
-        <p className="helper-text">Build or edit a reusable tag query with the same filters supported by the vendored MoeBooru client. Unknown terms stay in the raw tag field.</p>
+        <p className="helper-text">build or edit a reusable tag query with the same filters supported by the vendored moebooru client. unknown terms stay in the raw tag field.</p>
         {error && <div className="panel-error" role="alert"><p>{error}</p></div>}
         <div className="settings-section">
-          <p className="section-label">Tags and ordering</p>
-          <label className="field">Tags or raw terms<input value={form.tags} onChange={(event) => update("tags", event.target.value)} placeholder="artist_name -sketch" autoFocus /></label>
+          <p className="section-label">tags and ordering</p>
+          <label className="field">tags or raw terms<input value={form.tags} onChange={(event) => update("tags", event.target.value)} placeholder="artist_name -sketch" autoFocus /></label>
           <div className="field-grid">
             <label className="field">Order
               <select value={form.order} onChange={(event) => update("order", event.target.value as QueryOrder)}>
-                <option value="">Site default</option>
-                <option value="score">Highest score</option>
-                <option value="score_asc">Lowest score</option>
-                <option value="id_desc">Newest ID</option>
-                <option value="id">Oldest ID</option>
-                <option value="mpixels">Largest pixels</option>
-                <option value="mpixels_asc">Smallest pixels</option>
-                <option value="landscape">Landscape</option>
-                <option value="portrait">Portrait</option>
-                <option value="vote">Most votes</option>
-                <option value="random">Random</option>
+                <option value="">site default</option>
+                <option value="score">highest score</option>
+                <option value="score_asc">lowest score</option>
+                <option value="id_desc">newest id</option>
+                <option value="id">oldest id</option>
+                <option value="mpixels">largest pixels</option>
+                <option value="mpixels_asc">smallest pixels</option>
+                <option value="landscape">landscape</option>
+                <option value="portrait">portrait</option>
+                <option value="vote">most votes</option>
+                <option value="random">random</option>
               </select>
             </label>
-            <label className="field">Rating
+            <label className="field">rating
               <select value={form.rating} onChange={(event) => update("rating", event.target.value as AdvancedQueryForm["rating"])}>
-                <option value="">Policy default</option>
-                <option value="s">Safe</option>
-                <option value="q">Questionable</option>
-                <option value="e">Explicit</option>
-                <option value="-s">Exclude safe</option>
-                <option value="-q">Exclude questionable</option>
-                <option value="-e">Exclude explicit</option>
+                <option value="">policy default</option>
+                <option value="s">safe</option>
+                <option value="q">questionable</option>
+                <option value="e">explicit</option>
+                <option value="-s">exclude safe</option>
+                <option value="-q">exclude questionable</option>
+                <option value="-e">exclude explicit</option>
               </select>
             </label>
           </div>
         </div>
         <div className="settings-section">
-          <p className="section-label">Numeric ranges</p>
-          <label className="field">Exact score<input type="number" value={form.score} onChange={(event) => update("score", event.target.value)} placeholder="e.g. 10" /></label>
+          <p className="section-label">numeric ranges</p>
+          <label className="field">exact score<input type="number" value={form.score} onChange={(event) => update("score", event.target.value)} placeholder="e.g. 10" /></label>
           <div className="field-grid">
-            <label className="field">Minimum width<input type="number" min="0" value={form.widthMin} onChange={(event) => update("widthMin", event.target.value)} /></label>
-            <label className="field">Maximum width<input type="number" min="0" value={form.widthMax} onChange={(event) => update("widthMax", event.target.value)} /></label>
-            <label className="field">Minimum height<input type="number" min="0" value={form.heightMin} onChange={(event) => update("heightMin", event.target.value)} /></label>
-            <label className="field">Maximum height<input type="number" min="0" value={form.heightMax} onChange={(event) => update("heightMax", event.target.value)} /></label>
+            <label className="field">minimum width<input type="number" min="0" value={form.widthMin} onChange={(event) => update("widthMin", event.target.value)} /></label>
+            <label className="field">maximum width<input type="number" min="0" value={form.widthMax} onChange={(event) => update("widthMax", event.target.value)} /></label>
+            <label className="field">minimum height<input type="number" min="0" value={form.heightMin} onChange={(event) => update("heightMin", event.target.value)} /></label>
+            <label className="field">maximum height<input type="number" min="0" value={form.heightMax} onChange={(event) => update("heightMax", event.target.value)} /></label>
           </div>
           <div className="field-grid">
-            <label className="field">Minimum score<input type="number" value={form.scoreMin} onChange={(event) => update("scoreMin", event.target.value)} /></label>
-            <label className="field">Maximum score<input type="number" value={form.scoreMax} onChange={(event) => update("scoreMax", event.target.value)} /></label>
-            <label className="field">Minimum post ID<input type="number" min="0" value={form.idMin} onChange={(event) => update("idMin", event.target.value)} /></label>
-            <label className="field">Maximum post ID<input type="number" min="0" value={form.idMax} onChange={(event) => update("idMax", event.target.value)} /></label>
-            <label className="field">Minimum votes<input type="number" min="0" value={form.voteMin} onChange={(event) => update("voteMin", event.target.value)} /></label>
-            <label className="field">Maximum votes<input type="number" min="0" value={form.voteMax} onChange={(event) => update("voteMax", event.target.value)} /></label>
-            <label className="field">Minimum megapixels<input type="number" min="0" step="0.1" value={form.mpixelsMin} onChange={(event) => update("mpixelsMin", event.target.value)} /></label>
-            <label className="field">Maximum megapixels<input type="number" min="0" step="0.1" value={form.mpixelsMax} onChange={(event) => update("mpixelsMax", event.target.value)} /></label>
+            <label className="field">minimum score<input type="number" value={form.scoreMin} onChange={(event) => update("scoreMin", event.target.value)} /></label>
+            <label className="field">maximum score<input type="number" value={form.scoreMax} onChange={(event) => update("scoreMax", event.target.value)} /></label>
+            <label className="field">minimum post id<input type="number" min="0" value={form.idMin} onChange={(event) => update("idMin", event.target.value)} /></label>
+            <label className="field">maximum post id<input type="number" min="0" value={form.idMax} onChange={(event) => update("idMax", event.target.value)} /></label>
+            <label className="field">minimum votes<input type="number" min="0" value={form.voteMin} onChange={(event) => update("voteMin", event.target.value)} /></label>
+            <label className="field">maximum votes<input type="number" min="0" value={form.voteMax} onChange={(event) => update("voteMax", event.target.value)} /></label>
+            <label className="field">minimum megapixels<input type="number" min="0" step="0.1" value={form.mpixelsMin} onChange={(event) => update("mpixelsMin", event.target.value)} /></label>
+            <label className="field">maximum megapixels<input type="number" min="0" step="0.1" value={form.mpixelsMax} onChange={(event) => update("mpixelsMax", event.target.value)} /></label>
           </div>
         </div>
         <div className="settings-section">
-          <p className="section-label">Date and identity</p>
+          <p className="section-label">date and identity</p>
           <div className="field-grid">
-            <label className="field">Date from<input type="date" value={form.dateFrom} max={today()} onChange={(event) => update("dateFrom", event.target.value)} /></label>
-            <label className="field">Date to<input type="date" value={form.dateTo} max={today()} onChange={(event) => update("dateTo", event.target.value)} /></label>
-            <label className="field">User / author tag<input value={form.user} onChange={(event) => update("user", event.target.value)} placeholder="user name" /></label>
-            <label className="field">Source<input value={form.source} onChange={(event) => update("source", event.target.value)} /></label>
-            <label className="field">Parent ID<input inputMode="numeric" value={form.parent} onChange={(event) => update("parent", event.target.value)} /></label>
-            <label className="field">Pool ID<input inputMode="numeric" value={form.pool} onChange={(event) => update("pool", event.target.value)} /></label>
+            <label className="field">date from<input type="date" value={form.dateFrom} max={today()} onChange={(event) => update("dateFrom", event.target.value)} /></label>
+            <label className="field">date to<input type="date" value={form.dateTo} max={today()} onChange={(event) => update("dateTo", event.target.value)} /></label>
+            <label className="field">user / author tag<input value={form.user} onChange={(event) => update("user", event.target.value)} placeholder="user name" /></label>
+            <label className="field">source<input value={form.source} onChange={(event) => update("source", event.target.value)} /></label>
+            <label className="field">parent id<input inputMode="numeric" value={form.parent} onChange={(event) => update("parent", event.target.value)} /></label>
+            <label className="field">pool id<input inputMode="numeric" value={form.pool} onChange={(event) => update("pool", event.target.value)} /></label>
           </div>
-          <label className="field">MD5 checksum<input value={form.md5} onChange={(event) => update("md5", event.target.value)} /></label>
+          <label className="field">md5 checksum<input value={form.md5} onChange={(event) => update("md5", event.target.value)} /></label>
         </div>
         <div className="dialog-actions">
-          <button className="button button-text" type="button" onClick={onClose}>Cancel</button>
-          <button className="button button-primary" type="submit">Search</button>
+          <button className="button button-text" type="button" onClick={onClose}>cancel</button>
+          <button className="button button-primary" type="submit">search</button>
         </div>
       </form>
     </div>
@@ -1344,11 +1344,11 @@ function ErrorState({ message, onRetry, onOpenSite, siteName }: ErrorStateProps)
     <div className="error-state" role="alert">
       <span className="error-symbol" aria-hidden="true">!</span>
       <div>
-        <h3>Couldn’t load this feed</h3>
+        <h3>couldn’t load this feed</h3>
         <p>{message.replace("Failed to load images: ", "")}</p>
       </div>
-      <button className="button button-outlined" type="button" onClick={onRetry}>Try again</button>
-      {onOpenSite && <button className="button button-outlined" type="button" onClick={onOpenSite}>Open {siteName}</button>}
+      <button className="button button-outlined" type="button" onClick={onRetry}>try again</button>
+      {onOpenSite && <button className="button button-outlined" type="button" onClick={onOpenSite}>open {siteName}</button>}
     </div>
   );
 }
@@ -1365,7 +1365,7 @@ function Toast({ state, onClose }: ToastProps) {
         <strong>{state.title}</strong>
         <p>{state.message}</p>
       </div>
-      <button className="icon-button" type="button" aria-label="Dismiss notification" onClick={onClose}><Icon name="close" /></button>
+      <button className="icon-button" type="button" aria-label="dismiss notification" onClick={onClose}><Icon name="close" /></button>
     </aside>
   );
 }
@@ -1393,10 +1393,10 @@ function LoadMore({ autoLoad = true, hasNext, loading, onLoadMore }: LoadMorePro
     return () => observer.disconnect();
   }, [autoLoad, hasNext, loading, onLoadMore]);
 
-  if (!hasNext && !loading) return <div className="load-more-end">You’ve reached the end.</div>;
+  if (!hasNext && !loading) return <div className="load-more-end">you’ve reached the end.</div>;
   return (
     <div className="load-more" ref={sentinel}>
-      {loading ? <><span /> Loading more…</> : <button className="button button-outlined" type="button" onClick={requestMore}>Load more</button>}
+      {loading ? <><span /> loading more…</> : <button className="button button-outlined" type="button" onClick={requestMore}>load more</button>}
     </div>
   );
 }
@@ -1418,17 +1418,17 @@ function ImageCard({ post, selectionMode, selected, downloading, onDownload, onS
     <article className={`card${selected ? " selected" : ""}`} onClick={() => selectionMode ? onToggleSelection() : onSelect(post)}>
       <div className="preview">
         {previewUrl ? (
-          <img src={previewUrl} alt={`Post ${post.post.id}`} loading="lazy" />
+          <img src={previewUrl} alt={`post ${post.post.id}`} loading="lazy" />
         ) : (
-          <span className="missing-preview">Preview unavailable</span>
+          <span className="missing-preview">preview unavailable</span>
         )}
         <span className="dimensions">{post.width ?? "?"}×{post.height ?? "?"}</span>
-        <span className="rating-pill">{post.rating}</span>
+        <span className="rating-pill">{post.rating.toLowerCase()}</span>
         {selectionMode && (
           <button
             className="selection-toggle"
             type="button"
-            aria-label={`${selected ? "Deselect" : "Select"} post ${post.post.id}`}
+            aria-label={`${selected ? "deselect" : "select"} post ${post.post.id}`}
             aria-pressed={selected}
             onClick={(event) => {
               event.stopPropagation();
@@ -1455,7 +1455,7 @@ function ImageCard({ post, selectionMode, selected, downloading, onDownload, onS
             event.stopPropagation();
             void onDownload(post);
           }}>
-            {downloading ? "Saving…" : "Download"}
+            {downloading ? "saving…" : "download"}
           </button>
         </div>
       </div>
@@ -1479,50 +1479,50 @@ interface PostInspectorProps {
 function PostInspector({ post, downloading, siteName, favoriteSupported, favorited, onClose, onDownload, onFavorite, onTag, downloadVariant }: PostInspectorProps) {
   const originalUrl = post.full_url ?? post.sample_url ?? post.preview_url;
   return (
-    <aside className="detail-panel shell-surface" aria-label="Post details">
+    <aside className="detail-panel shell-surface" aria-label="post details">
       <div className="inspector-heading">
         <div>
-          <p className="eyebrow">Post details</p>
+          <p className="eyebrow">post details</p>
           <h2>#{post.post.id}</h2>
         </div>
-        <button className="icon-button" type="button" aria-label="Close details" onClick={onClose}><Icon name="close" /></button>
+        <button className="icon-button" type="button" aria-label="close details" onClick={onClose}><Icon name="close" /></button>
       </div>
       <div className="detail-preview">
         <DetailImage key={post.post.id} post={post} />
       </div>
       <div className="detail-summary">
         <span>{siteName} post #{post.post.id}</span>
-        {post.author && <span>Author: {post.author}</span>}
-        {originalUrl && <a href={originalUrl} target="_blank" rel="noreferrer">Open original</a>}
-        {post.source && <a href={post.source} target="_blank" rel="noreferrer">Open source</a>}
+        {post.author && <span>author: {post.author}</span>}
+        {originalUrl && <a href={originalUrl} target="_blank" rel="noreferrer">open original</a>}
+        {post.source && <a href={post.source} target="_blank" rel="noreferrer">open source</a>}
       </div>
       <div className="inspector-section">
-        <span className="section-label">Tags</span>
+        <span className="section-label">tags</span>
         <div className="tag-list">
           {post.tags.map((tag) => <button key={tag} className="tag-chip" type="button" onClick={() => onTag(tag)}>{tag}</button>)}
         </div>
       </div>
       <dl className="metadata">
-        <div><dt>Site</dt><dd>{siteName}</dd></div>
-        <div><dt>Post ID</dt><dd>{post.post.id}</dd></div>
-        <div><dt>Author</dt><dd>{post.author ?? "—"}{post.creator_id ? ` · #${post.creator_id}` : ""}</dd></div>
-        <div><dt>Rating</dt><dd>{post.rating}</dd></div>
-        <div><dt>Size</dt><dd>{post.width ?? "?"}×{post.height ?? "?"}</dd></div>
-        <div><dt>Score</dt><dd>{post.score ?? "—"}</dd></div>
-        <div><dt>File size</dt><dd>{post.file_size ? `${Math.round(post.file_size / 1024)} KB` : "—"}</dd></div>
-        <div><dt>MD5</dt><dd className="metadata-value">{post.md5 ?? "—"}</dd></div>
-        <div><dt>Parent</dt><dd>{post.parent_id ? `#${post.parent_id}` : "None"}</dd></div>
-        <div><dt>Children</dt><dd>{post.has_children ? "Yes" : "No"}</dd></div>
-        <div><dt>Created</dt><dd>{post.created_at ? new Date(post.created_at).toLocaleString() : "—"}</dd></div>
+        <div><dt>site</dt><dd>{siteName}</dd></div>
+        <div><dt>post id</dt><dd>{post.post.id}</dd></div>
+        <div><dt>author</dt><dd>{post.author ?? "—"}{post.creator_id ? ` · #${post.creator_id}` : ""}</dd></div>
+        <div><dt>rating</dt><dd>{post.rating.toLowerCase()}</dd></div>
+        <div><dt>size</dt><dd>{post.width ?? "?"}×{post.height ?? "?"}</dd></div>
+        <div><dt>score</dt><dd>{post.score ?? "—"}</dd></div>
+        <div><dt>file size</dt><dd>{post.file_size ? `${Math.round(post.file_size / 1024)} kb` : "—"}</dd></div>
+        <div><dt>md5</dt><dd className="metadata-value">{post.md5 ?? "—"}</dd></div>
+        <div><dt>parent</dt><dd>{post.parent_id ? `#${post.parent_id}` : "none"}</dd></div>
+        <div><dt>children</dt><dd>{post.has_children ? "yes" : "no"}</dd></div>
+        <div><dt>created</dt><dd>{post.created_at ? new Date(post.created_at).toLocaleString() : "—"}</dd></div>
       </dl>
-      <p className="detail-helper">Tags and metadata come from the feed result; this site does not expose a separate post-lookup operation in this release.</p>
+      <p className="detail-helper">tags and metadata come from the feed result; this site does not expose a separate post-lookup operation in this release.</p>
       {favoriteSupported && (
         <button className="button button-outlined button-wide" type="button" onClick={() => void onFavorite(post)}>
-          {favorited ? `Remove from ${siteName} favorites` : `Add to ${siteName} favorites`}
+          {favorited ? `remove from ${siteName} favorites` : `add to ${siteName} favorites`}
         </button>
       )}
       <button className="button button-primary button-wide" disabled={downloading} onClick={() => void onDownload(post)}>
-        {downloading ? "Saving…" : `Download ${downloadVariant.toLowerCase()} quality`}
+        {downloading ? "saving…" : `download ${downloadVariant.toLowerCase()} quality`}
       </button>
     </aside>
   );
@@ -1535,11 +1535,11 @@ function DetailImage({ post }: { post: Post }) {
   const [sourceIndex, setSourceIndex] = useState(0);
   const source = sources[sourceIndex];
 
-  if (!source) return <span>Preview unavailable</span>;
+  if (!source) return <span>preview unavailable</span>;
   return (
     <img
       src={source}
-      alt={`Post ${post.post.id}`}
+      alt={`post ${post.post.id}`}
       loading="eager"
       onError={() => setSourceIndex((current) => current + 1)}
     />
@@ -1571,30 +1571,30 @@ function DownloadPanel({ records, archives, historyHasNext, historyLoading, onCa
   }
   const historyGroups = [...groups.entries()].sort(([a], [b]) => b.localeCompare(a));
   return (
-    <section className="workspace-panel shell-surface" aria-label="Downloads">
+    <section className="workspace-panel shell-surface" aria-label="downloads">
       <div className="inspector-heading">
-        <div><p className="eyebrow">Local state</p><h2>Downloads</h2></div>
+        <div><p className="eyebrow">local state</p><h2>downloads</h2></div>
       </div>
-      <p className="helper-text">{active.length + activeArchives.length ? `${active.length + activeArchives.length} item${active.length + activeArchives.length === 1 ? "" : "s"} in progress` : "Nothing is downloading"}</p>
+      <p className="helper-text">{active.length + activeArchives.length ? `${active.length + activeArchives.length} item${active.length + activeArchives.length === 1 ? "" : "s"} in progress` : "nothing is downloading"}</p>
       {records.length === 0 && archives.length === 0 ? (
-        <div className="panel-empty">Your download history will appear here.</div>
+        <div className="panel-empty">your download history will appear here.</div>
       ) : (
         <>
           {active.length + activeArchives.length > 0 && <section className="download-section">
-            <h3 className="download-section-title">In progress</h3>
+            <h3 className="download-section-title">in progress</h3>
             <div className="download-list">
               {activeArchives.map((record) => <ArchiveRow key={record.id} record={record} onCancel={onCancelArchive} onOpen={onOpen} />)}
               {active.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} onOpen={onOpen} />)}
             </div>
           </section>}
           {archiveHistory.length > 0 && <section className="download-section">
-            <h3 className="download-section-title">Pool archives</h3>
+            <h3 className="download-section-title">pool archives</h3>
             <div className="download-list">
               {archiveHistory.map((record) => <ArchiveRow key={record.id} record={record} onCancel={onCancelArchive} onOpen={onOpen} />)}
             </div>
           </section>}
           {historyGroups.length > 0 && <section className="download-section">
-            <h3 className="download-section-title">History</h3>
+            <h3 className="download-section-title">history</h3>
             <div className="download-history">
               {historyGroups.map(([key, group]) => {
                 const [year, month] = key.split("-");
@@ -1636,9 +1636,9 @@ function DownloadRow({ record, onCancel, onRetry, onOpen }: DownloadRowProps) {
       {record.error && <p className="download-error">{record.error}</p>}
       {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
       {(canCancel || canRetry || canOpen) && <div className="download-row-actions">
-        {canCancel && <button className="button button-text" type="button" onClick={() => void onCancel(record.id)}>Cancel</button>}
-        {canRetry && <button className="button button-outlined" type="button" onClick={() => void onRetry(record.id)}>Retry</button>}
-        {canOpen && <button className="button button-outlined" type="button" onClick={() => void onOpen(record.target_path!)}>Open file</button>}
+        {canCancel && <button className="button button-text" type="button" onClick={() => void onCancel(record.id)}>cancel</button>}
+        {canRetry && <button className="button button-outlined" type="button" onClick={() => void onRetry(record.id)}>retry</button>}
+        {canOpen && <button className="button button-outlined" type="button" onClick={() => void onOpen(record.target_path!)}>open file</button>}
       </div>}
     </article>
   );
@@ -1663,8 +1663,8 @@ function ArchiveRow({ record, onCancel, onOpen }: ArchiveRowProps) {
       {record.error && <p className="download-error">{record.error}</p>}
       {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
       {(canCancel || canOpen) && <div className="download-row-actions">
-        {canCancel && <button className="button button-text" type="button" onClick={() => void onCancel(record.id)}>Cancel</button>}
-        {canOpen && <button className="button button-outlined" type="button" onClick={() => void onOpen(record.target_path!)}>Open file</button>}
+        {canCancel && <button className="button button-text" type="button" onClick={() => void onCancel(record.id)}>cancel</button>}
+        {canOpen && <button className="button button-outlined" type="button" onClick={() => void onOpen(record.target_path!)}>open file</button>}
       </div>}
     </article>
   );
@@ -1700,14 +1700,14 @@ function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool
         <div className="inspector-heading">
           <div><p className="eyebrow">yandere pool</p><h2>{selectedPool.name}</h2></div>
           <div className="inspector-actions">
-            <button className="button button-outlined" type="button" onClick={() => onDownloadZip(selectedPool)}>Download ZIP</button>
-            <button className="button button-outlined button-with-icon" type="button" onClick={onBack}><Icon name="back" /><span>All pools</span></button>
+            <button className="button button-outlined" type="button" onClick={() => onDownloadZip(selectedPool)}>download zip</button>
+            <button className="button button-outlined button-with-icon" type="button" onClick={onBack}><Icon name="back" /><span>all pools</span></button>
           </div>
         </div>
         <p className="helper-text">{selectedPool.post_count} ordered post{selectedPool.post_count === 1 ? "" : "s"} from yandere.</p>
-        {postsError && <div className="panel-error" role="alert"><p>{postsError}</p><button className="button button-outlined" type="button" onClick={onRetryPosts}>Try again</button></div>}
-        {postsLoading && posts.length === 0 && <p className="loading-line" role="status"><span /> Loading pool posts…</p>}
-        {!postsLoading && !postsError && posts.length === 0 && <div className="panel-empty">This pool has no visible posts.</div>}
+        {postsError && <div className="panel-error" role="alert"><p>{postsError}</p><button className="button button-outlined" type="button" onClick={onRetryPosts}>try again</button></div>}
+        {postsLoading && posts.length === 0 && <p className="loading-line" role="status"><span /> loading pool posts…</p>}
+        {!postsLoading && !postsError && posts.length === 0 && <div className="panel-empty">this pool has no visible posts.</div>}
         <div className="gallery-grid">
           {posts.map((post) => (
             <ImageCard
@@ -1729,19 +1729,19 @@ function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool
   }
 
   return (
-    <section className="workspace-panel shell-surface" aria-label="Pools">
+    <section className="workspace-panel shell-surface" aria-label="pools">
       <div className="inspector-heading">
-        <div><p className="eyebrow">yandere collections</p><h2>Pools</h2></div>
+        <div><p className="eyebrow">yandere collections</p><h2>pools</h2></div>
       </div>
-      <p className="helper-text">Public pools group ordered posts from the site. Open a pool to browse its ordered posts or request its authenticated ZIP archive.</p>
-      {poolsLoading && pools.length === 0 && <p className="loading-line" role="status"><span /> Loading pools…</p>}
-      {poolsError && <div className="panel-error" role="alert"><p>{poolsError}</p><button className="button button-outlined" type="button" onClick={onRetryPools}>Try again</button></div>}
-      {!poolsLoading && !poolsError && pools.length === 0 && <div className="panel-empty">No public pools found.</div>}
+      <p className="helper-text">public pools group ordered posts from the site. open a pool to browse its ordered posts or request its authenticated zip archive.</p>
+      {poolsLoading && pools.length === 0 && <p className="loading-line" role="status"><span /> loading pools…</p>}
+      {poolsError && <div className="panel-error" role="alert"><p>{poolsError}</p><button className="button button-outlined" type="button" onClick={onRetryPools}>try again</button></div>}
+      {!poolsLoading && !poolsError && pools.length === 0 && <div className="panel-empty">no public pools found.</div>}
       <div className="collection-list">
         {pools.map((pool) => (
           <article className="collection-row" key={pool.id}>
             <div><strong>{pool.name}</strong><p>{pool.post_count} post{pool.post_count === 1 ? "" : "s"}</p></div>
-            <button className="button button-outlined" type="button" onClick={() => onBrowse(pool)}>Browse</button>
+            <button className="button button-outlined" type="button" onClick={() => onBrowse(pool)}>browse</button>
           </article>
         ))}
       </div>
@@ -1769,16 +1769,16 @@ interface AccountPanelProps {
 
 function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favoritesHasNext, loading, onBeginAuth, onRefresh, onRetry, onLoadMore, onSelect, onDownload, onTag, onSignOut }: AccountPanelProps) {
   return (
-    <section className="workspace-panel shell-surface" aria-label="Favorites account">
+    <section className="workspace-panel shell-surface" aria-label="favorites account">
       <div className="inspector-heading">
-        <div><p className="eyebrow">yandere account</p><h2>Favorites</h2></div>
+        <div><p className="eyebrow">yandere account</p><h2>favorites</h2></div>
       </div>
       {auth?.authenticated ? (
         <>
           <p className="account-connected"><span className="connection-dot" /> {auth.username ? `${auth.username} connected` : "yandere account connected"}</p>
-          {favoritesError && <div className="panel-error" role="alert"><p>{favoritesError}</p><button className="button button-outlined" type="button" onClick={onRetry}>Try again</button></div>}
-          {favoritesLoading && favorites.length === 0 && <p className="helper-text">Loading favorites…</p>}
-          {!favoritesLoading && favorites.length === 0 && <div className="panel-empty">No favorites found.</div>}
+          {favoritesError && <div className="panel-error" role="alert"><p>{favoritesError}</p><button className="button button-outlined" type="button" onClick={onRetry}>try again</button></div>}
+          {favoritesLoading && favorites.length === 0 && <p className="helper-text">loading favorites…</p>}
+          {!favoritesLoading && favorites.length === 0 && <div className="panel-empty">no favorites found.</div>}
           <div className="gallery-grid">
             {favorites.map((post) => (
               <ImageCard
@@ -1795,13 +1795,13 @@ function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favor
             ))}
           </div>
           <LoadMore hasNext={favoritesHasNext} loading={favoritesLoading && favorites.length > 0} onLoadMore={onLoadMore} />
-          <button className="button button-outlined" type="button" onClick={() => void onSignOut()}>Sign out</button>
+          <button className="button button-outlined" type="button" onClick={() => void onSignOut()}>sign out</button>
         </>
       ) : (
         <>
-          <p className="helper-text">Sign in through yandere’s own page. Dreamland reads only the safe auth state and keeps the browser session in Rust.</p>
-          <button className="button button-primary button-wide" type="button" onClick={onBeginAuth}>Sign in to yandere</button>
-          <button className="button button-outlined button-wide" type="button" disabled={loading} onClick={onRefresh}>{loading ? "Checking…" : "Check login"}</button>
+          <p className="helper-text">sign in through yandere’s own page. Dreamland reads only the safe auth state and keeps the browser session in Rust.</p>
+          <button className="button button-primary button-wide" type="button" onClick={onBeginAuth}>sign in to yandere</button>
+          <button className="button button-outlined button-wide" type="button" disabled={loading} onClick={onRefresh}>{loading ? "checking…" : "check login"}</button>
         </>
       )}
     </section>
@@ -1810,12 +1810,12 @@ function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favor
 
 function downloadStatusLabel(status: DownloadStatus): string {
   switch (status) {
-    case "ExistingTarget": return "Already exists";
-    case "Queued": return "Queued";
-    case "Running": return "Downloading";
-    case "Completed": return "Completed";
-    case "Failed": return "Failed";
-    case "Cancelled": return "Cancelled";
+    case "ExistingTarget": return "already exists";
+    case "Queued": return "queued";
+    case "Running": return "downloading";
+    case "Completed": return "completed";
+    case "Failed": return "failed";
+    case "Cancelled": return "cancelled";
   }
 }
 
@@ -1853,9 +1853,9 @@ function SettingsDialog({ config, onCancel, onSave }: SettingsDialogProps) {
     setDetecting(true);
     try {
       const result = await detectProxy();
-      setProxyDetection(result.detected ? `Detected ${result.endpoint ?? "a system proxy"} (${result.source ?? "system"})` : "No proxy detected");
+      setProxyDetection(result.detected ? `detected ${result.endpoint ?? "a system proxy"} (${result.source ?? "system"})` : "no proxy detected");
     } catch (reason) {
-      setProxyDetection(`Detection failed: ${errorMessage(reason)}`);
+      setProxyDetection(`detection failed: ${errorMessage(reason)}`);
     } finally {
       setDetecting(false);
     }
@@ -1867,51 +1867,51 @@ function SettingsDialog({ config, onCancel, onSave }: SettingsDialogProps) {
     }}>
       <form className="settings-dialog shell-surface" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <div className="inspector-heading">
-          <div><p className="eyebrow">App preferences</p><h2 id="settings-title">Settings</h2></div>
-          <button className="icon-button" type="button" aria-label="Close settings" onClick={onCancel}><Icon name="close" /></button>
+          <div><p className="eyebrow">app preferences</p><h2 id="settings-title">settings</h2></div>
+          <button className="icon-button" type="button" aria-label="close settings" onClick={onCancel}><Icon name="close" /></button>
         </div>
         <div className="settings-section">
-          <p className="section-label">Storage & site</p>
-          <label className="field">Download path<input required value={downloadPath} onChange={(event) => setDownloadPath(event.target.value)} /></label>
-          <label className="field">Content policy
+          <p className="section-label">storage & site</p>
+          <label className="field">download path<input required value={downloadPath} onChange={(event) => setDownloadPath(event.target.value)} /></label>
+          <label className="field">content policy
             <select value={contentPolicy} onChange={(event) => setContentPolicy(event.target.value as ContentPolicy)}>
-              <option value="SafeOnly">Safe only (default)</option>
-              <option value="AllowQuestionable">Allow questionable</option>
-              <option value="AllowExplicit">Allow explicit</option>
-              <option value="ExplicitOnly">Explicit only</option>
+              <option value="SafeOnly">safe only (default)</option>
+              <option value="AllowQuestionable">allow questionable</option>
+              <option value="AllowExplicit">allow explicit</option>
+              <option value="ExplicitOnly">explicit only</option>
             </select>
           </label>
-          <label className="field">Download quality
+          <label className="field">download quality
             <select value={downloadVariant} onChange={(event) => setDownloadVariant(event.target.value as MediaVariant)}>
-              <option value="Full">Best available (full)</option>
-              <option value="Sample">Sample</option>
-              <option value="Preview">Preview</option>
+              <option value="Full">best available (full)</option>
+              <option value="Sample">sample</option>
+              <option value="Preview">preview</option>
             </select>
           </label>
-          <p className="helper-text">This controls which ratings appear in feeds and searches.</p>
+          <p className="helper-text">this controls which ratings appear in feeds and searches.</p>
         </div>
         <div className="settings-section">
-          <p className="section-label">Connection resilience</p>
-          <label className="field">Proxy
+          <p className="section-label">connection resilience</p>
+          <label className="field">proxy
             <select value={proxyMode} onChange={(event) => setProxyMode(event.target.value as "Auto" | "Direct" | "Manual")}>
-              <option value="Auto">Use system / environment</option>
-              <option value="Direct">Direct connection</option>
-              <option value="Manual">Manual proxy</option>
+              <option value="Auto">use system / environment</option>
+              <option value="Direct">direct connection</option>
+              <option value="Manual">manual proxy</option>
             </select>
           </label>
-          {proxyMode === "Manual" && <label className="field">Proxy URL<input required placeholder="http://127.0.0.1:7890" value={proxyUrl} onChange={(event) => setProxyUrl(event.target.value)} /></label>}
-          <button className="button button-outlined" type="button" disabled={detecting} onClick={() => void handleDetectProxy()}>{detecting ? "Detecting…" : "Detect proxy"}</button>
+          {proxyMode === "Manual" && <label className="field">proxy url<input required placeholder="http://127.0.0.1:7890" value={proxyUrl} onChange={(event) => setProxyUrl(event.target.value)} /></label>}
+          <button className="button button-outlined" type="button" disabled={detecting} onClick={() => void handleDetectProxy()}>{detecting ? "detecting…" : "detect proxy"}</button>
           {proxyDetection && <p className="helper-text" role="status">{proxyDetection}</p>}
           <div className="field-grid">
-            <label className="field">Max retries<input type="number" min="0" max="8" value={maxRetries} onChange={(event) => setMaxRetries(Number(event.target.value))} /></label>
-            <label className="field">Initial delay<input type="number" min="100" value={retryDelayMs} onChange={(event) => setRetryDelayMs(Number(event.target.value))} /></label>
+            <label className="field">max retries<input type="number" min="0" max="8" value={maxRetries} onChange={(event) => setMaxRetries(Number(event.target.value))} /></label>
+            <label className="field">initial delay<input type="number" min="100" value={retryDelayMs} onChange={(event) => setRetryDelayMs(Number(event.target.value))} /></label>
           </div>
-          <label className="field">Maximum retry delay<input type="number" min="100" value={maxRetryDelayMs} onChange={(event) => setMaxRetryDelayMs(Number(event.target.value))} /></label>
+          <label className="field">maximum retry delay<input type="number" min="100" value={maxRetryDelayMs} onChange={(event) => setMaxRetryDelayMs(Number(event.target.value))} /></label>
           <p className="helper-text">429 and temporary server responses retry with a bounded delay.</p>
         </div>
         <div className="dialog-actions">
-          <button className="button button-text" type="button" onClick={onCancel}>Cancel</button>
-          <button className="button button-primary" type="submit" disabled={saving}>{saving ? "Saving…" : "Save settings"}</button>
+          <button className="button button-text" type="button" onClick={onCancel}>cancel</button>
+          <button className="button button-primary" type="submit" disabled={saving}>{saving ? "saving…" : "save settings"}</button>
         </div>
       </form>
     </div>
