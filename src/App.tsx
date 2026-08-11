@@ -76,6 +76,8 @@ import { createDreamlandTheme } from "./theme";
 import { AppHeader } from "./components/AppHeader";
 import { Icon } from "./components/Icon";
 import { AppLayout } from "./components/AppLayout";
+import { LoadMore } from "./components/LoadMore";
+import { GallerySkeleton, RowSkeleton } from "./components/LoadingStates";
 import { MainNavigation } from "./components/MainNavigation";
 import { AdvancedQueryDialog as PopupAdvancedQueryDialog, ErrorState as PopupErrorState, SettingsDialog as PopupSettingsDialog, Toast as PopupToast } from "./components/Popups";
 import { isPoolPath, isPostPath, pathForView, poolPath, popularPath, postPath, searchPath, viewFromPath } from "./navigation";
@@ -1485,37 +1487,6 @@ interface DownloadInput {
   variant: MediaVariant;
 }
 
-interface LoadMoreProps {
-  autoLoad?: boolean;
-  hasNext: boolean;
-  loading: boolean;
-  onLoadMore: () => void;
-}
-
-function LoadMore({ autoLoad = true, hasNext, loading, onLoadMore }: LoadMoreProps) {
-  const sentinel = useRef<HTMLDivElement>(null);
-
-  function requestMore() {
-    if (hasNext && !loading) onLoadMore();
-  }
-
-  useEffect(() => {
-    if (!autoLoad || !hasNext || loading || !sentinel.current) return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting) requestMore();
-    }, { rootMargin: "1600px 0px" });
-    observer.observe(sentinel.current);
-    return () => observer.disconnect();
-  }, [autoLoad, hasNext, loading, onLoadMore]);
-
-  if (!hasNext && !loading) return <div className="load-more-end">you’ve reached the end.</div>;
-  return (
-    <div className="load-more" ref={sentinel}>
-      {loading ? <Skeleton variant="rounded" width={148} height={44} animation="wave" /> : <Button variant="outlined" onClick={requestMore}>load more</Button>}
-    </div>
-  );
-}
-
 interface ImageCardProps {
   post: Post;
   selectionMode: boolean;
@@ -1591,45 +1562,6 @@ function ImageCard({ post, selectionMode, selected, downloading, favoriteSupport
         </div>
       </div>
     </article>
-  );
-}
-
-function PostCardSkeleton() {
-  return (
-    <article className="card skeleton-card" aria-hidden="true">
-      <div className="preview">
-        <Skeleton className="skeleton-media" variant="rectangular" animation="wave" />
-      </div>
-      <div className="card-details">
-        <div className="tag-list">
-          <Skeleton variant="rounded" width="38%" height={28} animation="wave" />
-          <Skeleton variant="rounded" width="30%" height={28} animation="wave" />
-          <Skeleton variant="rounded" width="24%" height={28} animation="wave" />
-        </div>
-        <div className="card-footer">
-          <Skeleton variant="text" width="42%" height={24} animation="wave" />
-          <Skeleton variant="rounded" width={92} height={40} animation="wave" />
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function GallerySkeleton({ count = 12 }: { count?: number }) {
-  return (
-    <div className="gallery-grid" aria-label="loading posts" role="status">
-      {Array.from({ length: count }, (_, index) => <PostCardSkeleton key={index} />)}
-    </div>
-  );
-}
-
-function RowSkeleton({ count = 5 }: { count?: number }) {
-  return (
-    <div className="skeleton-rows" aria-label="loading content" role="status">
-      {Array.from({ length: count }, (_, index) => (
-        <Skeleton key={index} className="skeleton-row" variant="rounded" height={72} animation="wave" />
-      ))}
-    </div>
   );
 }
 
