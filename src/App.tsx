@@ -1796,13 +1796,15 @@ function DetailImage({ post }: { post: Post }) {
   const [sourceIndex, setSourceIndex] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const source = sources[sourceIndex];
+  const placeholder = [post.sample_url, post.preview_url].find((url) => url && url !== source);
 
   if (!source) return <div className="detail-image-state" role="status">preview unavailable</div>;
   return (
-    <>
-      {!loaded && <div className="detail-image-loading" role="status"><span className="loading-spinner" /> loading full image…</div>}
+    <div className="detail-image-frame">
+      {!loaded && placeholder && <img className="detail-image-placeholder" src={placeholder} alt="" aria-hidden="true" loading="eager" />}
+      {!loaded && <div className="detail-image-loading" role="status"><span>loading artwork…</span></div>}
       <img
-        className={loaded ? "is-loaded" : ""}
+        className={`detail-image${loaded ? " is-loaded" : ""}`}
         src={source}
         alt={`post ${post.post.id}`}
         loading="eager"
@@ -1812,7 +1814,7 @@ function DetailImage({ post }: { post: Post }) {
           setSourceIndex((current) => current + 1);
         }}
       />
-    </>
+    </div>
   );
 }
 
