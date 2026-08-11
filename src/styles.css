@@ -126,7 +126,7 @@ select:focus-visible {
 
 .brand-lockup {
   gap: 0.75rem;
-  min-width: 0;
+  min-width: max-content;
 }
 
 .header-identity {
@@ -266,6 +266,7 @@ select:focus-visible {
 
 .brand-lockup h1 {
   font-size: 1.25rem;
+  white-space: nowrap;
 }
 
 .brand-mark {
@@ -1448,6 +1449,15 @@ select:focus-visible {
 @media (max-width: 1100px) {
   .app-header {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .header-identity {
+    gap: 0.7rem;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .site-picker > span {
+    white-space: nowrap;
   }
 
   .search-bar {
