@@ -731,8 +731,7 @@ select:focus-visible {
   padding: 1rem;
 }
 
-.dimensions,
-.rating-pill {
+.dimensions {
   background: rgb(17 17 23 / 78%);
   border-radius: 999px;
   color: #fff;
@@ -743,10 +742,6 @@ select:focus-visible {
 }
 
 .dimensions {
-  right: 0.65rem;
-}
-
-.rating-pill {
   left: 0.65rem;
 }
 

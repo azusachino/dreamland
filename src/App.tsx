@@ -1533,7 +1533,6 @@ function ImageCard({ post, selectionMode, selected, downloading, favoriteSupport
           <span className="missing-preview">preview unavailable</span>
         )}
         <span className="dimensions">{post.width ?? "?"}×{post.height ?? "?"}</span>
-        <span className="rating-pill">{post.rating.toLowerCase()}</span>
         {favoriteSupported && (
           <IconButton
             className={`card-favorite${favorited ? " is-favorited" : ""}`}
