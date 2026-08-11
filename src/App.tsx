@@ -1609,7 +1609,7 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
       </div>
       <div className="detail-summary">
         <span>{siteName} post #{post.post.id}</span>
-        {post.author && <span>author: {post.author}</span>}
+        {post.author && <button className="button button-text detail-author-link" type="button" title="search posts by this author" onClick={() => onTag(`user:${post.author}`)}>author: {post.author}</button>}
         <button className="button button-outlined detail-post-link" type="button" onClick={() => void onOpenPost(post)}>open {siteName} post</button>
         {originalUrl && <a href={originalUrl} target="_blank" rel="noreferrer">open original</a>}
         {post.source && <a href={post.source} target="_blank" rel="noreferrer">open source</a>}
