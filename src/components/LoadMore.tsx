@@ -12,10 +12,12 @@ export function LoadMore({ autoLoad = true, hasNext, loading, onLoadMore }: Load
   const sentinel = useRef<HTMLDivElement>(null);
   const state = useRef({ autoLoad, hasNext, loading, onLoadMore });
   const requestInFlight = useRef(false);
+  const previousLoading = useRef(loading);
 
   useEffect(() => {
     state.current = { autoLoad, hasNext, loading, onLoadMore };
-    if (!loading) requestInFlight.current = false;
+    if (previousLoading.current && !loading) requestInFlight.current = false;
+    previousLoading.current = loading;
   }, [autoLoad, hasNext, loading, onLoadMore]);
 
   const requestMore = useCallback(() => {
