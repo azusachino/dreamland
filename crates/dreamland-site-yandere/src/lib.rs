@@ -29,7 +29,7 @@ pub fn default_config() -> SiteDefaults {
 pub fn descriptor() -> SiteDescriptor {
     SiteDescriptor {
         id: SiteId::new(SITE_ID),
-        name: "Yande.re".to_owned(),
+        name: "yandere".to_owned(),
         capabilities: SiteCapabilities {
             browse: true,
             post_search: true,
@@ -39,6 +39,12 @@ pub fn descriptor() -> SiteDescriptor {
             page_numbers: true,
             cursors: false,
             multiple_download_variants: true,
+            safe_content_only: false,
+            authentication: true,
+            remote_favorites: true,
+            favorite_list: true,
+            collections: true,
+            collection_downloads: true,
         },
     }
 }
@@ -507,7 +513,7 @@ pub fn map_http_status(status: reqwest::StatusCode) -> SiteError {
     };
     SiteError {
         code,
-        message: format!("Yande request failed with HTTP {status}"),
+        message: format!("yandere request failed with HTTP {status}"),
         retryable,
     }
 }

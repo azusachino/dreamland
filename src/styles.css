@@ -115,6 +115,7 @@ select:focus-visible {
 }
 
 .brand-lockup,
+.header-identity,
 .header-actions,
 .card-footer,
 .dialog-actions,
@@ -126,6 +127,40 @@ select:focus-visible {
 .brand-lockup {
   gap: 0.75rem;
   min-width: 0;
+}
+
+.header-identity {
+  gap: clamp(0.75rem, 2vw, 1.5rem);
+  min-width: 0;
+}
+
+.site-picker {
+  display: grid;
+  gap: 0.22rem;
+  min-width: 8.5rem;
+}
+
+.site-picker > span {
+  color: var(--ink-subtle);
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.site-picker select {
+  background: var(--surface-container);
+  border: 1px solid var(--outline);
+  border-radius: 0.65rem;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  min-height: 2.2rem;
+  padding: 0.42rem 1.8rem 0.42rem 0.65rem;
+}
+
+.site-picker select:disabled {
+  cursor: not-allowed;
 }
 
 .brand-lockup h1,

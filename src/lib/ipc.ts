@@ -1,10 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 
-// Dreamland is a single-site app today (see docs/API-V1.md). The active
-// site id is fixed here rather than exposed as a picker, since there is
-// only one browse-capable site to pick.
-const ACTIVE_SITE_ID = "yandere";
-
 export type MediaVariant = "Preview" | "Sample" | "Full";
 
 export type Rating = "Safe" | "Questionable" | "Explicit" | "Unknown";
@@ -34,6 +29,29 @@ export interface NetworkPolicy {
   max_retries: number;
   retry_delay_ms: number;
   max_retry_delay_ms: number;
+}
+
+export interface SiteCapabilities {
+  browse: boolean;
+  post_search: boolean;
+  tag_search: boolean;
+  tag_query: boolean;
+  post_lookup: boolean;
+  page_numbers: boolean;
+  cursors: boolean;
+  multiple_download_variants: boolean;
+  safe_content_only: boolean;
+  authentication: boolean;
+  remote_favorites: boolean;
+  favorite_list: boolean;
+  collections: boolean;
+  collection_downloads: boolean;
+}
+
+export interface SiteDescriptor {
+  id: string;
+  name: string;
+  capabilities: SiteCapabilities;
 }
 
 export interface ProxyDetection {
@@ -200,6 +218,10 @@ export function signOut(): Promise<void> {
   return invoke<void>("sign_out");
 }
 
+export function listSites(): Promise<SiteDescriptor[]> {
+  return invoke<SiteDescriptor[]>("list_sites");
+}
+
 export function listPools(page = 1, pageSize = 20): Promise<PoolPage> {
   return invoke<PoolPage>("list_pools", { page, pageSize });
 }
@@ -220,39 +242,39 @@ export function listFavorites(page = 1, pageSize = 20): Promise<SitePage> {
   return invoke<SitePage>("list_favorites", { page, pageSize });
 }
 
-export function listSavedQueries(): Promise<SavedQuery[]> {
-  return invoke<SavedQuery[]>("list_saved_queries");
+export function listSavedQueries(siteId: string): Promise<SavedQuery[]> {
+  return invoke<SavedQuery[]>("list_saved_queries", { siteId });
 }
 
 export function saveSavedQuery(saved: SavedQuery): Promise<SavedQuery> {
   return invoke<SavedQuery>("save_saved_query", { saved });
 }
 
-export function deleteSavedQuery(id: string): Promise<void> {
-  return invoke<void>("delete_saved_query", { id });
+export function deleteSavedQuery(siteId: string, id: string): Promise<void> {
+  return invoke<void>("delete_saved_query", { siteId, id });
 }
 
-export function moveSavedQuery(id: string, direction: -1 | 1): Promise<void> {
-  return invoke<void>("move_saved_query", { id, direction });
+export function moveSavedQuery(siteId: string, id: string, direction: -1 | 1): Promise<void> {
+  return invoke<void>("move_saved_query", { siteId, id, direction });
 }
 
 export function queryDefaultPosts(page: number): Promise<Post[]> {
-  return queryPosts({
+  return queryPosts("yandere", {
     query: { source: "Browse", content_policy: "SafeOnly" },
     pagination: { Page: { number: page, page_size: 20 } },
   }).then((result) => result.posts);
 }
 
-export function queryPosts(request: PostQueryRequest): Promise<SitePage> {
+export function queryPosts(siteId: string, request: PostQueryRequest): Promise<SitePage> {
   return invoke<SitePage>("query_posts", {
-    input: { site: ACTIVE_SITE_ID, request },
+    input: { site: siteId, request },
   });
 }
 
-export function suggestTags(query: string, limit = 5): Promise<TagSuggestion[]> {
+export function suggestTags(siteId: string, query: string, limit = 5): Promise<TagSuggestion[]> {
   return invoke<TagSuggestion[]>("suggest_tags", {
     input: {
-      site: ACTIVE_SITE_ID,
+      site: siteId,
       request: { query, limit },
     },
   });
@@ -266,9 +288,9 @@ export function cancelQuery(session: string): Promise<void> {
   return invoke<void>("cancel_query", { session });
 }
 
-export function enqueueDownload(postId: string, variant: MediaVariant): Promise<DownloadRecord> {
+export function enqueueDownload(siteId: string, postId: string, variant: MediaVariant): Promise<DownloadRecord> {
   return invoke<DownloadRecord>("enqueue_download", {
-    siteId: ACTIVE_SITE_ID,
+    siteId,
     postId,
     variant,
   });

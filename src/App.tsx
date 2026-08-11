@@ -17,6 +17,7 @@ import {
   listSavedQueries,
   cancelDownload,
   deleteSavedQuery,
+  listSites,
   moveSavedQuery,
   openDownload,
   retryDownload,
@@ -42,6 +43,7 @@ import {
   type Pool,
   type ProxyMode,
   type SavedQuery,
+  type SiteDescriptor,
 } from "./lib/ipc";
 
 type ViewMode = "latest" | "popular" | "search" | "downloads" | "pools" | "favorites";
@@ -320,6 +322,7 @@ function Icon({ name }: { name: IconName }) {
 function App() {
   const queryClient = useQueryClient();
   const [view, setView] = useState<ViewMode>("latest");
+  const [selectedSiteId, setSelectedSiteId] = useState(() => window.localStorage.getItem("dreamland.site") ?? "yandere");
   const [popularPeriod, setPopularPeriod] = useState<PopularPeriod>("Week");
   const [popularAnchorDate, setPopularAnchorDate] = useState(() => normalizePopularAnchor(today(), "Week"));
   const [selectedSavedQueryId, setSelectedSavedQueryId] = useState<string | null>(null);
@@ -356,19 +359,31 @@ function App() {
     queryKey: ["config"],
     queryFn: loadConfig,
   });
+  const sitesQuery = useQuery({
+    queryKey: ["sites"],
+    queryFn: listSites,
+  });
+  const activeSite = sitesQuery.data?.find((site) => site.id === selectedSiteId && site.capabilities.browse)
+    ?? sitesQuery.data?.find((site) => site.capabilities.browse)
+    ?? null;
+  const activeSiteId = activeSite?.id ?? "yandere";
+  const activeSiteSafeOnly = activeSite?.capabilities.safe_content_only ?? false;
   const authQuery = useQuery({
     queryKey: ["auth"],
     queryFn: authStatus,
+    enabled: activeSite?.capabilities.authentication === true,
   });
   const savedQueriesQuery = useQuery({
-    queryKey: ["saved-queries"],
-    queryFn: listSavedQueries,
-    enabled: configQuery.isSuccess,
+    queryKey: ["saved-queries", activeSiteId],
+    queryFn: () => listSavedQueries(activeSiteId),
+    enabled: configQuery.isSuccess && Boolean(activeSite),
   });
   const pageSize = configQuery.data?.images_per_page ?? 20;
-  const contentPolicy = configQuery.data?.content_policy ?? "SafeOnly";
+  const contentPolicy = activeSiteSafeOnly ? "SafeOnly" : configQuery.data?.content_policy ?? "SafeOnly";
   const activeSavedQuery = savedQueriesQuery.data?.find((saved) => saved.id === selectedSavedQueryId);
-  const activeContentPolicy = activeSavedQuery?.query.content_policy ?? contentPolicy;
+  const activeContentPolicy = activeSiteSafeOnly
+    ? "SafeOnly"
+    : activeSavedQuery?.query.content_policy ?? contentPolicy;
   const request = useMemo<PostQueryRequest>(() => {
     let source: DiscoverySource = "Browse";
     if (view === "popular") {
@@ -389,13 +404,13 @@ function App() {
     };
   }, [activeContentPolicy, pageSize, popularAnchorDate, popularPeriod, submittedSearch, view]);
   const imagesQuery = useInfiniteQuery({
-    queryKey: ["posts", request],
+    queryKey: ["posts", activeSiteId, request],
     initialPageParam: null as string | null,
-    queryFn: ({ pageParam }) => pageParam ? continueQuery(pageParam) : queryPosts(request),
+    queryFn: ({ pageParam }) => pageParam ? continueQuery(pageParam) : queryPosts(activeSiteId, request),
     getNextPageParam: (lastPage) => lastPage.session && lastPage.posts.length >= lastPage.page_size
       ? lastPage.session
       : undefined,
-    enabled: configQuery.isSuccess && (view === "latest" || view === "popular" || view === "search"),
+    enabled: configQuery.isSuccess && sitesQuery.isSuccess && Boolean(activeSite) && (view === "latest" || view === "popular" || view === "search"),
   });
   useEffect(() => {
     activeQuerySession.current = imagesQuery.data?.pages.at(-1)?.session ?? null;
@@ -405,7 +420,7 @@ function App() {
       const session = activeQuerySession.current;
       if (session) void cancelQuery(session).catch(() => undefined);
     };
-  }, [request]);
+  }, [activeSiteId, request]);
   const downloadsQuery = useInfiniteQuery({
     queryKey: ["downloads"],
     initialPageParam: 0,
@@ -441,9 +456,9 @@ function App() {
     }
   }, [downloadsQuery.data]);
   const suggestionsQuery = useQuery({
-    queryKey: ["tag-suggestions", searchDraft.trim()],
-    queryFn: () => suggestTags(searchDraft.trim(), 7),
-    enabled: searchFocused && searchDraft.trim().length >= 1,
+    queryKey: ["tag-suggestions", activeSiteId, searchDraft.trim()],
+    queryFn: () => suggestTags(activeSiteId, searchDraft.trim(), 7),
+    enabled: searchFocused && searchDraft.trim().length >= 1 && activeSite?.capabilities.tag_search === true,
     staleTime: 30_000,
   });
   const poolsQuery = useInfiniteQuery({
@@ -451,21 +466,21 @@ function App() {
     initialPageParam: 1,
     queryFn: ({ pageParam }) => listPools(pageParam, 30),
     getNextPageParam: (lastPage, pages) => lastPage.has_next ? pages.length + 1 : undefined,
-    enabled: view === "pools" && selectedPool === null,
+    enabled: view === "pools" && selectedPool === null && activeSite?.capabilities.collections === true,
   });
   const poolPostsQuery = useInfiniteQuery({
     queryKey: ["pool-posts", selectedPool?.id, contentPolicy],
     initialPageParam: 1,
     queryFn: ({ pageParam }) => queryPoolPosts(selectedPool!.id, pageParam, pageSize),
     getNextPageParam: (lastPage, pages) => lastPage.posts.length >= lastPage.page_size ? pages.length + 1 : undefined,
-    enabled: view === "pools" && selectedPool !== null && configQuery.isSuccess,
+    enabled: view === "pools" && selectedPool !== null && configQuery.isSuccess && activeSite?.capabilities.collections === true,
   });
   const favoritesQuery = useInfiniteQuery({
     queryKey: ["favorites"],
     initialPageParam: 1,
     queryFn: ({ pageParam }) => listFavorites(pageParam, 20),
     getNextPageParam: (lastPage, pages) => lastPage.posts.length >= lastPage.page_size ? pages.length + 1 : undefined,
-    enabled: view === "favorites" && authQuery.data?.authenticated === true && Boolean(authQuery.data.username),
+    enabled: view === "favorites" && activeSite?.capabilities.favorite_list === true && authQuery.data?.authenticated === true && Boolean(authQuery.data.username),
   });
   useEffect(() => {
     const posts = favoritesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
@@ -484,7 +499,7 @@ function App() {
     onError: (reason) => setError(`Failed to save settings: ${errorMessage(reason)}`),
   });
   const downloadMutation = useMutation({
-    mutationFn: ({ postId, variant }: DownloadInput) => enqueueDownload(postId, variant),
+    mutationFn: ({ siteId, postId, variant }: DownloadInput) => enqueueDownload(siteId, postId, variant),
     onSuccess: (record) => {
       void queryClient.invalidateQueries({ queryKey: ["downloads"] });
       downloadStatuses.current.set(record.id, record.status);
@@ -495,17 +510,19 @@ function App() {
   });
 
   const isBrowseView = view === "latest" || view === "popular" || view === "search";
-  const queryError = configQuery.error
-    ? `Failed to load configuration: ${errorMessage(configQuery.error)}`
-    : isBrowseView && imagesQuery.error
-      ? `Failed to load images: ${errorMessage(imagesQuery.error)}`
-      : "";
+  const queryError = sitesQuery.error
+    ? `Failed to load sites: ${errorMessage(sitesQuery.error)}`
+    : configQuery.error
+      ? `Failed to load configuration: ${errorMessage(configQuery.error)}`
+      : isBrowseView && imagesQuery.error
+        ? `Failed to load images: ${errorMessage(imagesQuery.error)}`
+        : "";
   const images = imagesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
   const favoritePosts = favoritesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
   const pools = poolsQuery.data?.pages.flatMap((page) => page.pools).filter((pool) => pool.public) ?? [];
   const poolPosts = poolPostsQuery.data?.pages.flatMap((page) => page.posts) ?? [];
   const selectedPosts = images.filter((post) => selectedPostIds.has(post.post.id));
-  const loading = configQuery.isPending || imagesQuery.isPending;
+  const loading = configQuery.isPending || sitesQuery.isPending || imagesQuery.isPending;
   const loadingMore = imagesQuery.isFetchingNextPage;
   const downloadRecords = useMemo(() => {
     const records = downloadsQuery.data?.pages.flatMap((page) => page) ?? [];
@@ -529,10 +546,38 @@ function App() {
       : view === "downloads"
         ? "Local download history and active work"
         : view === "pools"
-          ? "Ordered public collections from Yande"
+          ? `Ordered public collections from ${activeSite?.name ?? "the active site"}`
           : view === "favorites"
-            ? authQuery.data?.authenticated ? `Saved by ${authQuery.data.username ?? "your Yande account"}` : "Sign in to browse your saved posts"
-            : "A calm feed for finding something worth keeping";
+            ? authQuery.data?.authenticated ? `Saved by ${authQuery.data.username ?? "your yandere account"}` : "Sign in to browse your saved posts"
+            : activeSiteSafeOnly
+              ? "Safe-mode browse from the active site"
+              : "A calm feed for finding something worth keeping";
+
+  useEffect(() => {
+    const site = sitesQuery.data?.find((candidate) => candidate.id === selectedSiteId);
+    if (!site || !site.capabilities.browse) {
+      const fallback = sitesQuery.data?.find((candidate) => candidate.capabilities.browse);
+      if (fallback) {
+        window.localStorage.setItem("dreamland.site", fallback.id);
+        setSelectedSiteId(fallback.id);
+      }
+    }
+  }, [selectedSiteId, sitesQuery.data]);
+
+  function selectSite(site: SiteDescriptor) {
+    if (!site.capabilities.browse || site.id === activeSiteId) return;
+    window.localStorage.setItem("dreamland.site", site.id);
+    setSelectedSiteId(site.id);
+    setError("");
+    setNotice("");
+    setView("latest");
+    setSelectedSavedQueryId(null);
+    setEditingSavedQueryId(null);
+    setSelectedPool(null);
+    setSelectedPost(null);
+    setSelectedPostIds(new Set());
+    setSelectionMode(false);
+  }
 
   function changeView(nextView: ViewMode) {
     setError("");
@@ -618,7 +663,7 @@ function App() {
     try {
       const saved = await saveSavedQuery({
         id: activeSavedQuery?.id ?? "",
-        site: "yandere",
+        site: activeSiteId,
         name: name.trim(),
         query: {
           source: { Search: { expression: submittedSearch } },
@@ -648,7 +693,7 @@ function App() {
   async function handleDeleteSavedQuery(saved: SavedQuery) {
     if (!window.confirm(`Delete “${saved.name}”?`)) return;
     try {
-      await deleteSavedQuery(saved.id);
+      await deleteSavedQuery(activeSiteId, saved.id);
       await savedQueriesQuery.refetch();
       if (selectedSavedQueryId === saved.id) {
         setSelectedSavedQueryId(null);
@@ -661,7 +706,7 @@ function App() {
 
   async function handleMoveSavedQuery(saved: SavedQuery, direction: -1 | 1) {
     try {
-      await moveSavedQuery(saved.id, direction);
+      await moveSavedQuery(activeSiteId, saved.id, direction);
       await savedQueriesQuery.refetch();
     } catch (reason) {
       setError(`Could not reorder saved query: ${errorMessage(reason)}`);
@@ -689,7 +734,7 @@ function App() {
     let queued = 0;
     for (const post of selectedPosts) {
       try {
-        await downloadMutation.mutateAsync({ postId: post.post.id, variant: configQuery.data?.download_variant ?? "Full" });
+        await downloadMutation.mutateAsync({ siteId: post.post.site, postId: post.post.id, variant: configQuery.data?.download_variant ?? "Full" });
         queued += 1;
       } catch {
         // Each failed item is reported by the mutation; continue the batch.
@@ -704,7 +749,11 @@ function App() {
   async function handleFavorite(post: Post) {
     if (!authQuery.data?.authenticated) {
       setView("favorites");
-      showToast("Sign in required", "Connect your Yande account before changing favorites.", "info");
+      showToast("Sign in required", "Connect your yandere account before changing favorites.", "info");
+      return;
+    }
+    if (!activeSite?.capabilities.remote_favorites) {
+      setError(`${activeSite?.name ?? "This site"} does not support remote favorites.`);
       return;
     }
     const favorite = !favoritePostIds.has(post.post.id);
@@ -717,7 +766,7 @@ function App() {
         else next.delete(post.post.id);
         return next;
       });
-      showToast(favorite ? "Added to favorites" : "Removed from favorites", `Post #${post.post.id} updated on Yande.`);
+      showToast(favorite ? "Added to favorites" : "Removed from favorites", `Post #${post.post.id} updated on yandere.`);
     } catch (reason) {
       setError(`Favorite failed: ${errorMessage(reason)}`);
     }
@@ -739,7 +788,7 @@ function App() {
     setError("");
     setNotice("");
     try {
-      await downloadMutation.mutateAsync({ postId: post.post.id, variant: configQuery.data?.download_variant ?? "Full" });
+      await downloadMutation.mutateAsync({ siteId: post.post.site, postId: post.post.id, variant: configQuery.data?.download_variant ?? "Full" });
     } catch {
       // The mutation reports the user-facing error.
     } finally {
@@ -765,12 +814,31 @@ function App() {
   return (
     <div className="app">
       <header className="app-header shell-surface">
-        <div className="brand-lockup">
-          <div className="brand-mark" aria-hidden="true">✦</div>
-          <div>
-            <p className="eyebrow">Yandere / image board</p>
-            <h1>Dreamland</h1>
+        <div className="header-identity">
+          <div className="brand-lockup">
+            <div className="brand-mark" aria-hidden="true">✦</div>
+            <div>
+              <p className="eyebrow">Image board</p>
+              <h1>Dreamland</h1>
+            </div>
           </div>
+          <label className="site-picker">
+            <span>Browse site</span>
+            <select
+              aria-label="Choose image board site"
+              value={activeSiteId}
+              onChange={(event) => {
+                const site = sitesQuery.data?.find((candidate) => candidate.id === event.target.value);
+                if (site) selectSite(site);
+              }}
+            >
+              {(sitesQuery.data ?? []).map((site) => (
+                <option key={site.id} value={site.id} disabled={!site.capabilities.browse}>
+                  {site.name}{site.capabilities.browse ? "" : " · coming later"}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <form className="search-bar" onSubmit={submitSearch} role="search">
           <span className="search-icon"><Icon name="search" /></span>
@@ -880,12 +948,16 @@ function App() {
             </div>
             );
           })}
-          <NavButton active={view === "pools"} label="Pools" icon="book" onClick={() => changeView("pools")} />
-          <NavButton active={view === "favorites"} label="Favorites" icon="heart" onClick={() => changeView("favorites")} />
+          {activeSite?.capabilities.collections && (
+            <NavButton active={view === "pools"} label="Pools" icon="book" onClick={() => changeView("pools")} />
+          )}
+          {activeSite?.capabilities.favorite_list && (
+            <NavButton active={view === "favorites"} label="Favorites" icon="heart" onClick={() => changeView("favorites")} />
+          )}
           <NavButton active={view === "downloads"} label="Downloads" icon="download" onClick={() => changeView("downloads")} />
           <span className="view-status">
             <span className="connection-dot" aria-hidden="true" />
-            <span>Yandere connected</span>
+            <span>{activeSiteSafeOnly ? `${activeSite?.name ?? "Site"} · safe mode` : `${activeSite?.name ?? "Site"} connected`}</span>
           </span>
           </nav>
           <section className="content-heading">
@@ -1082,6 +1154,8 @@ function App() {
           <PostInspector
             post={selectedPost}
             downloading={downloadingId === selectedPost.post.id}
+            siteName={activeSite?.name ?? selectedPost.post.site}
+            favoriteSupported={activeSite?.capabilities.remote_favorites === true}
             onClose={() => setSelectedPost(null)}
             onDownload={handleDownload}
             favorited={favoritePostIds.has(selectedPost.post.id)}
@@ -1120,6 +1194,7 @@ interface ConfigInput {
 }
 
 interface DownloadInput {
+  siteId: string;
   postId: string;
   variant: MediaVariant;
 }
@@ -1382,6 +1457,8 @@ function ImageCard({ post, selectionMode, selected, downloading, onDownload, onS
 interface PostInspectorProps {
   post: Post;
   downloading: boolean;
+  siteName: string;
+  favoriteSupported: boolean;
   favorited: boolean;
   onClose: () => void;
   onDownload: (post: Post) => Promise<void>;
@@ -1390,7 +1467,7 @@ interface PostInspectorProps {
   downloadVariant: MediaVariant;
 }
 
-function PostInspector({ post, downloading, favorited, onClose, onDownload, onFavorite, onTag, downloadVariant }: PostInspectorProps) {
+function PostInspector({ post, downloading, siteName, favoriteSupported, favorited, onClose, onDownload, onFavorite, onTag, downloadVariant }: PostInspectorProps) {
   const originalUrl = post.full_url ?? post.sample_url ?? post.preview_url;
   return (
     <aside className="detail-panel shell-surface" aria-label="Post details">
@@ -1405,7 +1482,7 @@ function PostInspector({ post, downloading, favorited, onClose, onDownload, onFa
         <DetailImage key={post.post.id} post={post} />
       </div>
       <div className="detail-summary">
-        <span>Yande.re post #{post.post.id}</span>
+        <span>{siteName} post #{post.post.id}</span>
         {post.author && <span>Author: {post.author}</span>}
         {originalUrl && <a href={originalUrl} target="_blank" rel="noreferrer">Open original</a>}
         {post.source && <a href={post.source} target="_blank" rel="noreferrer">Open source</a>}
@@ -1417,7 +1494,7 @@ function PostInspector({ post, downloading, favorited, onClose, onDownload, onFa
         </div>
       </div>
       <dl className="metadata">
-        <div><dt>Site</dt><dd>Yande.re</dd></div>
+        <div><dt>Site</dt><dd>{siteName}</dd></div>
         <div><dt>Post ID</dt><dd>{post.post.id}</dd></div>
         <div><dt>Author</dt><dd>{post.author ?? "—"}{post.creator_id ? ` · #${post.creator_id}` : ""}</dd></div>
         <div><dt>Rating</dt><dd>{post.rating}</dd></div>
@@ -1429,10 +1506,12 @@ function PostInspector({ post, downloading, favorited, onClose, onDownload, onFa
         <div><dt>Children</dt><dd>{post.has_children ? "Yes" : "No"}</dd></div>
         <div><dt>Created</dt><dd>{post.created_at ? new Date(post.created_at).toLocaleString() : "—"}</dd></div>
       </dl>
-      <p className="detail-helper">Tags and metadata come from the feed result; Yande does not expose a separate post-lookup operation in this release.</p>
-      <button className="button button-outlined button-wide" type="button" onClick={() => void onFavorite(post)}>
-        {favorited ? "Remove from Yande favorites" : "Add to Yande favorites"}
-      </button>
+      <p className="detail-helper">Tags and metadata come from the feed result; this site does not expose a separate post-lookup operation in this release.</p>
+      {favoriteSupported && (
+        <button className="button button-outlined button-wide" type="button" onClick={() => void onFavorite(post)}>
+          {favorited ? `Remove from ${siteName} favorites` : `Add to ${siteName} favorites`}
+        </button>
+      )}
       <button className="button button-primary button-wide" disabled={downloading} onClick={() => void onDownload(post)}>
         {downloading ? "Saving…" : `Download ${downloadVariant.toLowerCase()} quality`}
       </button>
@@ -1610,13 +1689,13 @@ function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool
     return (
       <section className="workspace-panel shell-surface" aria-label={`${selectedPool.name} pool`}>
         <div className="inspector-heading">
-          <div><p className="eyebrow">Yande pool</p><h2>{selectedPool.name}</h2></div>
+          <div><p className="eyebrow">yandere pool</p><h2>{selectedPool.name}</h2></div>
           <div className="inspector-actions">
             <button className="button button-outlined" type="button" onClick={() => onDownloadZip(selectedPool)}>Download ZIP</button>
             <button className="button button-outlined button-with-icon" type="button" onClick={onBack}><Icon name="back" /><span>All pools</span></button>
           </div>
         </div>
-        <p className="helper-text">{selectedPool.post_count} ordered post{selectedPool.post_count === 1 ? "" : "s"} from Yande.</p>
+        <p className="helper-text">{selectedPool.post_count} ordered post{selectedPool.post_count === 1 ? "" : "s"} from yandere.</p>
         {postsError && <div className="panel-error" role="alert"><p>{postsError}</p><button className="button button-outlined" type="button" onClick={onRetryPosts}>Try again</button></div>}
         {postsLoading && posts.length === 0 && <p className="loading-line" role="status"><span /> Loading pool posts…</p>}
         {!postsLoading && !postsError && posts.length === 0 && <div className="panel-empty">This pool has no visible posts.</div>}
@@ -1643,7 +1722,7 @@ function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool
   return (
     <section className="workspace-panel shell-surface" aria-label="Pools">
       <div className="inspector-heading">
-        <div><p className="eyebrow">Yande collections</p><h2>Pools</h2></div>
+        <div><p className="eyebrow">yandere collections</p><h2>Pools</h2></div>
       </div>
       <p className="helper-text">Public pools group ordered posts from the site. Open a pool to browse its ordered posts or request its authenticated ZIP archive.</p>
       {poolsLoading && pools.length === 0 && <p className="loading-line" role="status"><span /> Loading pools…</p>}
@@ -1683,11 +1762,11 @@ function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favor
   return (
     <section className="workspace-panel shell-surface" aria-label="Favorites account">
       <div className="inspector-heading">
-        <div><p className="eyebrow">Yande account</p><h2>Favorites</h2></div>
+        <div><p className="eyebrow">yandere account</p><h2>Favorites</h2></div>
       </div>
       {auth?.authenticated ? (
         <>
-          <p className="account-connected"><span className="connection-dot" /> {auth.username ? `${auth.username} connected` : "Yande account connected"}</p>
+          <p className="account-connected"><span className="connection-dot" /> {auth.username ? `${auth.username} connected` : "yandere account connected"}</p>
           {favoritesError && <div className="panel-error" role="alert"><p>{favoritesError}</p><button className="button button-outlined" type="button" onClick={onRetry}>Try again</button></div>}
           {favoritesLoading && favorites.length === 0 && <p className="helper-text">Loading favorites…</p>}
           {!favoritesLoading && favorites.length === 0 && <div className="panel-empty">No favorites found.</div>}
@@ -1711,8 +1790,8 @@ function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favor
         </>
       ) : (
         <>
-          <p className="helper-text">Sign in through Yande’s own page. Dreamland reads only the safe auth state and keeps the browser session in Rust.</p>
-          <button className="button button-primary button-wide" type="button" onClick={onBeginAuth}>Sign in to Yande</button>
+          <p className="helper-text">Sign in through yandere’s own page. Dreamland reads only the safe auth state and keeps the browser session in Rust.</p>
+          <button className="button button-primary button-wide" type="button" onClick={onBeginAuth}>Sign in to yandere</button>
           <button className="button button-outlined button-wide" type="button" disabled={loading} onClick={onRefresh}>{loading ? "Checking…" : "Check login"}</button>
         </>
       )}

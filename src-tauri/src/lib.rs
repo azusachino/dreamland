@@ -14,15 +14,20 @@ use dreamland_sites::SiteDescriptor;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
-/// Posts from the most recent typed query, keyed by post id. Downloads resolve
-/// their URL from here rather than trusting a client-supplied one -- the
-/// frontend can only ever download a post this backend fetched from the site.
+/// Posts from the most recent typed query, keyed by site and post id.
+/// Downloads resolve their URL from here rather than trusting a client-supplied
+/// one -- the frontend can only ever download a post this backend fetched from
+/// the selected site.
 struct RuntimeState {
     posts: Mutex<HashMap<String, Post>>,
     auth_cookie: Mutex<Option<String>>,
     auth_username: Mutex<Option<String>>,
     sessions: dreamland_runtime::QuerySessionStore,
     downloads: dreamland_runtime::DownloadManager,
+}
+
+fn post_cache_key(site_id: &str, post_id: &str) -> String {
+    format!("{site_id}:{post_id}")
 }
 
 impl RuntimeState {
@@ -82,7 +87,9 @@ impl From<&AppConfig> for AppConfigView {
 
 #[tauri::command]
 fn list_sites() -> Vec<SiteDescriptor> {
-    dreamland_sites::descriptors()
+    let mut sites = dreamland_sites::descriptors();
+    sites.extend(dreamland_sites::skeleton_descriptors());
+    sites
 }
 
 #[tauri::command]
@@ -132,7 +139,7 @@ fn begin_auth(app: AppHandle) -> Result<(), String> {
                 .map_err(|error| format!("invalid login URL: {error}"))?,
         ),
     )
-    .title("Sign in to Yande.re")
+    .title("Sign in to yandere")
     .inner_size(480.0, 760.0)
     .build()
     .map(|_| ())
@@ -151,7 +158,7 @@ async fn auth_status(app: AppHandle, state: State<'_, RuntimeState>) -> Result<A
         .cookies_for_url(
             "https://yande.re/"
                 .parse()
-                .map_err(|error| format!("invalid Yande URL: {error}"))?,
+                .map_err(|error| format!("invalid yandere URL: {error}"))?,
         )
         .map_err(|error| error.to_string())?;
     let authenticated = cookies.iter().any(|cookie| cookie.name() == "user_id");
@@ -247,11 +254,12 @@ async fn query_pool_posts(
     .await
     .map_err(|error| error.to_string())?;
     let mut posts = state.posts.lock().expect("post cache lock poisoned");
-    posts.extend(
-        page.posts
-            .iter()
-            .map(|post| (post.post.id.clone(), post.clone())),
-    );
+    posts.extend(page.posts.iter().map(|post| {
+        (
+            post_cache_key(post.post.site.as_str(), &post.post.id),
+            post.clone(),
+        )
+    }));
     Ok(page)
 }
 
@@ -266,7 +274,7 @@ async fn enqueue_pool_zip(
         .lock()
         .expect("auth cookie lock poisoned")
         .clone()
-        .ok_or_else(|| "Yande login is required to download a pool ZIP".to_owned())?;
+        .ok_or_else(|| "yandere login is required to download a pool ZIP".to_owned())?;
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
     let url = dreamland_sites::pool_zip_url(dreamland_sites::DEFAULT_SITE_ID, &pool_id)
         .map_err(|error| error.to_string())?;
@@ -295,13 +303,13 @@ async fn list_favorites(
         .lock()
         .expect("auth cookie lock poisoned")
         .clone()
-        .ok_or_else(|| "Yande login is required to view favorites".to_owned())?;
+        .ok_or_else(|| "yandere login is required to view favorites".to_owned())?;
     let username = state
         .auth_username
         .lock()
         .expect("auth username lock poisoned")
         .clone()
-        .ok_or_else(|| "Refresh Yande login status before viewing favorites".to_owned())?;
+        .ok_or_else(|| "Refresh yandere login status before viewing favorites".to_owned())?;
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
     let page = dreamland_sites::list_favorites(
         dreamland_sites::DEFAULT_SITE_ID,
@@ -315,17 +323,26 @@ async fn list_favorites(
     .await
     .map_err(|error| error.to_string())?;
     let mut posts = state.posts.lock().expect("post cache lock poisoned");
-    posts.extend(
-        page.posts
-            .iter()
-            .map(|post| (post.post.id.clone(), post.clone())),
-    );
+    posts.extend(page.posts.iter().map(|post| {
+        (
+            post_cache_key(post.post.site.as_str(), &post.post.id),
+            post.clone(),
+        )
+    }));
     Ok(page)
 }
 
 #[tauri::command]
-async fn list_saved_queries(state: State<'_, RuntimeState>) -> Result<Vec<SavedQuery>, String> {
-    let site = SiteId::new(dreamland_sites::DEFAULT_SITE_ID);
+async fn list_saved_queries(
+    state: State<'_, RuntimeState>,
+    site_id: String,
+) -> Result<Vec<SavedQuery>, String> {
+    if !dreamland_sites::is_active_browse_site(&site_id) {
+        return Err(format!(
+            "'{site_id}' is not a registered, browse-capable site"
+        ));
+    }
+    let site = SiteId::new(site_id);
     state
         .downloads
         .saved_queries(&site)
@@ -338,10 +355,13 @@ async fn save_saved_query(
     state: State<'_, RuntimeState>,
     saved: SavedQuery,
 ) -> Result<SavedQuery, String> {
-    let site = SiteId::new(dreamland_sites::DEFAULT_SITE_ID);
-    if saved.site != site {
-        return Err(format!("site '{}' is not active", saved.site.as_str()));
+    if !dreamland_sites::is_active_browse_site(saved.site.as_str()) {
+        return Err(format!(
+            "'{}' is not a registered, browse-capable site",
+            saved.site.as_str()
+        ));
     }
+    let site = saved.site.clone();
     state
         .downloads
         .save_saved_query(&site, saved)
@@ -350,8 +370,17 @@ async fn save_saved_query(
 }
 
 #[tauri::command]
-async fn delete_saved_query(state: State<'_, RuntimeState>, id: String) -> Result<(), String> {
-    let site = SiteId::new(dreamland_sites::DEFAULT_SITE_ID);
+async fn delete_saved_query(
+    state: State<'_, RuntimeState>,
+    site_id: String,
+    id: String,
+) -> Result<(), String> {
+    if !dreamland_sites::is_active_browse_site(&site_id) {
+        return Err(format!(
+            "'{site_id}' is not a registered, browse-capable site"
+        ));
+    }
+    let site = SiteId::new(site_id);
     state
         .downloads
         .delete_saved_query(&site, &id)
@@ -362,10 +391,16 @@ async fn delete_saved_query(state: State<'_, RuntimeState>, id: String) -> Resul
 #[tauri::command]
 async fn move_saved_query(
     state: State<'_, RuntimeState>,
+    site_id: String,
     id: String,
     direction: i8,
 ) -> Result<(), String> {
-    let site = SiteId::new(dreamland_sites::DEFAULT_SITE_ID);
+    if !dreamland_sites::is_active_browse_site(&site_id) {
+        return Err(format!(
+            "'{site_id}' is not a registered, browse-capable site"
+        ));
+    }
+    let site = SiteId::new(site_id);
     state
         .downloads
         .move_saved_query(&site, &id, direction)
@@ -384,7 +419,7 @@ async fn set_favorite(
         .lock()
         .expect("auth cookie lock poisoned")
         .clone()
-        .ok_or_else(|| "Yande login is required to change favorites".to_owned())?;
+        .ok_or_else(|| "yandere login is required to change favorites".to_owned())?;
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
     dreamland_sites::set_favorite(
         dreamland_sites::DEFAULT_SITE_ID,
@@ -437,11 +472,12 @@ async fn execute_session_query(
     page.session = Some(session.id);
     let mut posts = state.posts.lock().expect("post cache lock poisoned");
     posts.clear();
-    posts.extend(
-        page.posts
-            .iter()
-            .map(|post| (post.post.id.clone(), post.clone())),
-    );
+    posts.extend(page.posts.iter().map(|post| {
+        (
+            post_cache_key(post.post.site.as_str(), &post.post.id),
+            post.clone(),
+        )
+    }));
     Ok(page)
 }
 
@@ -503,7 +539,7 @@ async fn enqueue_download(
     let post = {
         let cache = state.posts.lock().expect("post cache lock poisoned");
         cache
-            .get(&post_id)
+            .get(&post_cache_key(&site_id, &post_id))
             .cloned()
             .ok_or_else(|| "post not found; reload images before downloading".to_string())?
     };

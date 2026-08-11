@@ -7,7 +7,7 @@ pub const SITE_ID: &str = "twitter";
 pub fn descriptor() -> SiteDescriptor {
     SiteDescriptor {
         id: SiteId::new(SITE_ID),
-        name: "Twitter".to_owned(),
+        name: "twitter".to_owned(),
         capabilities: SiteCapabilities {
             browse: false,
             post_search: false,
@@ -17,6 +17,12 @@ pub fn descriptor() -> SiteDescriptor {
             page_numbers: false,
             cursors: false,
             multiple_download_variants: false,
+            safe_content_only: false,
+            authentication: false,
+            remote_favorites: false,
+            favorite_list: false,
+            collections: false,
+            collection_downloads: false,
         },
     }
 }

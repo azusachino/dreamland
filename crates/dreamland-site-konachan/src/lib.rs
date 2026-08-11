@@ -24,7 +24,7 @@ pub fn default_config() -> SiteDefaults {
 pub fn descriptor() -> SiteDescriptor {
     SiteDescriptor {
         id: SiteId::new(SITE_ID),
-        name: "Konachan".to_owned(),
+        name: "konachan".to_owned(),
         capabilities: SiteCapabilities {
             browse: true,
             post_search: true,
@@ -34,6 +34,12 @@ pub fn descriptor() -> SiteDescriptor {
             page_numbers: true,
             cursors: false,
             multiple_download_variants: true,
+            safe_content_only: true,
+            authentication: false,
+            remote_favorites: false,
+            favorite_list: false,
+            collections: false,
+            collection_downloads: false,
         },
     }
 }
@@ -87,7 +93,7 @@ pub fn tag_endpoint(base_url: &str) -> Result<String> {
 
 fn ensure_supported_policy(policy: ContentPolicy) -> Result<()> {
     if default_config().safe_only && policy != ContentPolicy::SafeOnly {
-        bail!("Konachan safe API supports Safe only; open the Konachan browser page for explicit-host access")
+        bail!("konachan safe API supports Safe only; open the konachan browser page for explicit-host access")
     }
     Ok(())
 }
@@ -96,11 +102,11 @@ fn map_transport_error(error: anyhow::Error) -> anyhow::Error {
     let message = error.to_string();
     if message.contains("HTTP 403") || message.contains("HTTP 503") {
         anyhow::anyhow!(
-            "Konachan API request was blocked by bot protection; open {} in a browser and retry later",
+            "konachan API request was blocked by bot protection; open {} in a browser and retry later",
             default_config().browser_url
         )
     } else {
-        anyhow::anyhow!("Konachan API request failed: {message}")
+        anyhow::anyhow!("konachan API request failed: {message}")
     }
 }
 

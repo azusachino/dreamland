@@ -29,6 +29,12 @@ pub struct SiteCapabilities {
     pub page_numbers: bool,
     pub cursors: bool,
     pub multiple_download_variants: bool,
+    pub safe_content_only: bool,
+    pub authentication: bool,
+    pub remote_favorites: bool,
+    pub favorite_list: bool,
+    pub collections: bool,
+    pub collection_downloads: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
