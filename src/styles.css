@@ -375,48 +375,6 @@ select:focus-visible {
   white-space: nowrap;
 }
 
-.tag-search-reminder {
-  align-items: center;
-  background: var(--surface-container);
-  border: 1px solid var(--outline);
-  border-radius: var(--radius-md);
-  display: flex;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-  padding: 0.75rem 0.9rem;
-}
-
-.tag-search-reminder > div {
-  display: grid;
-  gap: 0.15rem;
-  min-width: 0;
-}
-
-.tag-search-reminder strong {
-  font-size: 0.82rem;
-}
-
-.tag-search-reminder div span {
-  color: var(--ink-muted);
-  font-size: 0.72rem;
-}
-
-.reminder-icon {
-  align-items: center;
-  background: var(--primary);
-  border-radius: 0.65rem;
-  color: var(--primary-ink);
-  display: inline-flex;
-  flex: 0 0 2.15rem;
-  height: 2.15rem;
-  justify-content: center;
-}
-
-.tag-search-reminder .button {
-  margin-left: auto;
-  white-space: nowrap;
-}
-
 .connection-dot {
   background: var(--success);
   border-radius: 50%;
@@ -467,6 +425,10 @@ select:focus-visible {
   gap: 0.65rem;
 }
 
+.heading-actions {
+  min-height: 2.5rem;
+}
+
 .period-picker {
   color: var(--ink-muted);
   font-size: 0.75rem;
@@ -484,13 +446,17 @@ select:focus-visible {
 
 .period-picker select {
   color: var(--ink);
+  height: 2.5rem;
 }
 
 .content-policy {
+  align-items: center;
   border: 1px solid var(--outline);
   border-radius: 999px;
   color: var(--ink-muted);
+  display: inline-flex;
   font-size: 0.7rem;
+  height: 2.5rem;
   padding: 0.55rem 0.75rem;
   white-space: nowrap;
 }

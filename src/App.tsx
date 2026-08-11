@@ -12,6 +12,7 @@ import {
   listDownloads,
   listDownloadHistory,
   cancelDownload,
+  openDownload,
   retryDownload,
   loadConfig,
   queryPosts,
@@ -75,7 +76,7 @@ function Icon({ name }: { name: IconName }) {
     book: "M4 5.5A2.5 2.5 0 0 1 6.5 3H11v17H6.5A2.5 2.5 0 0 0 4 22V5.5Zm16 0A2.5 2.5 0 0 0 17.5 3H13v17h4.5A2.5 2.5 0 0 1 20 22V5.5Z",
     heart: "m12 20-7-7a4.5 4.5 0 0 1 6.4-6.3L12 8.3l.6-1.6A4.5 4.5 0 0 1 19 13z",
     search: "m21 21-4.4-4.4m2.4-5.1a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z",
-    refresh: "M20 11a8 8 0 1 0 2 5m0-5v-5m0 5h-5",
+    refresh: "M20 5v6h-6M20 11a8 8 0 1 0 1.6 5.3",
     settings: "M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Zm0-11.2v2m0 14v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M3 12h2m14 0h2M4.9 19.1l1.4-1.4M18 6.3l1.4-1.4",
     close: "M6 6l12 12M18 6 6 18",
     back: "M19 12H5m6 6-6-6 6-6",
@@ -113,10 +114,6 @@ function App() {
     window.setTimeout(() => {
       setToast((current) => current?.id === id ? null : current);
     }, 4_500);
-  }
-
-  function focusTagSearch() {
-    searchInput.current?.focus();
   }
 
   const configQuery = useQuery({
@@ -495,11 +492,6 @@ function App() {
             <span>Yandere connected</span>
           </span>
           </nav>
-          <div className="tag-search-reminder">
-            <span className="reminder-icon"><Icon name="search" /></span>
-            <div><strong>Search by tags</strong><span>Use tags, negative terms, or suggestions to find a feed.</span></div>
-            <button className="button button-tonal button-with-icon" type="button" onClick={focusTagSearch}><Icon name="search" /><span>Focus search</span></button>
-          </div>
           <section className="content-heading">
             <div>
               <p className="eyebrow">Explore freely</p>
@@ -591,6 +583,13 @@ function App() {
               onRetry={async (id) => {
                 await retryDownload(id);
                 await queryClient.invalidateQueries({ queryKey: ["downloads"] });
+              }}
+              onOpen={async (path) => {
+                try {
+                  await openDownload(path);
+                } catch (reason) {
+                  setError(`Could not open file: ${errorMessage(reason)}`);
+                }
               }}
               onLoadMore={() => void downloadsQuery.fetchNextPage()}
             />
@@ -731,12 +730,13 @@ function Toast({ state, onClose }: ToastProps) {
 }
 
 interface LoadMoreProps {
+  autoLoad?: boolean;
   hasNext: boolean;
   loading: boolean;
   onLoadMore: () => void;
 }
 
-function LoadMore({ hasNext, loading, onLoadMore }: LoadMoreProps) {
+function LoadMore({ autoLoad = true, hasNext, loading, onLoadMore }: LoadMoreProps) {
   const sentinel = useRef<HTMLDivElement>(null);
 
   function requestMore() {
@@ -744,13 +744,13 @@ function LoadMore({ hasNext, loading, onLoadMore }: LoadMoreProps) {
   }
 
   useEffect(() => {
-    if (!hasNext || loading || !sentinel.current) return;
+    if (!autoLoad || !hasNext || loading || !sentinel.current) return;
     const observer = new IntersectionObserver((entries) => {
       if (entries[0]?.isIntersecting) requestMore();
-    }, { rootMargin: "800px" });
+    }, { rootMargin: "1600px 0px" });
     observer.observe(sentinel.current);
     return () => observer.disconnect();
-  }, [hasNext, loading, onLoadMore]);
+  }, [autoLoad, hasNext, loading, onLoadMore]);
 
   if (!hasNext && !loading) return <div className="load-more-end">You’ve reached the end.</div>;
   return (
@@ -899,10 +899,11 @@ interface DownloadPanelProps {
   historyLoading: boolean;
   onCancel: (id: string) => Promise<void>;
   onRetry: (id: string) => Promise<void>;
+  onOpen: (path: string) => Promise<void>;
   onLoadMore: () => void;
 }
 
-function DownloadPanel({ records, historyHasNext, historyLoading, onCancel, onRetry, onLoadMore }: DownloadPanelProps) {
+function DownloadPanel({ records, historyHasNext, historyLoading, onCancel, onRetry, onOpen, onLoadMore }: DownloadPanelProps) {
   const active = records.filter((record) => isActiveDownload(record.status));
   const history = records.filter((record) => !isActiveDownload(record.status));
   const groups = new Map<string, DownloadRecord[]>();
@@ -925,7 +926,7 @@ function DownloadPanel({ records, historyHasNext, historyLoading, onCancel, onRe
           {active.length > 0 && <section className="download-section">
             <h3 className="download-section-title">In progress</h3>
             <div className="download-list">
-              {active.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} />)}
+              {active.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} onOpen={onOpen} />)}
             </div>
           </section>}
           {historyGroups.length > 0 && <section className="download-section">
@@ -937,7 +938,7 @@ function DownloadPanel({ records, historyHasNext, historyLoading, onCancel, onRe
                 return <section className="download-month" key={key}>
                   <h4>{year}<span>{monthName}</span></h4>
                   <div className="download-list">
-                    {group.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} />)}
+                    {group.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} onOpen={onOpen} />)}
                   </div>
                 </section>;
               })}
@@ -954,11 +955,13 @@ interface DownloadRowProps {
   record: DownloadRecord;
   onCancel: (id: string) => Promise<void>;
   onRetry: (id: string) => Promise<void>;
+  onOpen: (path: string) => Promise<void>;
 }
 
-function DownloadRow({ record, onCancel, onRetry }: DownloadRowProps) {
+function DownloadRow({ record, onCancel, onRetry, onOpen }: DownloadRowProps) {
   const canCancel = record.status === "Queued" || record.status === "Running";
   const canRetry = record.status === "Failed" || record.status === "Cancelled";
+  const canOpen = Boolean(record.target_path) && (record.status === "Completed" || record.status === "ExistingTarget");
   return (
     <article className="download-row">
       <div className="download-row-heading">
@@ -968,9 +971,10 @@ function DownloadRow({ record, onCancel, onRetry }: DownloadRowProps) {
       <p>{record.variant} quality · attempt {record.attempts || 1}</p>
       {record.error && <p className="download-error">{record.error}</p>}
       {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
-      {(canCancel || canRetry) && <div className="download-row-actions">
+      {(canCancel || canRetry || canOpen) && <div className="download-row-actions">
         {canCancel && <button className="button button-text" type="button" onClick={() => void onCancel(record.id)}>Cancel</button>}
         {canRetry && <button className="button button-outlined" type="button" onClick={() => void onRetry(record.id)}>Retry</button>}
+        {canOpen && <button className="button button-outlined" type="button" onClick={() => void onOpen(record.target_path!)}>Open file</button>}
       </div>}
     </article>
   );
@@ -1025,7 +1029,7 @@ function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool
             />
           ))}
         </div>
-        {posts.length > 0 && <LoadMore hasNext={postsHasNext} loading={postsLoading} onLoadMore={onLoadMorePosts} />}
+        {posts.length > 0 && <LoadMore autoLoad={false} hasNext={postsHasNext} loading={postsLoading} onLoadMore={onLoadMorePosts} />}
       </section>
     );
   }
@@ -1047,7 +1051,7 @@ function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool
           </article>
         ))}
       </div>
-      {pools.length > 0 && <LoadMore hasNext={poolsHasNext} loading={poolsLoading} onLoadMore={onLoadMorePools} />}
+      {pools.length > 0 && <LoadMore autoLoad={false} hasNext={poolsHasNext} loading={poolsLoading} onLoadMore={onLoadMorePools} />}
     </section>
   );
 }

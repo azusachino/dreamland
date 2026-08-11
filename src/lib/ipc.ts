@@ -232,3 +232,7 @@ export function listDownloads(limit = 50): Promise<DownloadRecord[]> {
 export function listDownloadHistory(limit = 50, offset = 0): Promise<DownloadRecord[]> {
   return invoke<DownloadRecord[]>("list_download_history", { limit, offset });
 }
+
+export function openDownload(path: string): Promise<void> {
+  return invoke<void>("open_download", { path });
+}

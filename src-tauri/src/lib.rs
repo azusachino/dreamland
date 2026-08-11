@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::process::Command;
 use std::sync::Mutex;
 
 use dreamland_core::{
@@ -487,6 +489,34 @@ async fn list_download_history(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+fn open_download(path: String) -> Result<(), String> {
+    let path = PathBuf::from(path);
+    if !path.is_absolute() {
+        return Err("download path must be absolute".to_owned());
+    }
+    if !path.is_file() {
+        return Err("downloaded file no longer exists".to_owned());
+    }
+
+    #[cfg(target_os = "macos")]
+    let mut command = Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut command = Command::new("cmd");
+        command.args(["/C", "start", ""]);
+        command
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut command = Command::new("xdg-open");
+
+    command
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("could not open downloaded file: {error}"))
+}
+
 pub fn run() {
     let config =
         AppConfig::load_or_default().expect("Dreamland runtime configuration must be loadable");
@@ -519,7 +549,8 @@ pub fn run() {
             cancel_download,
             retry_download,
             list_downloads,
-            list_download_history
+            list_download_history,
+            open_download
         ])
         .run(tauri::generate_context!())
         .expect("error while running Dreamland");
