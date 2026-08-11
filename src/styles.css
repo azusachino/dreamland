@@ -219,6 +219,20 @@ select:focus-visible {
   width: 1.8rem;
 }
 
+.search-advanced {
+  background: transparent;
+  border: 0;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 750;
+  padding: 0.4rem;
+}
+
+.search-advanced:hover {
+  color: var(--ink);
+}
+
 .icon-button {
   font-size: 1.35rem;
   height: 2.5rem;
@@ -1124,6 +1138,16 @@ select:focus-visible {
   right: 0;
   top: 0;
   width: min(100%, 32rem);
+}
+
+.query-dialog {
+  border-radius: var(--radius-lg);
+  bottom: 5vh;
+  left: 50%;
+  max-width: 44rem;
+  top: 5vh;
+  transform: translateX(-50%);
+  width: min(calc(100% - 2rem), 44rem);
 }
 
 .settings-section + .settings-section {

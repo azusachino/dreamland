@@ -43,6 +43,33 @@ type ViewMode = "latest" | "popular" | "search" | "downloads" | "pools" | "favor
 type PopularPeriod = "Day" | "Week" | "Month";
 type ToastTone = "success" | "info" | "error";
 type IconName = "clock" | "trend" | "download" | "book" | "heart" | "search" | "refresh" | "settings" | "close" | "back" | "check";
+type QueryOrder = "" | "score" | "score_asc" | "id" | "id_desc" | "mpixels" | "mpixels_asc" | "landscape" | "portrait" | "vote" | "random";
+
+interface AdvancedQueryForm {
+  tags: string;
+  order: QueryOrder;
+  rating: "" | "s" | "q" | "e" | "-s" | "-q" | "-e";
+  score: string;
+  scoreMin: string;
+  scoreMax: string;
+  idMin: string;
+  idMax: string;
+  voteMin: string;
+  voteMax: string;
+  mpixelsMin: string;
+  mpixelsMax: string;
+  widthMin: string;
+  widthMax: string;
+  heightMin: string;
+  heightMax: string;
+  dateFrom: string;
+  dateTo: string;
+  user: string;
+  source: string;
+  parent: string;
+  pool: string;
+  md5: string;
+}
 
 interface ToastState {
   id: number;
@@ -123,6 +150,61 @@ function savedQueryIsRunnable(saved: SavedQuery): boolean {
   return savedQueryExpression(saved) !== null;
 }
 
+function addRangeTerm(terms: string[], name: string, exact: string, minimum: string, maximum: string) {
+  const value = exact.trim();
+  const min = minimum.trim();
+  const max = maximum.trim();
+  if (value) terms.push(`${name}:${value}`);
+  else if (min && max) terms.push(`${name}:${min}..${max}`);
+  else if (min) terms.push(`${name}:${min}..`);
+  else if (max) terms.push(`${name}:..${max}`);
+}
+
+function buildAdvancedQuery(form: AdvancedQueryForm, contentPolicy: ContentPolicy): string {
+  const terms = form.tags.trim().split(/\s+/).filter(Boolean);
+  if (form.order) terms.push(`order:${form.order}`);
+  const allowedRatings: Record<ContentPolicy, AdvancedQueryForm["rating"][]> = {
+    SafeOnly: ["", "s"],
+    AllowQuestionable: ["", "s", "q", "-e"],
+    AllowExplicit: ["", "s", "q", "e", "-s", "-q", "-e"],
+    ExplicitOnly: ["", "e"],
+  };
+  if (!allowedRatings[contentPolicy].includes(form.rating)) {
+    throw new Error(`Rating filter conflicts with the ${contentPolicyLabel(contentPolicy).toLowerCase()} content policy`);
+  }
+  if (form.rating) terms.push(form.rating.startsWith("-") ? `-rating:${form.rating.slice(1)}` : `rating:${form.rating}`);
+  for (const [name, value] of [["score", form.score], ["score minimum", form.scoreMin], ["score maximum", form.scoreMax], ["post ID minimum", form.idMin], ["post ID maximum", form.idMax], ["vote minimum", form.voteMin], ["vote maximum", form.voteMax], ["width minimum", form.widthMin], ["width maximum", form.widthMax], ["height minimum", form.heightMin], ["height maximum", form.heightMax]] as const) {
+    if (value.trim() && !/^-?\d+$/.test(value.trim())) throw new Error(`${name} must be an integer`);
+  }
+  for (const [name, value] of [["megapixels minimum", form.mpixelsMin], ["megapixels maximum", form.mpixelsMax]] as const) {
+    if (value.trim() && !/^\d+(\.\d+)?$/.test(value.trim())) throw new Error(`${name} must be a non-negative number`);
+  }
+  for (const [name, value] of [["post ID minimum", form.idMin], ["post ID maximum", form.idMax], ["vote minimum", form.voteMin], ["vote maximum", form.voteMax], ["width minimum", form.widthMin], ["width maximum", form.widthMax], ["height minimum", form.heightMin], ["height maximum", form.heightMax]] as const) {
+    if (value.trim() && Number(value) < 0) throw new Error(`${name} must not be negative`);
+  }
+  for (const [name, minimum, maximum] of [["score", form.scoreMin, form.scoreMax], ["post ID", form.idMin, form.idMax], ["votes", form.voteMin, form.voteMax], ["megapixels", form.mpixelsMin, form.mpixelsMax], ["width", form.widthMin, form.widthMax], ["height", form.heightMin, form.heightMax]] as const) {
+    if (minimum && maximum && Number(minimum) > Number(maximum)) throw new Error(`${name} minimum must not exceed maximum`);
+  }
+  if (form.score && (form.scoreMin || form.scoreMax)) throw new Error("Use exact score or a score range, not both");
+  if (form.dateFrom && !parseCalendarDate(form.dateFrom)) throw new Error("Date from must use a valid calendar date");
+  if (form.dateTo && !parseCalendarDate(form.dateTo)) throw new Error("Date to must use a valid calendar date");
+  if (form.dateFrom && form.dateTo && form.dateFrom > form.dateTo) throw new Error("Date from must not be later than date to");
+  addRangeTerm(terms, "score", form.score, form.scoreMin, form.scoreMax);
+  addRangeTerm(terms, "id", "", form.idMin, form.idMax);
+  addRangeTerm(terms, "vote", "", form.voteMin, form.voteMax);
+  addRangeTerm(terms, "mpixels", "", form.mpixelsMin, form.mpixelsMax);
+  addRangeTerm(terms, "width", "", form.widthMin, form.widthMax);
+  addRangeTerm(terms, "height", "", form.heightMin, form.heightMax);
+  if (form.dateFrom && form.dateTo) terms.push(`date:${form.dateFrom}..${form.dateTo}`);
+  else if (form.dateFrom) terms.push(`date:${form.dateFrom}..`);
+  else if (form.dateTo) terms.push(`date:..${form.dateTo}`);
+  for (const [name, value] of [["user", form.user], ["source", form.source], ["parent", form.parent], ["pool", form.pool], ["md5", form.md5]] as const) {
+    if (value.trim()) terms.push(`${name}:${value.trim()}`);
+  }
+  if (!terms.length) throw new Error("Add a tag or filter before searching");
+  return terms.join(" ");
+}
+
 function contentPolicyLabel(policy: ContentPolicy): string {
   switch (policy) {
     case "SafeOnly": return "Safe only";
@@ -164,6 +246,7 @@ function App() {
   const [submittedSearch, setSubmittedSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
   const [selectedPool, setSelectedPool] = useState<Pool | null>(null);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -400,6 +483,17 @@ function App() {
     setSelectionMode(false);
   }
 
+  function applyAdvancedQuery(expression: string) {
+    setSearchDraft(expression);
+    setSubmittedSearch(expression);
+    setSelectedSavedQueryId(null);
+    setView("search");
+    setSearchFocused(false);
+    setSelectedPostIds(new Set());
+    setSelectionMode(false);
+    setAdvancedSearchOpen(false);
+  }
+
   function openSavedQuery(saved: SavedQuery) {
     const expression = savedQueryExpression(saved);
     if (!expression) return;
@@ -575,6 +669,7 @@ function App() {
               ×
             </button>
           )}
+          <button className="search-advanced" type="button" onClick={() => setAdvancedSearchOpen(true)}>Filters</button>
           {searchFocused && suggestionsQuery.data && suggestionsQuery.data.length > 0 && (
             <div className="suggestions" role="listbox">
               <p className="suggestion-heading">Suggested tags</p>
@@ -858,6 +953,14 @@ function App() {
           onSave={handleSaveConfig}
         />
       )}
+      {advancedSearchOpen && (
+        <AdvancedQueryDialog
+          contentPolicy={contentPolicy}
+          initialTags={submittedSearch || searchDraft}
+          onClose={() => setAdvancedSearchOpen(false)}
+          onApply={applyAdvancedQuery}
+        />
+      )}
       {toast && <Toast state={toast} onClose={() => setToast(null)} />}
     </div>
   );
@@ -890,6 +993,138 @@ function NavButton({ active, disabled, hint, icon, label, onClick }: NavButtonPr
       <span>{label}</span>
       {hint && <small>{hint}</small>}
     </button>
+  );
+}
+
+interface AdvancedQueryDialogProps {
+  contentPolicy: ContentPolicy;
+  initialTags: string;
+  onClose: () => void;
+  onApply: (expression: string) => void;
+}
+
+function AdvancedQueryDialog({ contentPolicy, initialTags, onClose, onApply }: AdvancedQueryDialogProps) {
+  const [form, setForm] = useState<AdvancedQueryForm>({
+    tags: initialTags,
+    order: "",
+    rating: "",
+    score: "",
+    scoreMin: "",
+    scoreMax: "",
+    idMin: "",
+    idMax: "",
+    voteMin: "",
+    voteMax: "",
+    mpixelsMin: "",
+    mpixelsMax: "",
+    widthMin: "",
+    widthMax: "",
+    heightMin: "",
+    heightMax: "",
+    dateFrom: "",
+    dateTo: "",
+    user: "",
+    source: "",
+    parent: "",
+    pool: "",
+    md5: "",
+  });
+  const [error, setError] = useState("");
+
+  function update<K extends keyof AdvancedQueryForm>(key: K, value: AdvancedQueryForm[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    try {
+      onApply(buildAdvancedQuery(form, contentPolicy));
+    } catch (reason) {
+      setError(errorMessage(reason));
+    }
+  }
+
+  return (
+    <div className="settings-overlay" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <form className="settings-dialog shell-surface query-dialog" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="query-title">
+        <div className="inspector-heading">
+          <div><p className="eyebrow">MoeBooru query vocabulary</p><h2 id="query-title">Advanced search</h2></div>
+          <button className="icon-button" type="button" aria-label="Close advanced search" onClick={onClose}><Icon name="close" /></button>
+        </div>
+        <p className="helper-text">Build a reusable tag query with the same filters supported by the vendored MoeBooru client.</p>
+        {error && <div className="panel-error" role="alert"><p>{error}</p></div>}
+        <div className="settings-section">
+          <p className="section-label">Tags and ordering</p>
+          <label className="field">Tags or raw terms<input value={form.tags} onChange={(event) => update("tags", event.target.value)} placeholder="artist_name -sketch" autoFocus /></label>
+          <div className="field-grid">
+            <label className="field">Order
+              <select value={form.order} onChange={(event) => update("order", event.target.value as QueryOrder)}>
+                <option value="">Site default</option>
+                <option value="score">Highest score</option>
+                <option value="score_asc">Lowest score</option>
+                <option value="id_desc">Newest ID</option>
+                <option value="id">Oldest ID</option>
+                <option value="mpixels">Largest pixels</option>
+                <option value="mpixels_asc">Smallest pixels</option>
+                <option value="landscape">Landscape</option>
+                <option value="portrait">Portrait</option>
+                <option value="vote">Most votes</option>
+                <option value="random">Random</option>
+              </select>
+            </label>
+            <label className="field">Rating
+              <select value={form.rating} onChange={(event) => update("rating", event.target.value as AdvancedQueryForm["rating"])}>
+                <option value="">Policy default</option>
+                <option value="s">Safe</option>
+                <option value="q">Questionable</option>
+                <option value="e">Explicit</option>
+                <option value="-s">Exclude safe</option>
+                <option value="-q">Exclude questionable</option>
+                <option value="-e">Exclude explicit</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div className="settings-section">
+          <p className="section-label">Numeric ranges</p>
+          <label className="field">Exact score<input type="number" value={form.score} onChange={(event) => update("score", event.target.value)} placeholder="e.g. 10" /></label>
+          <div className="field-grid">
+            <label className="field">Minimum width<input type="number" min="0" value={form.widthMin} onChange={(event) => update("widthMin", event.target.value)} /></label>
+            <label className="field">Maximum width<input type="number" min="0" value={form.widthMax} onChange={(event) => update("widthMax", event.target.value)} /></label>
+            <label className="field">Minimum height<input type="number" min="0" value={form.heightMin} onChange={(event) => update("heightMin", event.target.value)} /></label>
+            <label className="field">Maximum height<input type="number" min="0" value={form.heightMax} onChange={(event) => update("heightMax", event.target.value)} /></label>
+          </div>
+          <div className="field-grid">
+            <label className="field">Minimum score<input type="number" value={form.scoreMin} onChange={(event) => update("scoreMin", event.target.value)} /></label>
+            <label className="field">Maximum score<input type="number" value={form.scoreMax} onChange={(event) => update("scoreMax", event.target.value)} /></label>
+            <label className="field">Minimum post ID<input type="number" min="0" value={form.idMin} onChange={(event) => update("idMin", event.target.value)} /></label>
+            <label className="field">Maximum post ID<input type="number" min="0" value={form.idMax} onChange={(event) => update("idMax", event.target.value)} /></label>
+            <label className="field">Minimum votes<input type="number" min="0" value={form.voteMin} onChange={(event) => update("voteMin", event.target.value)} /></label>
+            <label className="field">Maximum votes<input type="number" min="0" value={form.voteMax} onChange={(event) => update("voteMax", event.target.value)} /></label>
+            <label className="field">Minimum megapixels<input type="number" min="0" step="0.1" value={form.mpixelsMin} onChange={(event) => update("mpixelsMin", event.target.value)} /></label>
+            <label className="field">Maximum megapixels<input type="number" min="0" step="0.1" value={form.mpixelsMax} onChange={(event) => update("mpixelsMax", event.target.value)} /></label>
+          </div>
+        </div>
+        <div className="settings-section">
+          <p className="section-label">Date and identity</p>
+          <div className="field-grid">
+            <label className="field">Date from<input type="date" value={form.dateFrom} max={today()} onChange={(event) => update("dateFrom", event.target.value)} /></label>
+            <label className="field">Date to<input type="date" value={form.dateTo} max={today()} onChange={(event) => update("dateTo", event.target.value)} /></label>
+            <label className="field">User / author tag<input value={form.user} onChange={(event) => update("user", event.target.value)} placeholder="user name" /></label>
+            <label className="field">Source<input value={form.source} onChange={(event) => update("source", event.target.value)} /></label>
+            <label className="field">Parent ID<input inputMode="numeric" value={form.parent} onChange={(event) => update("parent", event.target.value)} /></label>
+            <label className="field">Pool ID<input inputMode="numeric" value={form.pool} onChange={(event) => update("pool", event.target.value)} /></label>
+          </div>
+          <label className="field">MD5 checksum<input value={form.md5} onChange={(event) => update("md5", event.target.value)} /></label>
+        </div>
+        <div className="dialog-actions">
+          <button className="button button-text" type="button" onClick={onClose}>Cancel</button>
+          <button className="button button-primary" type="submit">Search</button>
+        </div>
+      </form>
+    </div>
   );
 }
 
