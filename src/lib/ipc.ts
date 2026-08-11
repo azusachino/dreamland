@@ -23,6 +23,7 @@ export interface AppConfig {
   download_path: string;
   images_per_page: number;
   content_policy: ContentPolicy;
+  download_variant: MediaVariant;
   network: NetworkPolicy;
 }
 
@@ -162,9 +163,10 @@ export function loadConfig(): Promise<AppConfig> {
 export function saveConfig(
   downloadPath: string,
   contentPolicy: ContentPolicy,
+  downloadVariant: MediaVariant,
   network: NetworkPolicy,
 ): Promise<AppConfig> {
-  return invoke<AppConfig>("save_config", { downloadPath, contentPolicy, network });
+  return invoke<AppConfig>("save_config", { downloadPath, contentPolicy, downloadVariant, network });
 }
 
 export function detectProxy(): Promise<ProxyDetection> {

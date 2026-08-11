@@ -1,5 +1,5 @@
 use anyhow::bail;
-use dreamland_core::{ContentPolicy, NetworkPolicy, ProxyMode};
+use dreamland_core::{ContentPolicy, MediaVariant, NetworkPolicy, ProxyMode};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -10,6 +10,8 @@ pub struct AppConfig {
     pub images_per_page: usize,
     #[serde(default)]
     pub content_policy: ContentPolicy,
+    #[serde(default = "default_download_variant")]
+    pub download_variant: MediaVariant,
     #[serde(default)]
     pub network: NetworkPolicy,
 }
@@ -23,6 +25,10 @@ pub struct ProxyDetection {
 
 fn default_images_per_page() -> usize {
     20
+}
+
+fn default_download_variant() -> MediaVariant {
+    MediaVariant::Full
 }
 
 fn default_download_path() -> PathBuf {
@@ -40,6 +46,7 @@ impl AppConfig {
             download_path,
             images_per_page: default_images_per_page(),
             content_policy: ContentPolicy::default(),
+            download_variant: default_download_variant(),
             network: NetworkPolicy::default(),
         })
     }
@@ -60,6 +67,7 @@ impl AppConfig {
                 download_path: default_download_path(),
                 images_per_page: default_images_per_page(),
                 content_policy: ContentPolicy::default(),
+                download_variant: default_download_variant(),
                 network: NetworkPolicy::default(),
             })
         }
@@ -215,6 +223,7 @@ mod tests {
 
         assert!(!config.download_path.to_string_lossy().starts_with("~"));
         assert_eq!(config.network, NetworkPolicy::default());
+        assert_eq!(config.download_variant, MediaVariant::Full);
     }
 
     #[test]

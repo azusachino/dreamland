@@ -385,8 +385,8 @@ function App() {
     setFavoritePostIds((current) => new Set([...current, ...posts.map((post) => post.post.id)]));
   }, [favoritesQuery.data]);
   const saveConfigMutation = useMutation({
-    mutationFn: ({ downloadPath, contentPolicy, network }: ConfigInput) =>
-      saveConfig(downloadPath, contentPolicy, network),
+    mutationFn: ({ downloadPath, contentPolicy, downloadVariant, network }: ConfigInput) =>
+      saveConfig(downloadPath, contentPolicy, downloadVariant, network),
     onSuccess: (nextConfig) => {
       queryClient.setQueryData(["config"], nextConfig);
       setSettingsOpen(false);
@@ -574,7 +574,7 @@ function App() {
     let queued = 0;
     for (const post of selectedPosts) {
       try {
-        await downloadMutation.mutateAsync({ postId: post.post.id, variant: "Full" });
+        await downloadMutation.mutateAsync({ postId: post.post.id, variant: configQuery.data?.download_variant ?? "Full" });
         queued += 1;
       } catch {
         // Each failed item is reported by the mutation; continue the batch.
@@ -613,7 +613,7 @@ function App() {
     setError("");
     setNotice("");
     try {
-      await downloadMutation.mutateAsync({ postId: post.post.id, variant: "Full" });
+      await downloadMutation.mutateAsync({ postId: post.post.id, variant: configQuery.data?.download_variant ?? "Full" });
     } catch {
       // The mutation reports the user-facing error.
     } finally {
@@ -624,12 +624,13 @@ function App() {
   async function handleSaveConfig(
     downloadPath: string,
     contentPolicy: ContentPolicy,
+    downloadVariant: MediaVariant,
     network: NetworkPolicy,
   ) {
     setError("");
     setNotice("");
     try {
-      await saveConfigMutation.mutateAsync({ downloadPath, contentPolicy, network });
+      await saveConfigMutation.mutateAsync({ downloadPath, contentPolicy, downloadVariant, network });
     } catch {
       // The mutation reports the user-facing error.
     }
@@ -942,6 +943,7 @@ function App() {
             favorited={favoritePostIds.has(selectedPost.post.id)}
             onFavorite={handleFavorite}
             onTag={chooseTag}
+            downloadVariant={configQuery.data?.download_variant ?? "Full"}
           />
         )}
       </div>
@@ -969,6 +971,7 @@ function App() {
 interface ConfigInput {
   downloadPath: string;
   contentPolicy: ContentPolicy;
+  downloadVariant: MediaVariant;
   network: NetworkPolicy;
 }
 
@@ -1264,9 +1267,10 @@ interface PostInspectorProps {
   onDownload: (post: Post) => Promise<void>;
   onFavorite: (post: Post) => Promise<void>;
   onTag: (tag: string) => void;
+  downloadVariant: MediaVariant;
 }
 
-function PostInspector({ post, downloading, favorited, onClose, onDownload, onFavorite, onTag }: PostInspectorProps) {
+function PostInspector({ post, downloading, favorited, onClose, onDownload, onFavorite, onTag, downloadVariant }: PostInspectorProps) {
   const originalUrl = post.full_url ?? post.sample_url ?? post.preview_url;
   return (
     <aside className="detail-panel shell-surface" aria-label="Post details">
@@ -1310,7 +1314,7 @@ function PostInspector({ post, downloading, favorited, onClose, onDownload, onFa
         {favorited ? "Remove from Yande favorites" : "Add to Yande favorites"}
       </button>
       <button className="button button-primary button-wide" disabled={downloading} onClick={() => void onDownload(post)}>
-        {downloading ? "Saving…" : "Download best quality"}
+        {downloading ? "Saving…" : `Download ${downloadVariant.toLowerCase()} quality`}
       </button>
     </aside>
   );
@@ -1569,12 +1573,13 @@ function downloadStatusLabel(status: DownloadStatus): string {
 interface SettingsDialogProps {
   config: AppConfig | null;
   onCancel: () => void;
-  onSave: (downloadPath: string, contentPolicy: ContentPolicy, network: NetworkPolicy) => Promise<void>;
+  onSave: (downloadPath: string, contentPolicy: ContentPolicy, downloadVariant: MediaVariant, network: NetworkPolicy) => Promise<void>;
 }
 
 function SettingsDialog({ config, onCancel, onSave }: SettingsDialogProps) {
   const [downloadPath, setDownloadPath] = useState(config?.download_path ?? "");
   const [contentPolicy, setContentPolicy] = useState<ContentPolicy>(config?.content_policy ?? "SafeOnly");
+  const [downloadVariant, setDownloadVariant] = useState<MediaVariant>(config?.download_variant ?? "Full");
   const configuredProxy = config?.network.proxy ?? "Auto";
   const [proxyMode, setProxyMode] = useState<"Auto" | "Direct" | "Manual">(
     typeof configuredProxy === "string" ? configuredProxy : "Manual",
@@ -1591,7 +1596,7 @@ function SettingsDialog({ config, onCancel, onSave }: SettingsDialogProps) {
     event.preventDefault();
     setSaving(true);
     const proxy: ProxyMode = proxyMode === "Manual" ? { Manual: { url: proxyUrl } } : proxyMode;
-    await onSave(downloadPath, contentPolicy, { proxy, max_retries: maxRetries, retry_delay_ms: retryDelayMs, max_retry_delay_ms: maxRetryDelayMs });
+    await onSave(downloadPath, contentPolicy, downloadVariant, { proxy, max_retries: maxRetries, retry_delay_ms: retryDelayMs, max_retry_delay_ms: maxRetryDelayMs });
     setSaving(false);
   }
 
@@ -1625,6 +1630,13 @@ function SettingsDialog({ config, onCancel, onSave }: SettingsDialogProps) {
               <option value="AllowQuestionable">Allow questionable</option>
               <option value="AllowExplicit">Allow explicit</option>
               <option value="ExplicitOnly">Explicit only</option>
+            </select>
+          </label>
+          <label className="field">Download quality
+            <select value={downloadVariant} onChange={(event) => setDownloadVariant(event.target.value as MediaVariant)}>
+              <option value="Full">Best available (full)</option>
+              <option value="Sample">Sample</option>
+              <option value="Preview">Preview</option>
             </select>
           </label>
           <p className="helper-text">This controls which ratings appear in feeds and searches.</p>

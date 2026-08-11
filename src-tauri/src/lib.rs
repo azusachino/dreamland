@@ -62,6 +62,7 @@ struct AppConfigView {
     download_path: String,
     images_per_page: usize,
     content_policy: ContentPolicy,
+    download_variant: MediaVariant,
     network: NetworkPolicy,
 }
 
@@ -71,6 +72,7 @@ impl From<&AppConfig> for AppConfigView {
             download_path: config.download_path.to_string_lossy().into_owned(),
             images_per_page: config.images_per_page,
             content_policy: config.content_policy,
+            download_variant: config.download_variant,
             network: config.network.clone(),
         }
     }
@@ -92,6 +94,7 @@ fn save_config(
     state: State<'_, RuntimeState>,
     download_path: String,
     content_policy: ContentPolicy,
+    download_variant: MediaVariant,
     network: NetworkPolicy,
 ) -> Result<AppConfigView, String> {
     let current = AppConfig::load_or_default().map_err(|error| error.to_string())?;
@@ -99,6 +102,7 @@ fn save_config(
         AppConfig::from_user_input(download_path).map_err(|error| error.to_string())?;
     config.images_per_page = current.images_per_page;
     config.content_policy = content_policy;
+    config.download_variant = download_variant;
     config.network = network.clone();
     config.save().map_err(|error| error.to_string())?;
     state.downloads.set_network_policy(network);
