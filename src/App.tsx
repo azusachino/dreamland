@@ -994,7 +994,6 @@ function App() {
         </form>
         <div className="header-actions">
           <div className="site-picker" ref={sitePicker}>
-            <span>browse site</span>
             <div className="site-picker-controls">
               <div className="site-menu">
                 <button

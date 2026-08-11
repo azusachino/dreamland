@@ -136,17 +136,8 @@ select:focus-visible {
 }
 
 .site-picker {
-  display: grid;
-  gap: 0.22rem;
+  display: block;
   min-width: 0;
-}
-
-.site-picker > span {
-  color: var(--ink-subtle);
-  font-size: 0.62rem;
-  font-weight: 750;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
 }
 
 .site-menu {
@@ -1474,10 +1465,6 @@ select:focus-visible {
 
   .header-identity {
     gap: 0.7rem;
-  }
-
-  .site-picker > span {
-    white-space: nowrap;
   }
 
   .search-bar {
