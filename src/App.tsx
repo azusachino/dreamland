@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   authStatus,
   beginAuth,
+  cancelQuery,
+  continueQuery,
   detectProxy,
   enqueueDownload,
   listPools,
@@ -30,7 +32,7 @@ import {
   type ProxyMode,
 } from "./lib/ipc";
 
-type ViewMode = "latest" | "popular" | "search";
+type ViewMode = "latest" | "popular" | "search" | "downloads" | "pools" | "favorites";
 type PopularPeriod = "Day" | "Week" | "Month";
 type ToastTone = "success" | "info" | "error";
 
@@ -60,18 +62,13 @@ function contentPolicyLabel(policy: ContentPolicy): string {
 
 function App() {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
   const [view, setView] = useState<ViewMode>("latest");
   const [popularPeriod, setPopularPeriod] = useState<PopularPeriod>("Week");
   const [searchDraft, setSearchDraft] = useState("");
   const [submittedSearch, setSubmittedSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [downloadsOpen, setDownloadsOpen] = useState(false);
-  const [poolsOpen, setPoolsOpen] = useState(false);
   const [poolPage, setPoolPage] = useState(1);
-  const [accountOpen, setAccountOpen] = useState(false);
-  const [favoritePage, setFavoritePage] = useState(1);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
@@ -83,6 +80,7 @@ function App() {
   const [toast, setToast] = useState<ToastState | null>(null);
   const toastId = useRef(0);
   const downloadStatuses = useRef(new Map<string, DownloadStatus>());
+  const activeQuerySession = useRef<string | null>(null);
 
   function showToast(title: string, message: string, tone: ToastTone = "success") {
     const id = ++toastId.current;
@@ -120,14 +118,27 @@ function App() {
       query: { source, content_policy: contentPolicy },
       pagination: view === "popular"
         ? "FixedWindow"
-        : { Page: { number: page, page_size: pageSize } },
+        : { First: { page_size: pageSize } },
     };
-  }, [contentPolicy, page, pageSize, popularPeriod, submittedSearch, view]);
-  const imagesQuery = useQuery({
+  }, [contentPolicy, pageSize, popularPeriod, submittedSearch, view]);
+  const imagesQuery = useInfiniteQuery({
     queryKey: ["posts", request],
-    queryFn: () => queryPosts(request),
-    enabled: configQuery.isSuccess,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) => pageParam ? continueQuery(pageParam) : queryPosts(request),
+    getNextPageParam: (lastPage) => view !== "popular" && lastPage.session && lastPage.posts.length >= lastPage.page_size
+      ? lastPage.session
+      : undefined,
+    enabled: configQuery.isSuccess && (view === "latest" || view === "popular" || view === "search"),
   });
+  useEffect(() => {
+    activeQuerySession.current = imagesQuery.data?.pages.at(-1)?.session ?? null;
+  }, [imagesQuery.data]);
+  useEffect(() => {
+    return () => {
+      const session = activeQuerySession.current;
+      if (session) void cancelQuery(session).catch(() => undefined);
+    };
+  }, [request]);
   const downloadsQuery = useQuery({
     queryKey: ["downloads"],
     queryFn: () => listDownloads(50),
@@ -159,16 +170,19 @@ function App() {
   const poolsQuery = useQuery({
     queryKey: ["pools", poolPage],
     queryFn: () => listPools(poolPage, 30),
-    enabled: poolsOpen,
+    enabled: view === "pools",
   });
-  const favoritesQuery = useQuery({
-    queryKey: ["favorites", favoritePage],
-    queryFn: () => listFavorites(favoritePage, 20),
-    enabled: accountOpen && authQuery.data?.authenticated === true && Boolean(authQuery.data.username),
+  const favoritesQuery = useInfiniteQuery({
+    queryKey: ["favorites"],
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => listFavorites(pageParam, 20),
+    getNextPageParam: (lastPage, pages) => lastPage.posts.length >= lastPage.page_size ? pages.length + 1 : undefined,
+    enabled: view === "favorites" && authQuery.data?.authenticated === true && Boolean(authQuery.data.username),
   });
   useEffect(() => {
-    if (!favoritesQuery.data?.posts) return;
-    setFavoritePostIds((current) => new Set([...current, ...favoritesQuery.data.posts.map((post) => post.post.id)]));
+    const posts = favoritesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
+    if (!posts.length) return;
+    setFavoritePostIds((current) => new Set([...current, ...posts.map((post) => post.post.id)]));
   }, [favoritesQuery.data]);
   const saveConfigMutation = useMutation({
     mutationFn: ({ downloadPath, contentPolicy, network }: ConfigInput) =>
@@ -192,37 +206,46 @@ function App() {
     onError: (reason) => setError(`Download failed: ${errorMessage(reason)}`),
   });
 
+  const isBrowseView = view === "latest" || view === "popular" || view === "search";
   const queryError = configQuery.error
     ? `Failed to load configuration: ${errorMessage(configQuery.error)}`
-    : imagesQuery.error
+    : isBrowseView && imagesQuery.error
       ? `Failed to load images: ${errorMessage(imagesQuery.error)}`
       : "";
-  const images = imagesQuery.data?.posts ?? [];
+  const images = imagesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
+  const favoritePosts = favoritesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
   const selectedPosts = images.filter((post) => selectedPostIds.has(post.post.id));
-  const loading = configQuery.isPending || imagesQuery.isFetching;
+  const loading = configQuery.isPending || imagesQuery.isPending;
+  const loadingMore = imagesQuery.isFetchingNextPage;
   const downloadRecords = downloadsQuery.data ?? [];
-  const title = view === "search" ? "Search results" : view === "popular" ? "Popular" : "Latest posts";
+  const title = view === "search"
+    ? "Search results"
+    : view === "popular"
+      ? "Popular"
+      : view === "downloads"
+        ? "Downloads"
+        : view === "pools"
+          ? "Pools"
+          : view === "favorites"
+            ? "Favorites"
+            : "Latest posts";
   const subtitle = view === "search"
     ? `Matching “${submittedSearch}”`
     : view === "popular"
       ? `Most popular this ${popularPeriod.toLowerCase()}`
-      : "A calm feed for finding something worth keeping";
-
-  async function requestPage(nextPage: number) {
-    setError("");
-    setNotice("");
-    setPage(nextPage);
-    if (nextPage === page) {
-      await imagesQuery.refetch();
-    }
-  }
+      : view === "downloads"
+        ? "Local download history and active work"
+        : view === "pools"
+          ? "Ordered public collections from Yande"
+          : view === "favorites"
+            ? authQuery.data?.authenticated ? `Saved by ${authQuery.data.username ?? "your Yande account"}` : "Sign in to browse your saved posts"
+            : "A calm feed for finding something worth keeping";
 
   function changeView(nextView: ViewMode) {
     setError("");
     setNotice("");
-    setPage(1);
     setView(nextView);
-    setDownloadsOpen(false);
+    if (nextView === "pools") setPoolPage(1);
     setSelectedPostIds(new Set());
     setSelectionMode(false);
   }
@@ -236,7 +259,6 @@ function App() {
     }
     setError("");
     setNotice("");
-    setPage(1);
     setSubmittedSearch(expression);
     setView("search");
     setSearchFocused(false);
@@ -247,7 +269,6 @@ function App() {
   function chooseTag(tag: string) {
     setSearchDraft(tag);
     setSubmittedSearch(tag);
-    setPage(1);
     setView("search");
     setSearchFocused(false);
     setSelectedPostIds(new Set());
@@ -289,7 +310,7 @@ function App() {
 
   async function handleFavorite(post: Post) {
     if (!authQuery.data?.authenticated) {
-      setAccountOpen(true);
+      setView("favorites");
       showToast("Sign in required", "Connect your Yande account before changing favorites.", "info");
       return;
     }
@@ -392,10 +413,15 @@ function App() {
           <button
             className="icon-button"
             type="button"
-            aria-label="Refresh posts"
-            title="Refresh posts"
+            aria-label={`Refresh ${title.toLowerCase()}`}
+            title={`Refresh ${title.toLowerCase()}`}
             disabled={loading}
-            onClick={() => void imagesQuery.refetch()}
+            onClick={() => {
+              if (isBrowseView) void imagesQuery.refetch();
+              else if (view === "favorites") void favoritesQuery.refetch();
+              else if (view === "pools") void poolsQuery.refetch();
+              else void downloadsQuery.refetch();
+            }}
           >
             ↻
           </button>
@@ -406,25 +432,18 @@ function App() {
       </header>
 
       <div className={`app-layout${selectedPost ? " has-detail" : ""}`}>
-        <nav className="nav-rail shell-surface" aria-label="Explore">
-          <p className="nav-heading">Explore</p>
+        <main className="content">
+          <nav className="view-tabs shell-surface" aria-label="Dreamland sections" role="tablist">
           <NavButton active={view === "latest"} label="Latest" icon="◷" onClick={() => changeView("latest")} />
           <NavButton active={view === "popular"} label="Popular" icon="↗" onClick={() => changeView("popular")} />
-          <p className="nav-heading nav-heading-spaced">Your space</p>
-          <NavButton active={downloadsOpen} label="Downloads" icon="⇩" onClick={() => setDownloadsOpen(true)} />
-          <NavButton active={poolsOpen} label="Pools" icon="▦" onClick={() => {
-            setPoolsOpen(true);
-            setPoolPage(1);
-            setDownloadsOpen(false);
-          }} />
-          <NavButton active={accountOpen} label="Favorites" icon="♡" onClick={() => setAccountOpen(true)} />
-          <div className="nav-footer">
+          <NavButton active={view === "downloads"} label="Downloads" icon="⇩" onClick={() => changeView("downloads")} />
+          <NavButton active={view === "pools"} label="Pools" icon="▦" onClick={() => changeView("pools")} />
+          <NavButton active={view === "favorites"} label="Favorites" icon="♡" onClick={() => changeView("favorites")} />
+          <span className="view-status">
             <span className="connection-dot" aria-hidden="true" />
             <span>Yandere connected</span>
-          </div>
-        </nav>
-
-        <main className="content">
+          </span>
+          </nav>
           <section className="content-heading">
             <div>
               <p className="eyebrow">Explore freely</p>
@@ -432,6 +451,7 @@ function App() {
               <p className="subtitle">{subtitle}</p>
             </div>
             <div className="heading-actions">
+              {isBrowseView && <>
               <button className="button button-outlined" type="button" onClick={() => {
                 setSelectionMode((current) => !current);
                 setSelectedPostIds(new Set());
@@ -443,22 +463,22 @@ function App() {
                   <span>Period</span>
                   <select value={popularPeriod} onChange={(event) => {
                     setPopularPeriod(event.target.value as PopularPeriod);
-                    setPage(1);
                   }}>
                     <option value="Day">Day</option>
                     <option value="Week">Week</option>
                     <option value="Month">Month</option>
                   </select>
-                </label>
+                  </label>
               )}
               <span className="content-policy">{contentPolicyLabel(contentPolicy)}</span>
+              </>}
             </div>
           </section>
 
-          {selectionMode && (
+          {isBrowseView && selectionMode && (
             <div className="batch-toolbar" role="toolbar" aria-label="Batch download">
               <strong>{selectedPosts.length} selected</strong>
-              <button className="button button-text" type="button" onClick={selectCurrentPage}>Select current page</button>
+              <button className="button button-text" type="button" onClick={selectCurrentPage}>Select loaded posts</button>
               <button className="button button-primary" type="button" disabled={!selectedPosts.length || batchDownloading} onClick={() => void handleBatchDownload()}>
                 {batchDownloading ? "Queueing…" : "Download selected"}
               </button>
@@ -467,44 +487,87 @@ function App() {
 
           {error && !queryError && <p className="message message-error" role="alert">{error}</p>}
           {notice && <p className="message message-success" role="status">{notice}</p>}
-          {loading && <div className="loading-line" role="status"><span /> Finding something good…</div>}
-          {queryError ? (
-            <ErrorState message={queryError} onRetry={() => void imagesQuery.refetch()} />
-          ) : !loading && images.length === 0 ? (
-            <div className="empty-state">
-              <span className="empty-symbol" aria-hidden="true">✦</span>
-              <h3>No posts found</h3>
-              <p>Try a broader tag search or switch back to the latest feed.</p>
-            </div>
-          ) : (
+          {isBrowseView ? (
             <>
-              <div className="gallery-grid">
-                {images.map((post) => (
-                  <ImageCard
-                    key={post.post.id}
-                    post={post}
-                    selectionMode={selectionMode}
-                    selected={selectedPostIds.has(post.post.id)}
-                    downloading={downloadingId === post.post.id}
-                    onDownload={handleDownload}
-                    onSelect={setSelectedPost}
-                    onToggleSelection={() => togglePostSelection(post.post.id)}
-                    onTag={chooseTag}
-                  />
-                ))}
-              </div>
-              {view !== "popular" && (
-                <div className="pagination">
-                  <button className="button button-outlined" disabled={loading || page <= 1} onClick={() => void requestPage(page - 1)}>
-                    Previous
-                  </button>
-                  <span>Page {page}</span>
-                  <button className="button button-outlined" disabled={loading || images.length < pageSize} onClick={() => void requestPage(page + 1)}>
-                    Next
-                  </button>
+              {loading && <div className="loading-line" role="status"><span /> Finding something good…</div>}
+              {queryError ? (
+                <ErrorState message={queryError} onRetry={() => void imagesQuery.refetch()} />
+              ) : !loading && images.length === 0 ? (
+                <div className="empty-state">
+                  <span className="empty-symbol" aria-hidden="true">✦</span>
+                  <h3>No posts found</h3>
+                  <p>Try a broader tag search or switch back to the latest feed.</p>
                 </div>
+              ) : (
+                <>
+                  <div className="gallery-grid">
+                    {images.map((post) => (
+                      <ImageCard
+                        key={post.post.id}
+                        post={post}
+                        selectionMode={selectionMode}
+                        selected={selectedPostIds.has(post.post.id)}
+                        downloading={downloadingId === post.post.id}
+                        onDownload={handleDownload}
+                        onSelect={setSelectedPost}
+                        onToggleSelection={() => togglePostSelection(post.post.id)}
+                        onTag={chooseTag}
+                      />
+                    ))}
+                  </div>
+                  {view !== "popular" && <LoadMore
+                    hasNext={Boolean(imagesQuery.hasNextPage)}
+                    loading={loadingMore}
+                    onLoadMore={() => void imagesQuery.fetchNextPage()}
+                  />}
+                </>
               )}
             </>
+          ) : view === "downloads" ? (
+            <DownloadPanel
+              records={downloadRecords}
+              onCancel={async (id) => {
+                await cancelDownload(id);
+                await queryClient.invalidateQueries({ queryKey: ["downloads"] });
+              }}
+              onRetry={async (id) => {
+                await retryDownload(id);
+                await queryClient.invalidateQueries({ queryKey: ["downloads"] });
+              }}
+            />
+          ) : view === "pools" ? (
+            <PoolPanel
+              pools={poolsQuery.data?.pools ?? []}
+              page={poolPage}
+              hasNext={poolsQuery.data?.has_next ?? false}
+              loading={poolsQuery.isPending || poolsQuery.isFetching}
+              error={poolsQuery.error ? errorMessage(poolsQuery.error) : ""}
+              onRetry={() => void poolsQuery.refetch()}
+              onPrevious={() => setPoolPage((current) => Math.max(1, current - 1))}
+              onNext={() => setPoolPage((current) => current + 1)}
+              onBrowse={(pool) => chooseTag(`pool:${pool.id}`)}
+            />
+          ) : (
+            <AccountPanel
+              auth={authQuery.data ?? null}
+              favorites={favoritePosts}
+              favoritesLoading={favoritesQuery.isPending || favoritesQuery.isFetching}
+              favoritesError={favoritesQuery.error ? errorMessage(favoritesQuery.error) : ""}
+              favoritesHasNext={Boolean(favoritesQuery.hasNextPage)}
+              loading={authQuery.isFetching}
+              onBeginAuth={() => void beginAuth()}
+              onRefresh={() => void authQuery.refetch()}
+              onRetry={() => void favoritesQuery.refetch()}
+              onLoadMore={() => void favoritesQuery.fetchNextPage()}
+              onSelect={setSelectedPost}
+              onDownload={handleDownload}
+              onTag={chooseTag}
+              onSignOut={async () => {
+                await signOut();
+                await authQuery.refetch();
+                setFavoritePostIds(new Set());
+              }}
+            />
           )}
         </main>
 
@@ -526,60 +589,6 @@ function App() {
           config={configQuery.data ?? null}
           onCancel={() => setSettingsOpen(false)}
           onSave={handleSaveConfig}
-        />
-      )}
-      {downloadsOpen && (
-        <DownloadPanel
-          records={downloadRecords}
-          onClose={() => setDownloadsOpen(false)}
-          onCancel={async (id) => {
-            await cancelDownload(id);
-            await queryClient.invalidateQueries({ queryKey: ["downloads"] });
-          }}
-          onRetry={async (id) => {
-            await retryDownload(id);
-            await queryClient.invalidateQueries({ queryKey: ["downloads"] });
-          }}
-        />
-      )}
-      {poolsOpen && (
-        <PoolPanel
-          pools={poolsQuery.data?.pools ?? []}
-          page={poolPage}
-          hasNext={poolsQuery.data?.has_next ?? false}
-          loading={poolsQuery.isPending || poolsQuery.isFetching}
-          error={poolsQuery.error ? errorMessage(poolsQuery.error) : ""}
-          onClose={() => setPoolsOpen(false)}
-          onRetry={() => void poolsQuery.refetch()}
-          onPrevious={() => setPoolPage((current) => Math.max(1, current - 1))}
-          onNext={() => setPoolPage((current) => current + 1)}
-          onBrowse={(pool) => {
-            setPoolsOpen(false);
-            chooseTag(`pool:${pool.id}`);
-          }}
-        />
-      )}
-      {accountOpen && (
-        <AccountPanel
-          auth={authQuery.data ?? null}
-          favorites={favoritesQuery.data?.posts ?? []}
-          favoritesLoading={favoritesQuery.isPending || favoritesQuery.isFetching}
-          favoritePage={favoritePage}
-          favoritesHasNext={(favoritesQuery.data?.posts.length ?? 0) === 20}
-          loading={authQuery.isFetching}
-          onClose={() => setAccountOpen(false)}
-          onBeginAuth={() => void beginAuth()}
-          onRefresh={() => void authQuery.refetch()}
-          onPrevious={() => setFavoritePage((current) => Math.max(1, current - 1))}
-          onNext={() => setFavoritePage((current) => current + 1)}
-          onSelect={setSelectedPost}
-          onFavorite={handleFavorite}
-          onSignOut={async () => {
-            await signOut();
-            await authQuery.refetch();
-            setFavoritePostIds(new Set());
-            setFavoritePage(1);
-          }}
         />
       )}
       {toast && <Toast state={toast} onClose={() => setToast(null)} />}
@@ -609,7 +618,7 @@ interface NavButtonProps {
 
 function NavButton({ active, disabled, hint, icon, label, onClick }: NavButtonProps) {
   return (
-    <button className={`nav-item${active ? " active" : ""}`} disabled={disabled} onClick={onClick} title={hint}>
+    <button className={`nav-item${active ? " active" : ""}`} disabled={disabled} onClick={onClick} title={hint} role="tab" aria-selected={active}>
       <span className="nav-icon" aria-hidden="true">{icon}</span>
       <span>{label}</span>
       {hint && <small>{hint}</small>}
@@ -649,6 +658,32 @@ function Toast({ state, onClose }: ToastProps) {
       </div>
       <button className="icon-button" type="button" aria-label="Dismiss notification" onClick={onClose}>×</button>
     </aside>
+  );
+}
+
+interface LoadMoreProps {
+  hasNext: boolean;
+  loading: boolean;
+  onLoadMore: () => void;
+}
+
+function LoadMore({ hasNext, loading, onLoadMore }: LoadMoreProps) {
+  const sentinel = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!hasNext || loading || !sentinel.current) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) onLoadMore();
+    }, { rootMargin: "800px" });
+    observer.observe(sentinel.current);
+    return () => observer.disconnect();
+  }, [hasNext, loading, onLoadMore]);
+
+  if (!hasNext && !loading) return <div className="load-more-end">You’ve reached the end.</div>;
+  return (
+    <div className="load-more" ref={sentinel}>
+      {loading ? <><span /> Loading more…</> : <button className="button button-outlined" type="button" onClick={onLoadMore}>Load more</button>}
+    </div>
   );
 }
 
@@ -787,18 +822,16 @@ function DetailImage({ post }: { post: Post }) {
 
 interface DownloadPanelProps {
   records: DownloadRecord[];
-  onClose: () => void;
   onCancel: (id: string) => Promise<void>;
   onRetry: (id: string) => Promise<void>;
 }
 
-function DownloadPanel({ records, onClose, onCancel, onRetry }: DownloadPanelProps) {
+function DownloadPanel({ records, onCancel, onRetry }: DownloadPanelProps) {
   const active = records.filter((record) => record.status === "Queued" || record.status === "Running");
   return (
-    <aside className="download-panel shell-surface" aria-label="Downloads">
+    <section className="workspace-panel shell-surface" aria-label="Downloads">
       <div className="inspector-heading">
         <div><p className="eyebrow">Local state</p><h2>Downloads</h2></div>
-        <button className="icon-button" type="button" aria-label="Close downloads" onClick={onClose}>×</button>
       </div>
       <p className="helper-text">{active.length ? `${active.length} item${active.length === 1 ? "" : "s"} in progress` : "Nothing is downloading"}</p>
       {records.length === 0 ? (
@@ -808,7 +841,7 @@ function DownloadPanel({ records, onClose, onCancel, onRetry }: DownloadPanelPro
           {records.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} />)}
         </div>
       )}
-    </aside>
+    </section>
   );
 }
 
@@ -844,19 +877,17 @@ interface PoolPanelProps {
   hasNext: boolean;
   loading: boolean;
   error: string;
-  onClose: () => void;
   onRetry: () => void;
   onPrevious: () => void;
   onNext: () => void;
   onBrowse: (pool: Pool) => void;
 }
 
-function PoolPanel({ pools, page, hasNext, loading, error, onClose, onRetry, onPrevious, onNext, onBrowse }: PoolPanelProps) {
+function PoolPanel({ pools, page, hasNext, loading, error, onRetry, onPrevious, onNext, onBrowse }: PoolPanelProps) {
   return (
-    <aside className="collection-panel shell-surface" aria-label="Pools">
+    <section className="workspace-panel shell-surface" aria-label="Pools">
       <div className="inspector-heading">
         <div><p className="eyebrow">Yande collections</p><h2>Pools</h2></div>
-        <button className="icon-button" type="button" aria-label="Close pools" onClick={onClose}>×</button>
       </div>
       <p className="helper-text">Public pools group ordered posts from the site. ZIP download will be enabled after authenticated archive handling is wired.</p>
       {loading && <p className="helper-text">Loading pools…</p>}
@@ -877,7 +908,7 @@ function PoolPanel({ pools, page, hasNext, loading, error, onClose, onRetry, onP
           <button className="button button-outlined" type="button" disabled={!hasNext} onClick={onNext}>Next</button>
         </div>
       )}
-    </aside>
+    </section>
   );
 }
 
@@ -885,50 +916,47 @@ interface AccountPanelProps {
   auth: AuthStatus | null;
   favorites: Post[];
   favoritesLoading: boolean;
-  favoritePage: number;
+  favoritesError: string;
   favoritesHasNext: boolean;
   loading: boolean;
-  onClose: () => void;
   onBeginAuth: () => void;
   onRefresh: () => void;
-  onPrevious: () => void;
-  onNext: () => void;
+  onRetry: () => void;
+  onLoadMore: () => void;
   onSelect: (post: Post) => void;
-  onFavorite: (post: Post) => Promise<void>;
+  onDownload: (post: Post) => Promise<void>;
+  onTag: (tag: string) => void;
   onSignOut: () => Promise<void>;
 }
 
-function AccountPanel({ auth, favorites, favoritesLoading, favoritePage, favoritesHasNext, loading, onClose, onBeginAuth, onRefresh, onPrevious, onNext, onSelect, onFavorite, onSignOut }: AccountPanelProps) {
+function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favoritesHasNext, loading, onBeginAuth, onRefresh, onRetry, onLoadMore, onSelect, onDownload, onTag, onSignOut }: AccountPanelProps) {
   return (
-    <aside className="collection-panel shell-surface" aria-label="Favorites account">
+    <section className="workspace-panel shell-surface" aria-label="Favorites account">
       <div className="inspector-heading">
         <div><p className="eyebrow">Yande account</p><h2>Favorites</h2></div>
-        <button className="icon-button" type="button" aria-label="Close favorites" onClick={onClose}>×</button>
       </div>
       {auth?.authenticated ? (
         <>
           <p className="account-connected"><span className="connection-dot" /> {auth.username ? `${auth.username} connected` : "Yande account connected"}</p>
-          {favoritesLoading && <p className="helper-text">Loading favorites…</p>}
-          {!favoritesLoading && favorites.length === 0 && <div className="panel-empty">No favorites on this page.</div>}
-          <div className="favorite-list">
-            {favorites.map((post) => {
-              const preview = post.preview_url ?? post.sample_url ?? post.full_url;
-              return (
-                <article className="favorite-row" key={post.post.id}>
-                  <button className="favorite-preview" type="button" onClick={() => onSelect(post)}>
-                    {preview ? <img src={preview} alt={`Post ${post.post.id}`} /> : <span>—</span>}
-                  </button>
-                  <div className="favorite-row-body"><strong>#{post.post.id}</strong><span>{post.tags.slice(0, 2).join(" · ") || "No tags"}</span></div>
-                  <button className="button button-text" type="button" onClick={() => void onFavorite(post)}>Remove</button>
-                </article>
-              );
-            })}
+          {favoritesError && <div className="panel-error" role="alert"><p>{favoritesError}</p><button className="button button-outlined" type="button" onClick={onRetry}>Try again</button></div>}
+          {favoritesLoading && favorites.length === 0 && <p className="helper-text">Loading favorites…</p>}
+          {!favoritesLoading && favorites.length === 0 && <div className="panel-empty">No favorites found.</div>}
+          <div className="gallery-grid">
+            {favorites.map((post) => (
+              <ImageCard
+                key={post.post.id}
+                post={post}
+                selectionMode={false}
+                selected={false}
+                downloading={false}
+                onDownload={onDownload}
+                onSelect={onSelect}
+                onToggleSelection={() => undefined}
+                onTag={onTag}
+              />
+            ))}
           </div>
-          <div className="collection-pagination">
-            <button className="button button-outlined" type="button" disabled={favoritePage <= 1 || favoritesLoading} onClick={onPrevious}>Previous</button>
-            <span>Page {favoritePage}</span>
-            <button className="button button-outlined" type="button" disabled={!favoritesHasNext || favoritesLoading} onClick={onNext}>Next</button>
-          </div>
+          <LoadMore hasNext={favoritesHasNext} loading={favoritesLoading && favorites.length > 0} onLoadMore={onLoadMore} />
           <button className="button button-outlined" type="button" onClick={() => void onSignOut()}>Sign out</button>
         </>
       ) : (
@@ -938,7 +966,7 @@ function AccountPanel({ auth, favorites, favoritesLoading, favoritePage, favorit
           <button className="button button-outlined button-wide" type="button" disabled={loading} onClick={onRefresh}>{loading ? "Checking…" : "Check login"}</button>
         </>
       )}
-    </aside>
+    </section>
   );
 }
 

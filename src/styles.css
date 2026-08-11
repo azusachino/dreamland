@@ -118,9 +118,7 @@ select:focus-visible {
 .header-actions,
 .card-footer,
 .dialog-actions,
-.inspector-heading,
-.pagination,
-.nav-footer {
+.inspector-heading {
   align-items: center;
   display: flex;
 }
@@ -155,7 +153,6 @@ select:focus-visible {
 }
 
 .eyebrow,
-.nav-heading,
 .section-label {
   color: var(--ink-subtle);
   font-size: 0.68rem;
@@ -287,33 +284,34 @@ select:focus-visible {
 .app-layout {
   display: grid;
   gap: clamp(1rem, 2.5vw, 2rem);
-  grid-template-columns: 13rem minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   margin: 1.5rem auto 0;
   max-width: 1720px;
   padding: 0 clamp(1rem, 3vw, 2.5rem) 2.5rem;
 }
 
 .app-layout.has-detail {
-  grid-template-columns: 13rem minmax(0, 1fr) minmax(18rem, 24rem);
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
 }
 
-.nav-rail {
-  align-self: start;
+.view-tabs {
+  align-items: center;
   border-radius: var(--radius-lg);
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 1rem;
+  gap: 0.35rem;
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+  padding: 0.45rem;
   position: sticky;
   top: 7.3rem;
+  z-index: 4;
 }
 
-.nav-heading {
-  padding: 0.55rem 0.7rem;
-}
-
-.nav-heading-spaced {
-  margin-top: 1.2rem;
+.view-tabs .nav-item {
+  flex: 1 0 8rem;
+  justify-content: center;
+  text-align: center;
+  width: auto;
 }
 
 .nav-item {
@@ -354,13 +352,15 @@ select:focus-visible {
   width: 1.2rem;
 }
 
-.nav-footer {
-  border-top: 1px solid var(--outline);
+.view-status {
+  align-items: center;
   color: var(--ink-subtle);
+  display: flex;
   font-size: 0.7rem;
+  flex: 0 0 auto;
   gap: 0.45rem;
-  margin-top: 2.5rem;
-  padding: 1rem 0.7rem 0.2rem;
+  padding: 0 0.75rem;
+  white-space: nowrap;
 }
 
 .connection-dot {
@@ -652,17 +652,6 @@ select:focus-visible {
   white-space: nowrap;
 }
 
-.pagination {
-  gap: 1rem;
-  justify-content: center;
-  margin-top: 2rem;
-}
-
-.pagination > span {
-  color: var(--ink-muted);
-  font-size: 0.8rem;
-}
-
 .empty-state {
   align-items: center;
   border: 1px dashed var(--outline-strong);
@@ -729,51 +718,23 @@ select:focus-visible {
   white-space: nowrap;
 }
 
-.detail-panel {
+.detail-panel,
+.workspace-panel {
   align-self: start;
   border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
   gap: 1rem;
   padding: 1rem;
+}
+
+.detail-panel {
   position: sticky;
   top: 7.3rem;
 }
 
-.download-panel {
-  background: var(--glass-fallback);
-  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
-  bottom: 0;
-  box-shadow: var(--shadow);
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-  max-width: 25rem;
-  overflow-y: auto;
-  padding: 1rem;
-  position: fixed;
-  right: 0;
-  top: 0;
-  width: min(90vw, 25rem);
-  z-index: 14;
-}
-
-.collection-panel {
-  background: var(--glass-fallback);
-  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
-  bottom: 0;
-  box-shadow: var(--shadow);
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-  max-width: 30rem;
-  overflow-y: auto;
-  padding: 1rem;
-  position: fixed;
-  right: 0;
-  top: 0;
-  width: min(92vw, 30rem);
-  z-index: 14;
+.workspace-panel {
+  min-height: 20rem;
 }
 
 .collection-list {
@@ -793,6 +754,26 @@ select:focus-visible {
 .collection-pagination span {
   color: var(--ink-muted);
   font-size: 0.75rem;
+}
+
+.load-more,
+.load-more-end {
+  align-items: center;
+  color: var(--ink-muted);
+  display: flex;
+  font-size: 0.8rem;
+  gap: 0.55rem;
+  justify-content: center;
+  min-height: 4rem;
+  padding: 1rem 0;
+}
+
+.load-more span {
+  animation: pulse 1.2s infinite var(--ease);
+  background: var(--primary);
+  border-radius: 50%;
+  height: 0.55rem;
+  width: 0.55rem;
 }
 
 .collection-row {
@@ -830,59 +811,6 @@ select:focus-visible {
   display: flex;
   font-size: 0.82rem;
   gap: 0.5rem;
-}
-
-.favorite-list {
-  display: grid;
-  gap: 0.55rem;
-}
-
-.favorite-row {
-  align-items: center;
-  background: var(--surface-container);
-  border: 1px solid var(--outline);
-  border-radius: var(--radius-md);
-  display: flex;
-  gap: 0.6rem;
-  padding: 0.45rem;
-}
-
-.favorite-preview {
-  background: var(--surface-high);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  flex: 0 0 2.8rem;
-  height: 3.6rem;
-  overflow: hidden;
-  padding: 0;
-}
-
-.favorite-preview img {
-  height: 100%;
-  object-fit: cover;
-  width: 100%;
-}
-
-.favorite-row-body {
-  display: grid;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-.favorite-row-body strong,
-.favorite-row-body span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.favorite-row-body strong {
-  font-size: 0.78rem;
-}
-
-.favorite-row-body span {
-  color: var(--ink-muted);
-  font-size: 0.68rem;
 }
 
 .download-list {
@@ -1147,22 +1075,7 @@ select:focus-visible {
 
   .app-layout,
   .app-layout.has-detail {
-    grid-template-columns: 4.4rem minmax(0, 1fr);
-  }
-
-  .nav-rail {
-    padding: 0.65rem;
-  }
-
-  .nav-heading,
-  .nav-item span:not(.nav-icon),
-  .nav-footer {
-    display: none;
-  }
-
-  .nav-item {
-    justify-content: center;
-    padding: 0.7rem 0;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .detail-panel {
@@ -1224,19 +1137,11 @@ select:focus-visible {
     margin-top: 1rem;
   }
 
-  .nav-rail {
-    display: flex;
-    flex-direction: row;
-    justify-content: space-around;
-    padding: 0.35rem;
+  .view-tabs {
+    margin-bottom: 1rem;
     position: sticky;
     top: 0.75rem;
-    z-index: 4;
-  }
-
-  .nav-item {
-    min-height: 2.4rem;
-    width: auto;
+    z-index: 5;
   }
 
   .content-heading {
