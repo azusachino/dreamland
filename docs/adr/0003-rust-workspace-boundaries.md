@@ -11,13 +11,18 @@ boundaries. A single crate would make the command layer own too much.
 
 ## Decision
 
-Use a virtual Cargo workspace with five members:
+Use a virtual Cargo workspace with independently testable core, protocol,
+runtime, composition, site, and shell members:
 
 - `dreamland-core` — site-neutral identifiers and draft domain metadata;
+- `dreamland-moe` — shared Moebooru wire decoding, query mapping, retries, and
+  tag suggestions;
 - `dreamland-sites` — composition root that assembles registered site adapters;
 - `dreamland-runtime` — configuration, persistence, download orchestration,
   and runtime-owned I/O;
 - `dreamland-site-yandere` — the Yandere adapter and response fixtures;
+- `dreamland-site-konachan` — the safe-mode Konachan adapter and response
+  fixtures;
 - `src-tauri` — Tauri commands, window lifecycle, and desktop capabilities.
 
 The workspace owns the single `Cargo.lock` and shared build output. Site

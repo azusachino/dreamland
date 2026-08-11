@@ -21,7 +21,8 @@ site set, API pagination, settings, and image-download behavior.
 - `index.html` — Vite entry document
 - `src/` — React + TypeScript frontend
 - `dist/` — Vite build output loaded by Tauri
-- `crates/` — core, runtime, sites composition root, and site adapter crates
+- `crates/` — core, shared Moebooru protocol, runtime, sites composition root,
+  and site adapter crates
   (`dreamland-site-yandere` and the safe-mode `dreamland-site-konachan`
   adapters active; `dreamland-site-pixiv`/`-twitter` remain descriptor-only
   skeletons)

@@ -1,11 +1,10 @@
 use anyhow::{bail, Context, Result};
 use dreamland_core::{
-    ContentPolicy, Continuation, DiscoverySource, FeedKind, MediaVariant, NetworkPolicy,
-    PaginationRequest, Pool, PoolPage, PopularPeriod, Post, PostQueryRequest, PostRef, ProxyMode,
-    Rating, SiteCapabilities, SiteDescriptor, SiteError, SiteErrorCode, SiteId, SitePage,
-    TagCategory, TagSuggestion, TagSuggestionRequest,
+    ContentPolicy, DiscoverySource, MediaVariant, NetworkPolicy, PaginationRequest, Pool, PoolPage,
+    PopularPeriod, Post, PostQueryRequest, ProxyMode, SiteCapabilities, SiteDescriptor, SiteError,
+    SiteId, SitePage, TagSuggestion, TagSuggestionRequest,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 pub const SITE_ID: &str = "yandere";
 const MAX_POOL_PAGE_SIZE: u16 = 20;
@@ -61,65 +60,6 @@ pub fn variant_url(post: &Post, variant: MediaVariant) -> Option<&str> {
     }
 }
 
-/// Yande's raw `/post.json` wire shape. Never crosses the Tauri boundary --
-/// `fetch_images` maps every entry into the site-neutral `Post` before
-/// returning.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-struct ImagePost {
-    id: u64,
-    #[serde(default)]
-    tags: String,
-    author: Option<String>,
-    creator_id: Option<u64>,
-    md5: Option<String>,
-    source: Option<String>,
-    parent_id: Option<u64>,
-    #[serde(default)]
-    has_children: bool,
-    created_at: Option<WireTimestamp>,
-    width: Option<u32>,
-    height: Option<u32>,
-    file_url: Option<String>,
-    sample_url: Option<String>,
-    preview_url: Option<String>,
-    rating: Option<String>,
-    score: Option<i32>,
-    file_size: Option<u64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
-enum WireTimestamp {
-    Text(String),
-    UnixSeconds(i64),
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-#[serde(untagged)]
-enum PostResponse {
-    Legacy(Vec<ImagePost>),
-    VersionTwo { posts: Vec<ImagePost> },
-}
-
-impl PostResponse {
-    fn into_posts(self) -> Vec<Post> {
-        match self {
-            Self::Legacy(images) | Self::VersionTwo { posts: images } => {
-                images.into_iter().map(Post::from).collect()
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-struct TagRecord {
-    name: String,
-    count: Option<u64>,
-    #[serde(rename = "type")]
-    category: Option<u8>,
-    ambiguous: Option<bool>,
-}
-
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 struct PoolRecord {
     id: u64,
@@ -136,107 +76,16 @@ struct UserRecord {
     id: u64,
 }
 
-impl From<ImagePost> for Post {
-    fn from(image: ImagePost) -> Self {
-        Self {
-            post: PostRef {
-                site: SiteId::new(SITE_ID),
-                id: image.id.to_string(),
-            },
-            tags: image.tags.split_whitespace().map(str::to_owned).collect(),
-            author: image.author,
-            creator_id: image.creator_id,
-            md5: image.md5,
-            source: image.source,
-            parent_id: image.parent_id.map(|id| id.to_string()),
-            has_children: image.has_children,
-            created_at: normalize_timestamp(image.created_at),
-            width: image.width,
-            height: image.height,
-            rating: match image.rating.as_deref() {
-                Some("s") => Rating::Safe,
-                Some("q") => Rating::Questionable,
-                Some("e") => Rating::Explicit,
-                _ => Rating::Unknown,
-            },
-            score: image.score,
-            preview_url: image.preview_url,
-            sample_url: image.sample_url,
-            full_url: image.file_url,
-            file_size: image.file_size,
-        }
-    }
-}
-
-fn normalize_timestamp(value: Option<WireTimestamp>) -> Option<String> {
-    match value? {
-        WireTimestamp::Text(value) => Some(value),
-        WireTimestamp::UnixSeconds(seconds) => Some(unix_seconds_to_rfc3339(seconds)),
-    }
-}
-
-fn unix_seconds_to_rfc3339(seconds: i64) -> String {
-    let days = seconds.div_euclid(86_400);
-    let day_seconds = seconds.rem_euclid(86_400);
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let day_of_era = z - era * 146_097;
-    let year_of_era = (day_of_era - day_of_era / 1_460 + day_of_era / 36_524
-        - day_of_era / 146_096)
-        .div_euclid(365);
-    let year = year_of_era + era * 400;
-    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
-    let month_part = (5 * day_of_year + 2).div_euclid(153);
-    let day = day_of_year - (153 * month_part + 2).div_euclid(5) + 1;
-    let month = month_part + if month_part < 10 { 3 } else { -9 };
-    let year = year + i64::from(month <= 2);
-    let hour = day_seconds / 3_600;
-    let minute = day_seconds % 3_600 / 60;
-    let second = day_seconds % 60;
-    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
-}
-
 /// Decode both Yande post response envelopes observed in the live API.
 pub fn decode_posts(body: &[u8]) -> Result<Vec<Post>> {
-    serde_json::from_slice::<PostResponse>(body)
-        .context("decode Yande post response")
-        .map(PostResponse::into_posts)
+    dreamland_moe::decode_posts(body, SITE_ID)
 }
 
 /// Keep the site's tag expression intact while adding the runtime's content
 /// policy. In particular, spaces and leading `-` terms are meaningful Yande
 /// syntax and must not be normalized into a different query.
 pub fn tag_expression(expression: &str, policy: ContentPolicy) -> Result<String> {
-    if expression.trim().is_empty() {
-        bail!("Yande tag expression must not be empty");
-    }
-    if expression.chars().any(char::is_control) {
-        bail!("Yande tag expression contains a control character");
-    }
-
-    let policy_tag = match policy {
-        ContentPolicy::SafeOnly => Some("rating:s"),
-        ContentPolicy::AllowQuestionable => Some("-rating:e"),
-        ContentPolicy::AllowExplicit | ContentPolicy::ExplicitOnly => None,
-    };
-    let mut result = expression.to_owned();
-    if let Some(policy_tag) = policy_tag {
-        if !result.split_whitespace().any(|term| term == policy_tag) {
-            if !result.ends_with(char::is_whitespace) {
-                result.push(' ');
-            }
-            result.push_str(policy_tag);
-        }
-    }
-    if policy == ContentPolicy::ExplicitOnly
-        && !result.split_whitespace().any(|term| term == "rating:e")
-    {
-        if !result.ends_with(char::is_whitespace) {
-            result.push(' ');
-        }
-        result.push_str("rating:e");
-    }
-    Ok(result)
+    dreamland_moe::tag_expression(expression, policy)
 }
 
 pub fn tag_query_params(
@@ -245,24 +94,11 @@ pub fn tag_query_params(
     page: u32,
     page_size: u16,
 ) -> Result<Vec<(&'static str, String)>> {
-    if page == 0 {
-        bail!("Yande page numbers start at 1");
-    }
-    if page_size == 0 {
-        bail!("Yande page size must be greater than zero");
-    }
-    Ok(vec![
-        ("tags", tag_expression(expression, policy)?),
-        ("page", page.to_string()),
-        ("limit", page_size.to_string()),
-    ])
+    dreamland_moe::tag_query_params(expression, policy, page, page_size)
 }
 
 pub fn tag_endpoint(base_url: &str) -> Result<String> {
-    let mut url = reqwest::Url::parse(base_url).context("parse Yande API URL")?;
-    url.set_path("/tag.json");
-    url.set_query(None);
-    Ok(url.to_string())
+    dreamland_moe::tag_endpoint(base_url)
 }
 
 pub fn pool_endpoint(base_url: &str) -> Result<String> {
@@ -378,145 +214,12 @@ pub async fn query_pool_posts(
     query_posts(api_url, &request, network).await
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct CalendarDate {
-    year: i32,
-    month: u32,
-    day: u32,
-}
-
-fn parse_calendar_date(value: &str) -> Result<CalendarDate> {
-    let mut parts = value.split('-');
-    let year = parts.next().unwrap_or_default();
-    let month = parts.next().unwrap_or_default();
-    let day = parts.next().unwrap_or_default();
-    let date = CalendarDate {
-        year: year.parse().unwrap_or_default(),
-        month: month.parse().unwrap_or_default(),
-        day: day.parse().unwrap_or_default(),
-    };
-    if parts.next().is_some()
-        || year.len() != 4
-        || month.len() != 2
-        || day.len() != 2
-        || !year.chars().all(|value| value.is_ascii_digit())
-        || !month.chars().all(|value| value.is_ascii_digit())
-        || !day.chars().all(|value| value.is_ascii_digit())
-        || !(1..=12).contains(&date.month)
-        || !(1..=days_in_month(date.year, date.month)).contains(&date.day)
-    {
-        bail!("popular anchor date must use YYYY-MM-DD");
-    }
-    Ok(date)
-}
-
-fn is_leap_year(year: i32) -> bool {
-    year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
-}
-
-fn days_in_month(year: i32, month: u32) -> u32 {
-    match month {
-        2 if is_leap_year(year) => 29,
-        2 => 28,
-        4 | 6 | 9 | 11 => 30,
-        _ => 31,
-    }
-}
-
-fn add_days(mut date: CalendarDate, days: i32) -> CalendarDate {
-    let step = if days < 0 { -1 } else { 1 };
-    for _ in 0..days.unsigned_abs() {
-        if step > 0 {
-            if date.day == days_in_month(date.year, date.month) {
-                date.day = 1;
-                if date.month == 12 {
-                    date.month = 1;
-                    date.year += 1;
-                } else {
-                    date.month += 1;
-                }
-            } else {
-                date.day += 1;
-            }
-        } else if date.day == 1 {
-            if date.month == 1 {
-                date.month = 12;
-                date.year -= 1;
-            } else {
-                date.month -= 1;
-            }
-            date.day = days_in_month(date.year, date.month);
-        } else {
-            date.day -= 1;
-        }
-    }
-    date
-}
-
-fn monday_first_weekday(date: CalendarDate) -> u32 {
-    let (year, month) = if date.month < 3 {
-        (date.year - 1, date.month + 12)
-    } else {
-        (date.year, date.month)
-    };
-    let century_year = year % 100;
-    let century = year / 100;
-    let saturday_first = (date.day as i32
-        + (13 * (month as i32 + 1)) / 5
-        + century_year
-        + century_year / 4
-        + century / 4
-        + 5 * century)
-        % 7;
-    ((saturday_first + 5) % 7) as u32
-}
-
-fn format_calendar_date(date: CalendarDate) -> String {
-    format!("{:04}-{:02}-{:02}", date.year, date.month, date.day)
-}
-
 pub fn popular_tag_expression(period: PopularPeriod, anchor_date: &str) -> Result<String> {
-    let anchor = parse_calendar_date(anchor_date)?;
-    let (start, end) = match period {
-        PopularPeriod::Day => (anchor, anchor),
-        PopularPeriod::Week => {
-            let start = add_days(anchor, -(monday_first_weekday(anchor) as i32));
-            (start, add_days(start, 6))
-        }
-        PopularPeriod::Month => {
-            let start = CalendarDate { day: 1, ..anchor };
-            (
-                start,
-                add_days(start, days_in_month(start.year, start.month) as i32 - 1),
-            )
-        }
-    };
-    let range = if start == end {
-        format_calendar_date(start)
-    } else {
-        format!(
-            "{}..{}",
-            format_calendar_date(start),
-            format_calendar_date(end)
-        )
-    };
-    Ok(format!("date:{range} order:score"))
+    dreamland_moe::popular_tag_expression(period, anchor_date)
 }
 
 pub fn map_http_status(status: reqwest::StatusCode) -> SiteError {
-    let (code, retryable) = match status {
-        reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
-            (SiteErrorCode::AuthRequired, false)
-        }
-        reqwest::StatusCode::TOO_MANY_REQUESTS => (SiteErrorCode::RateLimited, true),
-        status if status.is_client_error() => (SiteErrorCode::InvalidRequest, false),
-        _ => (SiteErrorCode::NetworkFailed, true),
-    };
-    SiteError {
-        code,
-        message: format!("yandere request failed with HTTP {status}"),
-        retryable,
-    }
+    dreamland_moe::map_http_status(status, "yandere")
 }
 
 pub async fn query_posts(
@@ -524,7 +227,7 @@ pub async fn query_posts(
     request: &PostQueryRequest,
     network: &NetworkPolicy,
 ) -> Result<SitePage> {
-    query_posts_with_cookie(api_url, request, network, None).await
+    dreamland_moe::query_posts(api_url, request, network, SITE_ID, "yandere").await
 }
 
 pub async fn list_favorites(
@@ -557,22 +260,15 @@ async fn query_posts_with_cookie(
     network: &NetworkPolicy,
     cookie_header: Option<&str>,
 ) -> Result<SitePage> {
-    let (endpoint, params, page_size, fixed_window) = request_parts(api_url, request)?;
-    let client = build_client_with_cookie(network, cookie_header)?;
-    let mut posts = decode_posts(&get_bytes(&client, &endpoint, &params, network).await?)?;
-    posts.retain(|post| matches_content_policy(post, request.query.content_policy));
-    let returned_size = u16::try_from(posts.len()).unwrap_or(u16::MAX);
-    Ok(SitePage {
-        posts,
-        continuation: Continuation::None,
-        total: None,
-        page_size: if fixed_window {
-            returned_size
-        } else {
-            page_size
-        },
-        session: None,
-    })
+    dreamland_moe::query_posts_with_cookie(
+        api_url,
+        request,
+        network,
+        cookie_header,
+        SITE_ID,
+        "yandere",
+    )
+    .await
 }
 
 fn build_client(network: &NetworkPolicy) -> Result<reqwest::Client> {
@@ -607,23 +303,15 @@ pub async fn set_favorite(
     cookie_header: &str,
     network: &NetworkPolicy,
 ) -> Result<()> {
-    if post_id.is_empty() || !post_id.chars().all(|value| value.is_ascii_digit()) {
-        bail!("Yande post id must be numeric");
-    }
-    let mut endpoint = reqwest::Url::parse(api_url).context("parse Yande API URL")?;
-    endpoint.set_path("/post/vote.json");
-    endpoint.set_query(None);
-    let client = build_client_with_cookie(network, Some(cookie_header))?;
-    let response = client
-        .post(endpoint)
-        .form(&[("id", post_id), ("score", if favorite { "3" } else { "2" })])
-        .send()
-        .await?;
-    if response.status().is_success() {
-        Ok(())
-    } else {
-        bail!("{}", map_http_status(response.status()).message)
-    }
+    dreamland_moe::set_favorite(
+        api_url,
+        post_id,
+        favorite,
+        cookie_header,
+        network,
+        "yandere",
+    )
+    .await
 }
 
 async fn get_bytes(
@@ -667,118 +355,16 @@ fn retry_after_ms(response: &reqwest::Response) -> Option<u64> {
         .map(|seconds| seconds.saturating_mul(1_000))
 }
 
+#[cfg(test)]
 fn request_parts(
     api_url: &str,
     request: &PostQueryRequest,
 ) -> Result<(String, Vec<(&'static str, String)>, u16, bool)> {
-    let (page, page_size) = match request.pagination {
-        PaginationRequest::First { page_size } => (1, page_size),
-        PaginationRequest::Page { number, page_size } => (number, page_size),
-        PaginationRequest::FixedWindow => (1, 0),
-    };
-    let mut params = Vec::new();
-    let (endpoint, fixed_window) = match &request.query.source {
-        DiscoverySource::Browse
-        | DiscoverySource::Feed {
-            kind: FeedKind::Latest,
-        } => {
-            if matches!(request.pagination, PaginationRequest::FixedWindow) {
-                bail!("latest Yande posts require page pagination");
-            }
-            params.push(("page", page.to_string()));
-            params.push(("limit", page_size.to_string()));
-            (api_url.to_owned(), false)
-        }
-        DiscoverySource::Search { .. } => {
-            if matches!(request.pagination, PaginationRequest::FixedWindow) {
-                bail!("Yande tag search requires page pagination");
-            }
-            (api_url.to_owned(), false)
-        }
-        DiscoverySource::Feed {
-            kind:
-                FeedKind::Popular {
-                    period,
-                    anchor_date,
-                },
-        } => {
-            if matches!(request.pagination, PaginationRequest::FixedWindow) {
-                bail!("Yande popular feeds use page pagination");
-            }
-            params.extend(tag_query_params(
-                &popular_tag_expression(*period, anchor_date)?,
-                request.query.content_policy,
-                page,
-                page_size,
-            )?);
-            (api_url.to_owned(), false)
-        }
-    };
-
-    if let DiscoverySource::Search { expression } = &request.query.source {
-        params.extend(tag_query_params(
-            expression,
-            request.query.content_policy,
-            page,
-            page_size,
-        )?);
-    } else if matches!(
-        request.query.source,
-        DiscoverySource::Browse
-            | DiscoverySource::Feed {
-                kind: FeedKind::Latest,
-            }
-    ) {
-        if let Some(policy_tag) = content_policy_tag(request.query.content_policy) {
-            params.push(("tags", policy_tag.to_owned()));
-        }
-    }
-    Ok((endpoint, params, page_size, fixed_window))
-}
-
-fn content_policy_tag(policy: ContentPolicy) -> Option<&'static str> {
-    match policy {
-        ContentPolicy::SafeOnly => Some("rating:s"),
-        ContentPolicy::AllowQuestionable => Some("-rating:e"),
-        ContentPolicy::AllowExplicit | ContentPolicy::ExplicitOnly => None,
-    }
-}
-
-fn matches_content_policy(post: &Post, policy: ContentPolicy) -> bool {
-    match policy {
-        ContentPolicy::SafeOnly => post.rating == Rating::Safe,
-        ContentPolicy::AllowQuestionable => {
-            matches!(post.rating, Rating::Safe | Rating::Questionable)
-        }
-        ContentPolicy::AllowExplicit => true,
-        ContentPolicy::ExplicitOnly => post.rating == Rating::Explicit,
-    }
-}
-
-fn map_tag_category(category: Option<u8>) -> Option<TagCategory> {
-    category.map(|value| match value {
-        0 => TagCategory::General,
-        1 => TagCategory::Artist,
-        3 => TagCategory::Copyright,
-        4 => TagCategory::Character,
-        5 => TagCategory::Metadata,
-        value => TagCategory::Unknown(value),
-    })
+    dreamland_moe::request_parts(api_url, request)
 }
 
 pub fn decode_tag_suggestions(body: &[u8]) -> Result<Vec<TagSuggestion>> {
-    let records =
-        serde_json::from_slice::<Vec<TagRecord>>(body).context("decode Yande tag response")?;
-    Ok(records
-        .into_iter()
-        .map(|record| TagSuggestion {
-            name: record.name,
-            category: map_tag_category(record.category),
-            post_count: record.count,
-            ambiguous: record.ambiguous,
-            aliases: Vec::new(),
-        })
-        .collect())
+    dreamland_moe::decode_tag_suggestions(body)
 }
 
 pub async fn fetch_tag_suggestions(
@@ -786,24 +372,17 @@ pub async fn fetch_tag_suggestions(
     request: &TagSuggestionRequest,
     network: &NetworkPolicy,
 ) -> Result<Vec<TagSuggestion>> {
-    let params = [
-        ("name", request.query.clone()),
-        ("limit", request.limit.to_string()),
-    ];
-    let client = build_client(network)?;
-    decode_tag_suggestions(&get_bytes(&client, url, &params, network).await?)
+    dreamland_moe::fetch_tag_suggestions(url, request, network, "yandere").await
 }
 
 pub async fn fetch_images(url: &str, page: usize) -> Result<Vec<Post>> {
-    let network = NetworkPolicy::default();
-    let client = build_client(&network)?;
-    let params = [("page", page.to_string())];
-    decode_posts(&get_bytes(&client, url, &params, &network).await?)
+    dreamland_moe::fetch_images(url, page, SITE_ID).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dreamland_core::{FeedKind, Rating, SiteErrorCode, TagCategory};
 
     const IMAGE_JSON: &str = r#"{
         "id": 123456,
@@ -826,22 +405,14 @@ mod tests {
     }"#;
 
     #[test]
-    fn image_post_deserializes() {
-        let image: ImagePost = serde_json::from_str(IMAGE_JSON).unwrap();
-
-        assert_eq!(image.id, 123456);
-        assert_eq!(image.rating.as_deref(), Some("s"));
-    }
-
-    #[test]
     fn site_uses_the_stable_yandere_id() {
         assert_eq!(SITE_ID, "yandere");
     }
 
     #[test]
     fn maps_wire_shape_to_neutral_post() {
-        let image: ImagePost = serde_json::from_str(IMAGE_JSON).unwrap();
-        let post = Post::from(image);
+        let posts = decode_posts(format!("[{IMAGE_JSON}]").as_bytes()).unwrap();
+        let post = &posts[0];
 
         assert_eq!(post.post.site.as_str(), SITE_ID);
         assert_eq!(post.post.id, "123456");

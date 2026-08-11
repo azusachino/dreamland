@@ -16,7 +16,8 @@ local data, and downloads.
 - Typed Tauri IPC wrappers
 - Tailwind CSS styling foundation
 - TanStack Query for command-backed asynchronous state
-- Rust Cargo workspace with core, runtime, and Yandere adapter boundaries
+- Rust Cargo workspace with site-neutral core, shared Moebooru protocol, runtime,
+  and site adapter boundaries
 - Browse, pagination, settings, and image downloads through Rust commands
 
 Linux and mobile are not planned targets. There is no release schedule or
@@ -32,8 +33,10 @@ src-tauri/                  desktop commands and window lifecycle
         │
         ├── dreamland-runtime       config, persistence, downloads
         ├── dreamland-core          site-neutral domain contracts
+        ├── dreamland-moe           shared Moebooru wire/protocol behavior
         ├── dreamland-sites          composition root and site registry
         ├── dreamland-site-yandere   active Yande adapter and fixtures
+        ├── dreamland-site-konachan safe-mode Konachan adapter and fixtures
         ├── dreamland-site-pixiv     descriptor-only skeleton
         └── dreamland-site-twitter   descriptor-only skeleton
 ```

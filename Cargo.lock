@@ -734,6 +734,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "dreamland-moe"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dreamland-core",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "dreamland-runtime"
 version = "0.1.0"
 dependencies = [
@@ -754,7 +766,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "dreamland-core",
- "dreamland-site-yandere",
+ "dreamland-moe",
  "serde",
  "toml 0.8.2",
 ]
@@ -779,6 +791,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "dreamland-core",
+ "dreamland-moe",
  "reqwest 0.11.27",
  "serde",
  "serde_json",

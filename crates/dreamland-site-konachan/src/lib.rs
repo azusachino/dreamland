@@ -53,11 +53,7 @@ pub fn variant_url(post: &Post, variant: MediaVariant) -> Option<&str> {
 }
 
 pub fn decode_posts(body: &[u8]) -> Result<Vec<Post>> {
-    let mut posts = dreamland_site_yandere::decode_posts(body)?;
-    for post in &mut posts {
-        post.post.site = SiteId::new(SITE_ID);
-    }
-    Ok(posts)
+    dreamland_moe::decode_posts(body, SITE_ID)
 }
 
 pub async fn query_posts(
@@ -66,7 +62,7 @@ pub async fn query_posts(
     network: &NetworkPolicy,
 ) -> Result<SitePage> {
     ensure_supported_policy(request.query.content_policy)?;
-    dreamland_site_yandere::query_posts(api_url, request, network)
+    dreamland_moe::query_posts(api_url, request, network, SITE_ID, "konachan")
         .await
         .map_err(map_transport_error)
         .map(|mut page| {
@@ -82,13 +78,13 @@ pub async fn fetch_tag_suggestions(
     request: &TagSuggestionRequest,
     network: &NetworkPolicy,
 ) -> Result<Vec<TagSuggestion>> {
-    dreamland_site_yandere::fetch_tag_suggestions(endpoint, request, network)
+    dreamland_moe::fetch_tag_suggestions(endpoint, request, network, "konachan")
         .await
         .map_err(map_transport_error)
 }
 
 pub fn tag_endpoint(base_url: &str) -> Result<String> {
-    dreamland_site_yandere::tag_endpoint(base_url)
+    dreamland_moe::tag_endpoint(base_url)
 }
 
 fn ensure_supported_policy(policy: ContentPolicy) -> Result<()> {

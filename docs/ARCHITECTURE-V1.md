@@ -14,7 +14,7 @@ Tauri command boundary
   │ validation, operation IDs, cancellation
   ▼
 Dreamland runtime
-  ├── dreamland-sites composition root → selected SiteAdapter → remote HTTP
+  ├── dreamland-sites composition root → selected SiteAdapter → shared/site protocol → remote HTTP
   ├── Auth/session bridge → browser flow + secret store
   ├── SQLite LocalStateStore → saved queries, history, queue, cache metadata
   ├── Download worker → site media/archive resolution
@@ -55,9 +55,10 @@ user intent
 `dreamland-sites` is the composition root: it assembles the active registered
 site crates and keeps descriptor-only Pixiv/Twitter skeletons separate from
 the active registry. It is the only site-discovery dependency the Tauri shell
-needs. The adapter is the only place that knows Yande request syntax,
-response envelopes, cookie names, popular endpoint families, pool ZIP routes,
-or a future site's equivalent. The runtime is the only place that knows
+needs. Site adapters own site configuration, site-specific capabilities, cookie
+names, and site-only routes. Shared protocol crates such as `dreamland-moe`
+own Moebooru-compatible request syntax and response envelopes without making
+one site adapter the dependency of another. The runtime is the only place that knows
 operation lifetimes, safe URL policy, SQLite, cache paths, canonical filenames,
 and filesystem access.
 

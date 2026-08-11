@@ -1,5 +1,5 @@
 [package]
-name = "dreamland-site-konachan"
+name = "dreamland-moe"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,6 +8,7 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 dreamland-core = { path = "../dreamland-core" }
-dreamland-moe = { path = "../dreamland-moe" }
+reqwest.workspace = true
 serde.workspace = true
-toml.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

@@ -11,7 +11,7 @@ current index; it deliberately does not duplicate their full rationale.
 | --- | --- |
 | [0001](adr/0001-platform-and-toolchain.md) | macOS/Windows first-class; Nix project toolchain with uv daily scripts |
 | [0002](adr/0002-frontend-stack.md) | React, TypeScript, Vite, Bun, Tailwind CSS, and TanStack Query |
-| [0003](adr/0003-rust-workspace-boundaries.md) | Cargo workspace with isolated core, runtime, site adapter, and Tauri shell crates |
+| [0003](adr/0003-rust-workspace-boundaries.md) | Cargo workspace with isolated core, shared protocol, runtime, site adapter, and Tauri shell crates |
 | [0004](adr/0004-site-runtime-boundary.md) | Rust-owned site/runtime boundary; `yandere` is one site ID |
 | [0005](adr/0005-toml-runtime-configuration.md) | TOML runtime settings with a legacy JSON fallback (accepted design; migration remains pending) |
 | [0008](adr/0008-frontend-visual-language.md) | Material 3 Expressive content system with restrained Liquid Glass shell and opaque cross-platform fallback |

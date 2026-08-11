@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/dreamland-core",
+  "crates/dreamland-moe",
   "crates/dreamland-sites",
   "crates/dreamland-site-pixiv",
   "crates/dreamland-site-twitter",
