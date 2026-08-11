@@ -973,11 +973,19 @@ function App() {
                     <small>{site.capabilities.browse ? "ready" : "later"}</small>
                   </button>
                 ))}
+                <button
+                  className="site-menu-open"
+                  type="button"
+                  disabled={!activeSite}
+                  onClick={() => {
+                    setSiteMenuOpen(false);
+                    void handleOpenSite();
+                  }}
+                >
+                  open current site
+                </button>
                 </div>}
               </div>
-              <button className="button button-text site-open" type="button" onClick={() => void handleOpenSite()} disabled={!activeSite}>
-                open site
-              </button>
             </div>
           </div>
         </div>
@@ -1109,12 +1117,17 @@ function App() {
             </div>
             <div className="heading-actions">
               {isBrowseView && <>
-              <button className="button button-outlined" type="button" onClick={() => {
-                setSelectionMode((current) => !current);
-                setSelectedPostIds(new Set());
-              }}>
-                {selectionMode ? "cancel selection" : "select posts"}
-              </button>
+              <div className="heading-primary-actions">
+                <button className="button button-outlined" type="button" onClick={() => {
+                  setSelectionMode((current) => !current);
+                  setSelectedPostIds(new Set());
+                }}>
+                  {selectionMode ? "cancel selection" : "select posts"}
+                </button>
+                {view === "search" && submittedSearch && (
+                  <button className="button button-outlined" type="button" onClick={() => void handleSaveQuery()}>save query</button>
+                )}
+              </div>
               {view === "popular" && (
                 <div className="popular-controls" aria-label="popular period and date">
                   <label className="period-picker">
@@ -1160,9 +1173,6 @@ function App() {
                     later
                   </button>
                 </div>
-              )}
-              {view === "search" && submittedSearch && (
-                <button className="button button-outlined" type="button" onClick={() => void handleSaveQuery()}>save query</button>
               )}
               <span className="content-policy">{contentPolicyLabel(activeContentPolicy)}</span>
               </>}
