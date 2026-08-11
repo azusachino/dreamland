@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
 
+use base64::Engine;
 use dreamland_core::{
     ContentPolicy, MediaVariant, NetworkPolicy, PoolPage, Post, PostQueryRequest, QuerySessionId,
     SavedQuery, SiteId, SitePage, TagSuggestion, TagSuggestionRequest,
@@ -604,6 +605,45 @@ async fn lookup_post(
 }
 
 #[tauri::command]
+async fn load_detail_image(
+    state: State<'_, RuntimeState>,
+    site_id: String,
+    post_id: String,
+) -> Result<String, String> {
+    if !dreamland_sites::is_active_browse_site(&site_id) {
+        return Err(format!(
+            "'{site_id}' is not a registered, browse-capable site"
+        ));
+    }
+    let source_url = {
+        let posts = state.posts.lock().expect("post cache lock poisoned");
+        posts
+            .get(&post_cache_key(&site_id, &post_id))
+            .and_then(|post| post.full_url.clone())
+            .ok_or_else(|| "full image URL is unavailable for this post".to_owned())?
+    };
+    let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
+    let path =
+        dreamland_runtime::cache_detail_image(&source_url, &site_id, &post_id, &config.network)
+            .await
+            .map_err(|error| error.to_string())?;
+    let bytes = tokio::fs::read(&path)
+        .await
+        .map_err(|error| error.to_string())?;
+    let mime = match path.extension().and_then(|value| value.to_str()) {
+        Some("png") => "image/png",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("bmp") => "image/bmp",
+        _ => "image/jpeg",
+    };
+    Ok(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
+#[tauri::command]
 async fn related_tags(
     site_id: String,
     tags: Vec<String>,
@@ -831,6 +871,7 @@ pub fn run() {
             set_favorite,
             query_posts,
             lookup_post,
+            load_detail_image,
             related_tags,
             continue_query,
             cancel_query,

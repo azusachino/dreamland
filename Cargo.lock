@@ -718,12 +718,14 @@ name = "dreamland"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "dreamland-core",
  "dreamland-runtime",
  "dreamland-sites",
  "serde",
  "tauri",
  "tauri-build",
+ "tokio",
 ]
 
 [[package]]

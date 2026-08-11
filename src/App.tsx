@@ -16,6 +16,7 @@ import {
   listArchives,
   listSavedQueries,
   lookupPost,
+  loadDetailImage,
   cancelDownload,
   deleteSavedQuery,
   listSites,
@@ -1790,30 +1791,43 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
 }
 
 function DetailImage({ post }: { post: Post }) {
-  const sources = [post.full_url, post.sample_url, post.preview_url].filter(
-    (url, index, all): url is string => Boolean(url) && all.indexOf(url) === index,
-  );
-  const [sourceIndex, setSourceIndex] = useState(0);
+  const [source, setSource] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const source = sources[sourceIndex];
-  const placeholder = [post.sample_url, post.preview_url].find((url) => url && url !== source);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!source) return <div className="detail-image-state" role="status">preview unavailable</div>;
+  useEffect(() => {
+    let active = true;
+    setSource(null);
+    setLoaded(false);
+    setError(null);
+    void loadDetailImage(post.post.site, post.post.id)
+      .then((dataUrl) => {
+        if (active) setSource(dataUrl);
+      })
+      .catch((reason) => {
+        if (active) setError(errorMessage(reason));
+      });
+    return () => {
+      active = false;
+    };
+  }, [post.post.id, post.post.site]);
+
+  if (error) return <div className="detail-image-state" role="alert">full image unavailable<p>{error}</p></div>;
   return (
     <div className="detail-image-frame">
-      {!loaded && placeholder && <img className="detail-image-placeholder" src={placeholder} alt="" aria-hidden="true" loading="eager" />}
-      {!loaded && <div className="detail-image-loading" role="status"><span>loading artwork…</span></div>}
-      <img
-        className={`detail-image${loaded ? " is-loaded" : ""}`}
-        src={source}
-        alt={`post ${post.post.id}`}
-        loading="eager"
-        onLoad={() => setLoaded(true)}
-        onError={() => {
-          setLoaded(false);
-          setSourceIndex((current) => current + 1);
-        }}
-      />
+      {(!source || !loaded) && <div className="detail-image-loading" role="status" aria-label="loading full artwork" />}
+      {source && <img
+          className={`detail-image${loaded ? " is-loaded" : ""}`}
+          src={source}
+          alt={`post ${post.post.id}`}
+          loading="eager"
+          decoding="async"
+          onLoad={() => setLoaded(true)}
+          onError={() => {
+            setLoaded(false);
+            setError("the cached full image could not be decoded");
+          }}
+        />}
     </div>
   );
 }

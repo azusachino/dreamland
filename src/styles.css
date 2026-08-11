@@ -1310,17 +1310,6 @@ select:focus-visible {
   opacity: 1;
 }
 
-.detail-image-placeholder {
-  filter: blur(1rem);
-  height: 100%;
-  inset: -1rem;
-  object-fit: cover;
-  opacity: 0.48;
-  position: absolute;
-  transform: scale(1.04);
-  width: calc(100% + 2rem);
-}
-
 .detail-image-loading,
 .detail-image-state {
   align-items: center;
@@ -1341,17 +1330,10 @@ select:focus-visible {
 
 .detail-image-loading::before {
   animation: shimmer 1.8s ease-in-out infinite;
-  background: linear-gradient(110deg, transparent 20%, rgb(255 255 255 / 10%) 45%, transparent 70%);
+  background: linear-gradient(110deg, transparent 20%, rgb(255 255 255 / 6%) 45%, transparent 70%);
   content: "";
   inset: 0;
   position: absolute;
-}
-
-.detail-image-loading span {
-  background: rgb(0 0 0 / 42%);
-  border-radius: 999px;
-  padding: 0.45rem 0.7rem;
-  position: relative;
 }
 
 .detail-navigation {

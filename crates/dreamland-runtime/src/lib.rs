@@ -142,6 +142,32 @@ enum DownloadFileOutcome {
     Cancelled,
 }
 
+/// Fetch a detail image through the Rust client and retain it in the local
+/// cache. The frontend never needs to request the remote file host directly.
+pub async fn cache_detail_image(
+    url: &str,
+    site_id: &str,
+    post_id: &str,
+    network: &NetworkPolicy,
+) -> anyhow::Result<std::path::PathBuf> {
+    let cache_root = default_cache_path().join("detail");
+    let staging_root = default_cache_path().join("detail-staging");
+    match download_image(
+        url,
+        site_id,
+        post_id,
+        &cache_root,
+        &staging_root,
+        network,
+        &crate::DownloadCancellation::default(),
+    )
+    .await?
+    {
+        DownloadOutcome::Completed(path) | DownloadOutcome::ExistingTarget(path) => Ok(path),
+        DownloadOutcome::Cancelled => anyhow::bail!("detail image request was cancelled"),
+    }
+}
+
 async fn download_file(
     url: &str,
     site_id: &str,

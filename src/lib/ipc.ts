@@ -294,6 +294,10 @@ export function lookupPost(siteId: string, postId: string, contentPolicy: Conten
   return invoke<Post>("lookup_post", { siteId, postId, contentPolicy });
 }
 
+export function loadDetailImage(siteId: string, postId: string): Promise<string> {
+  return invoke<string>("load_detail_image", { siteId, postId });
+}
+
 export function suggestTags(siteId: string, query: string, limit = 5): Promise<TagSuggestion[]> {
   return invoke<TagSuggestion[]>("suggest_tags", {
     input: {
