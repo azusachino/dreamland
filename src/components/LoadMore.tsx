@@ -6,19 +6,24 @@ interface LoadMoreProps {
   hasNext: boolean;
   loading: boolean;
   onLoadMore: () => void;
+  resetKey?: string;
 }
 
-export function LoadMore({ autoLoad = true, hasNext, loading, onLoadMore }: LoadMoreProps) {
+export function LoadMore({ autoLoad = true, hasNext, loading, onLoadMore, resetKey = "" }: LoadMoreProps) {
   const sentinel = useRef<HTMLDivElement>(null);
   const state = useRef({ autoLoad, hasNext, loading, onLoadMore });
   const requestInFlight = useRef(false);
   const previousLoading = useRef(loading);
+  const previousResetKey = useRef(resetKey);
 
   useEffect(() => {
     state.current = { autoLoad, hasNext, loading, onLoadMore };
-    if (previousLoading.current && !loading) requestInFlight.current = false;
+    if ((previousLoading.current && !loading) || previousResetKey.current !== resetKey) {
+      requestInFlight.current = false;
+    }
     previousLoading.current = loading;
-  }, [autoLoad, hasNext, loading, onLoadMore]);
+    previousResetKey.current = resetKey;
+  }, [autoLoad, hasNext, loading, onLoadMore, resetKey]);
 
   const requestMore = useCallback(() => {
     if (!state.current.hasNext || state.current.loading || requestInFlight.current) return;
@@ -51,7 +56,7 @@ export function LoadMore({ autoLoad = true, hasNext, loading, onLoadMore }: Load
       document.removeEventListener("scroll", tryLoad, true);
       window.removeEventListener("resize", tryLoad);
     };
-  }, [autoLoad, requestMore]);
+  }, [autoLoad, hasNext, loading, requestMore]);
 
   if (!hasNext && !loading) return <div className="load-more-end">you’ve reached the end.</div>;
   return (

@@ -1,8 +1,8 @@
 # Changelog
 
-All notable user-visible changes will be recorded here. The project has no
-release schedule yet, so this file currently tracks the unreleased foundation
-work rather than promising a version date.
+All notable user-visible changes will be recorded here. The current unreleased
+entry tracks the 0.1.0 milestone; the release gate remains authoritative for
+whether that milestone is ready to ship.
 
 ## [Unreleased]
 
@@ -20,6 +20,10 @@ work rather than promising a version date.
 - Rebuilt the application from the former Dioxus shell into Tauri.
 - Moved runtime configuration, site requests, and downloads behind Rust
   commands.
+- Shared infinite scrolling now rebinds to the active browse query when
+  switching between latest, popular, and tag search.
+- Removed the unused Reqwest JSON feature and empty `tauri-build` feature
+  declaration from the Rust workspace.
 
 ### Removed
 

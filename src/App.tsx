@@ -1317,6 +1317,7 @@ function App() {
                     hasNext={Boolean(imagesQuery.hasNextPage)}
                     loading={loadingMore}
                     onLoadMore={() => void imagesQuery.fetchNextPage()}
+                    resetKey={JSON.stringify(request)}
                   />
                 </>
               )}
