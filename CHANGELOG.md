@@ -13,7 +13,8 @@ whether that milestone is ready to ship.
 - Rust workspace boundaries for core contracts, runtime I/O, and the Yandere
   site adapter.
 - Nix development environment and uv-based daily checks.
-- API v1 draft, roadmap, reference learnings, and architecture decision records.
+- API v1 baseline, roadmap, reference learnings, and architecture decision
+  records.
 
 ### Changed
 

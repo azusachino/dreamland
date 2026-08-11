@@ -1,8 +1,8 @@
 # Dreamland v1 architecture
 
-Status: design gate, 2026-08-11. This document turns the API and user stories
-into ownership, workflow, dataflow, and failure-boundary rules. It does not
-authorize implementation until the API and release gates are approved.
+Status: implementation baseline, 2026-08-12. This document turns the API and
+user stories into ownership, workflow, dataflow, and failure-boundary rules.
+The release gate still controls external and authenticated acceptance.
 
 ## Component ownership
 

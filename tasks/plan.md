@@ -1,7 +1,7 @@
 # Dreamland v1 implementation plan
 
-Status: API/runtime foundation complete; first frontend slice in progress,
-2026-08-11. This plan starts from the merged API/user-story/architecture
+Status: API/runtime foundation complete; 0.1.0 release hardening in progress,
+2026-08-12. This plan starts from the merged API/user-story/architecture
 design and implements one vertical slice at a time. The release gate in
 `docs/YANDE-RELEASE-GATE.md` remains the definition of done.
 
@@ -73,9 +73,9 @@ Acceptance:
 Verify: runtime unit/contract tests plus Tauri serialization tests.
 
 Current checkpoint: typed Yande commands, tag suggestions, capability gating,
-network policy, and cancellation/stale-result session primitives are present.
-SQLite-backed saved-query/history persistence and full continuation sealing
-remain open.
+network policy, cancellation/stale-result session primitives, and SQLite-backed
+saved-query/history persistence are present. Full continuation sealing and the
+remaining API trait/registry review are still open.
 
 ### Slice 3 — SQLite local state and download queue — in progress
 
@@ -98,12 +98,12 @@ Acceptance:
 Verify: SQLite migration tests, queue state-machine tests, path/security tests,
 and an integration test using a local HTTP fixture server.
 
-Current checkpoint: SQLite migrations, durable queue/history rows, restart
-recovery, asynchronous worker, cancellation, retry, cache staging, canonical
-site/post paths, existing-target protection, network policy, typed Tauri/IPC
-commands, and the Downloads panel are present. Saved-query/query-history
-tables, runtime-owned file opening, full byte-progress events, and cache
-reconciliation remain open.
+Current checkpoint: SQLite migrations, saved-query/history tables, durable
+queue/history rows, restart recovery, asynchronous worker, cancellation, retry,
+cache staging, canonical site/post paths, existing-target protection, network
+policy, runtime-owned file opening, typed Tauri/IPC commands, and the Downloads
+panel are present. Full byte-progress events, cache reconciliation, and a
+local HTTP integration fixture remain open.
 
 ### Slice 4 — Tauri command surface and default exploration UI — in progress
 
@@ -125,9 +125,9 @@ Verify: `bun run typecheck`, `bun run build`, and UI workflow tests against
 Tauri command fixtures.
 
 Current checkpoint: latest/popular/tag-search flows, tag suggestions, a
-selected-post inspector, settings inspector, responsive shell, and visual
-fallback/accessibility CSS are present. Durable downloads, history, auth,
-favorites, pools, and runtime UI workflow evidence remain open.
+selected-post inspector, settings inspector, responsive shell, durable
+downloads/history, auth, favorites, pools, and visual fallback/accessibility
+CSS are present. Interactive workflow evidence remains open.
 
 ### Slice 5 — configuration, auth, and remote favorite mutation
 

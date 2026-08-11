@@ -1,7 +1,7 @@
 # Dreamland v1 user stories
 
-Status: design gate, 2026-08-11. These stories describe the first useful
-desktop workflow. They are the UX acceptance layer above [API v1](API-V1.md)
+Status: implementation baseline, 2026-08-12. These stories describe the first
+useful desktop workflow. They are the UX acceptance layer above [API v1](API-V1.md)
 and the [Yande release gate](YANDE-RELEASE-GATE.md).
 
 "v1" here is the same milestone as [ROADMAP.md](ROADMAP.md)'s "Proposed

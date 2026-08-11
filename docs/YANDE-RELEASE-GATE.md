@@ -1,6 +1,6 @@
 # Yande release feature gate
 
-Status: design gate, 2026-08-10. A feature is not considered shipped because
+Status: release gate, 2026-08-12. A feature is not considered shipped because
 its UI or site method exists. It must have a contract, fixture coverage,
 and the required live/auth evidence recorded below.
 
@@ -120,7 +120,7 @@ Live verification is deliberately separate from CI fixtures:
 
 The Yande release is `READY` only when Y-01 through Y-09 are implemented and
 G-01 through G-10 are either `PASS` or have an explicitly approved non-live
-exception. At the current design checkpoint the release is **not ready**:
+exception. At the current verification checkpoint the release is **not ready**:
 
 - the feature scope is now explicit;
 - popular endpoint behavior is source/live-backed;
