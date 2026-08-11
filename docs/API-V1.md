@@ -1411,11 +1411,11 @@ pub struct EnqueueDownloadResult {
     retry_download(LocalRecordId) -> EnqueueDownloadResult
     open_site(SiteId) -> ()
 
-The current Tauri shell uses `open_site` for a site-owned browser recovery
-route. It validates the registered browse capability first; the frontend
-cannot supply an arbitrary URL. For Konachan this route is
-`https://konachan.com/post`, while feed/search transport remains the safe
-`https://konachan.net/post.json` adapter configuration.
+The current Tauri shell uses `open_site` for an explicit site-owned browser
+route and for feed-error recovery. It validates the registered browse
+capability first; the frontend cannot supply an arbitrary URL. For Konachan
+this route is `https://konachan.com/post`, while feed/search transport remains
+the safe `https://konachan.net/post.json` adapter configuration.
 
 Command rules:
 

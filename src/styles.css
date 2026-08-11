@@ -159,6 +159,22 @@ select:focus-visible {
   padding: 0.42rem 1.8rem 0.42rem 0.65rem;
 }
 
+.site-picker-controls {
+  align-items: center;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.site-picker-controls select {
+  min-width: 0;
+}
+
+.site-open {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  padding: 0.42rem 0.35rem;
+}
+
 .site-picker select:disabled {
   cursor: not-allowed;
 }

@@ -812,6 +812,15 @@ function App() {
     }
   }
 
+  async function handleOpenSite() {
+    setError("");
+    try {
+      await openSite(activeSiteId);
+    } catch (reason) {
+      setError(`could not open site: ${errorMessage(reason)}`);
+    }
+  }
+
   return (
     <div className="app">
       <header className="app-header shell-surface">
@@ -823,23 +832,28 @@ function App() {
               <h1>Dreamland</h1>
             </div>
           </div>
-          <label className="site-picker">
+          <div className="site-picker">
             <span>browse site</span>
-            <select
-              aria-label="choose image board site"
-              value={activeSiteId}
-              onChange={(event) => {
-                const site = sitesQuery.data?.find((candidate) => candidate.id === event.target.value);
-                if (site) selectSite(site);
-              }}
-            >
-              {(sitesQuery.data ?? []).map((site) => (
-                <option key={site.id} value={site.id} disabled={!site.capabilities.browse}>
-                  {site.name}{site.capabilities.browse ? "" : " · coming later"}
-                </option>
-              ))}
-            </select>
-          </label>
+            <div className="site-picker-controls">
+              <select
+                aria-label="choose image board site"
+                value={activeSiteId}
+                onChange={(event) => {
+                  const site = sitesQuery.data?.find((candidate) => candidate.id === event.target.value);
+                  if (site) selectSite(site);
+                }}
+              >
+                {(sitesQuery.data ?? []).map((site) => (
+                  <option key={site.id} value={site.id} disabled={!site.capabilities.browse}>
+                    {site.name}{site.capabilities.browse ? "" : " · coming later"}
+                  </option>
+                ))}
+              </select>
+              <button className="button button-text site-open" type="button" onClick={() => void handleOpenSite()} disabled={!activeSite}>
+                open site
+              </button>
+            </div>
+          </div>
         </div>
         <form className="search-bar" onSubmit={submitSearch} role="search">
           <span className="search-icon"><Icon name="search" /></span>
