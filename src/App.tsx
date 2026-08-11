@@ -52,21 +52,54 @@ function errorMessage(reason: unknown): string {
 }
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  const date = new Date();
+  return [date.getFullYear(), date.getMonth() + 1, date.getDate()]
+    .map((part, index) => index === 0 ? String(part).padStart(4, "0") : String(part).padStart(2, "0"))
+    .join("-");
+}
+
+function parseCalendarDate(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00Z`);
+  return date.toISOString().slice(0, 10) === value ? date : null;
+}
+
+function formatCalendarDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function normalizePopularAnchor(anchor: string, period: PopularPeriod): string {
+  const date = parseCalendarDate(anchor) ?? parseCalendarDate(today())!;
+  if (period === "Week") {
+    date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+  } else if (period === "Month") {
+    date.setUTCDate(1);
+  }
+  return formatCalendarDate(date);
+}
+
+function popularWindow(anchor: string, period: PopularPeriod): [string, string] {
+  const start = parseCalendarDate(normalizePopularAnchor(anchor, period))!;
+  const end = new Date(start);
+  if (period === "Day") {
+    return [formatCalendarDate(start), formatCalendarDate(start)];
+  }
+  if (period === "Week") {
+    end.setUTCDate(end.getUTCDate() + 6);
+  } else {
+    end.setUTCMonth(end.getUTCMonth() + 1, 0);
+  }
+  return [formatCalendarDate(start), formatCalendarDate(end)];
 }
 
 function shiftPopularAnchor(anchor: string, period: PopularPeriod, direction: -1 | 1): string {
-  const date = new Date(`${anchor}T00:00:00Z`);
+  const date = parseCalendarDate(normalizePopularAnchor(anchor, period))!;
   if (period === "Month") {
-    const day = date.getUTCDate();
-    date.setUTCDate(1);
     date.setUTCMonth(date.getUTCMonth() + direction);
-    const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
-    date.setUTCDate(Math.min(day, lastDay));
   } else {
     date.setUTCDate(date.getUTCDate() + direction * (period === "Week" ? 7 : 1));
   }
-  return date.toISOString().slice(0, 10);
+  return formatCalendarDate(date);
 }
 
 function contentPolicyLabel(policy: ContentPolicy): string {
@@ -104,7 +137,7 @@ function App() {
   const queryClient = useQueryClient();
   const [view, setView] = useState<ViewMode>("latest");
   const [popularPeriod, setPopularPeriod] = useState<PopularPeriod>("Week");
-  const [popularAnchorDate, setPopularAnchorDate] = useState(today);
+  const [popularAnchorDate, setPopularAnchorDate] = useState(() => normalizePopularAnchor(today(), "Week"));
   const [searchDraft, setSearchDraft] = useState("");
   const [submittedSearch, setSubmittedSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
@@ -292,7 +325,7 @@ function App() {
   const subtitle = view === "search"
     ? `Matching “${submittedSearch}”`
     : view === "popular"
-      ? `Most popular this ${popularPeriod.toLowerCase()} · score-ranked`
+      ? `Most popular this ${popularPeriod.toLowerCase()} · ${popularWindow(popularAnchorDate, popularPeriod).join(" to ")} · score-ranked`
       : view === "downloads"
         ? "Local download history and active work"
         : view === "pools"
@@ -525,7 +558,9 @@ function App() {
                   <label className="period-picker">
                     <span>Period</span>
                     <select value={popularPeriod} onChange={(event) => {
-                      setPopularPeriod(event.target.value as PopularPeriod);
+                      const nextPeriod = event.target.value as PopularPeriod;
+                      setPopularPeriod(nextPeriod);
+                      setPopularAnchorDate((current) => normalizePopularAnchor(current, nextPeriod));
                     }}>
                       <option value="Day">Day</option>
                       <option value="Week">Week</option>
@@ -547,7 +582,9 @@ function App() {
                       value={popularAnchorDate}
                       max={today()}
                       onChange={(event) => {
-                        if (event.target.value) setPopularAnchorDate(event.target.value);
+                        if (event.target.value && event.target.value <= today()) {
+                          setPopularAnchorDate(normalizePopularAnchor(event.target.value, popularPeriod));
+                        }
                       }}
                     />
                   </label>
@@ -555,7 +592,7 @@ function App() {
                     className="button button-outlined"
                     type="button"
                     aria-label={`Later popular ${popularPeriod.toLowerCase()}`}
-                    disabled={shiftPopularAnchor(popularAnchorDate, popularPeriod, 1) > today()}
+                    disabled={shiftPopularAnchor(popularAnchorDate, popularPeriod, 1) > normalizePopularAnchor(today(), popularPeriod)}
                     onClick={() => setPopularAnchorDate(shiftPopularAnchor(popularAnchorDate, popularPeriod, 1))}
                   >
                     Later
