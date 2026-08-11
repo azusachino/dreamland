@@ -562,11 +562,11 @@ function App() {
                       />
                     ))}
                   </div>
-                  {view !== "popular" && <LoadMore
+                  <LoadMore
                     hasNext={Boolean(imagesQuery.hasNextPage)}
                     loading={loadingMore}
                     onLoadMore={() => void imagesQuery.fetchNextPage()}
-                  />}
+                  />
                 </>
               )}
             </>
