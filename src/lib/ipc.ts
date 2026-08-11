@@ -228,3 +228,7 @@ export function retryDownload(id: string): Promise<DownloadRecord> {
 export function listDownloads(limit = 50): Promise<DownloadRecord[]> {
   return invoke<DownloadRecord[]>("list_downloads", { limit });
 }
+
+export function listDownloadHistory(limit = 50, offset = 0): Promise<DownloadRecord[]> {
+  return invoke<DownloadRecord[]>("list_download_history", { limit, offset });
+}

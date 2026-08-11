@@ -369,25 +369,32 @@ impl LocalStateStore {
             "SELECT id, site_id, post_id, variant, source_url, download_root,
                     metadata_json, status, target_path, error, attempts,
                     bytes_downloaded, total_bytes, created_at_ms, updated_at_ms
-             FROM download_queue ORDER BY created_at_ms ASC, id ASC LIMIT ?1",
+             FROM download_queue ORDER BY created_at_ms ASC, id ASC LIMIT ?1 OFFSET ?2",
             limit,
+            0,
         )
     }
 
     pub fn history(&self, limit: u32) -> Result<Vec<DownloadRecord>> {
+        self.history_page(limit, 0)
+    }
+
+    pub fn history_page(&self, limit: u32, offset: u32) -> Result<Vec<DownloadRecord>> {
         self.list_from(
             "SELECT id, site_id, post_id, variant, source_url, download_root,
                     metadata_json, status, target_path, error, attempts,
                     bytes_downloaded, total_bytes, created_at_ms, updated_at_ms
-             FROM download_history ORDER BY updated_at_ms DESC, id DESC LIMIT ?1",
+             FROM download_history
+             ORDER BY updated_at_ms DESC, id DESC LIMIT ?1 OFFSET ?2",
             limit,
+            offset,
         )
     }
 
-    fn list_from(&self, query: &str, limit: u32) -> Result<Vec<DownloadRecord>> {
+    fn list_from(&self, query: &str, limit: u32, offset: u32) -> Result<Vec<DownloadRecord>> {
         let connection = self.connection()?;
         let mut statement = connection.prepare(query)?;
-        let rows = statement.query_map(params![limit], |row| {
+        let rows = statement.query_map(params![limit, offset], |row| {
             decode_stored_download(row).map(|job| job.record)
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -497,11 +504,15 @@ impl DownloadManager {
         let store = self.store.clone();
         tokio::task::spawn_blocking(move || {
             let mut active = store.active(limit)?;
-            let remaining = limit.saturating_sub(active.len() as u32);
-            active.extend(store.history(remaining)?);
+            active.extend(store.history_page(limit, 0)?);
             Ok(active)
         })
         .await?
+    }
+
+    pub async fn history_page(&self, limit: u32, offset: u32) -> Result<Vec<DownloadRecord>> {
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || store.history_page(limit, offset)).await?
     }
 
     async fn run_worker(self) {
@@ -792,6 +803,19 @@ mod tests {
             store.history(10).unwrap()[0].status,
             DownloadStatus::Cancelled
         );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn history_page_supports_loading_older_records() {
+        let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
+        let store = LocalStateStore::open(&path).unwrap();
+        let first = store.enqueue(test_request(&std::env::temp_dir())).unwrap();
+        let second = store.enqueue(test_request(&std::env::temp_dir())).unwrap();
+        store.cancel_queued(&first.id).unwrap();
+        store.cancel_queued(&second.id).unwrap();
+        assert_eq!(store.history_page(1, 0).unwrap().len(), 1);
+        assert_eq!(store.history_page(1, 1).unwrap().len(), 1);
         std::fs::remove_file(path).unwrap();
     }
 }

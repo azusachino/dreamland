@@ -221,9 +221,14 @@ async fn list_pools(
 }
 
 #[tauri::command]
-async fn query_pool_posts(pool_id: String, page: u32, page_size: u16) -> Result<SitePage, String> {
+async fn query_pool_posts(
+    state: State<'_, RuntimeState>,
+    pool_id: String,
+    page: u32,
+    page_size: u16,
+) -> Result<SitePage, String> {
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
-    dreamland_sites::query_pool_posts(
+    let page = dreamland_sites::query_pool_posts(
         dreamland_sites::DEFAULT_SITE_ID,
         &pool_id,
         config.content_policy,
@@ -232,7 +237,14 @@ async fn query_pool_posts(pool_id: String, page: u32, page_size: u16) -> Result<
         &config.network,
     )
     .await
-    .map_err(|error| error.to_string())
+    .map_err(|error| error.to_string())?;
+    let mut posts = state.posts.lock().expect("post cache lock poisoned");
+    posts.extend(
+        page.posts
+            .iter()
+            .map(|post| (post.post.id.clone(), post.clone())),
+    );
+    Ok(page)
 }
 
 #[tauri::command]
@@ -254,7 +266,7 @@ async fn list_favorites(
         .clone()
         .ok_or_else(|| "Refresh Yande login status before viewing favorites".to_owned())?;
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
-    dreamland_sites::list_favorites(
+    let page = dreamland_sites::list_favorites(
         dreamland_sites::DEFAULT_SITE_ID,
         &username,
         &cookie,
@@ -264,7 +276,14 @@ async fn list_favorites(
         &config.network,
     )
     .await
-    .map_err(|error| error.to_string())
+    .map_err(|error| error.to_string())?;
+    let mut posts = state.posts.lock().expect("post cache lock poisoned");
+    posts.extend(
+        page.posts
+            .iter()
+            .map(|post| (post.post.id.clone(), post.clone())),
+    );
+    Ok(page)
 }
 
 #[tauri::command]
@@ -455,6 +474,19 @@ async fn list_downloads(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+async fn list_download_history(
+    state: State<'_, RuntimeState>,
+    limit: u32,
+    offset: u32,
+) -> Result<Vec<DownloadRecord>, String> {
+    state
+        .downloads
+        .history_page(limit.min(100), offset)
+        .await
+        .map_err(|error| error.to_string())
+}
+
 pub fn run() {
     let config =
         AppConfig::load_or_default().expect("Dreamland runtime configuration must be loadable");
@@ -486,7 +518,8 @@ pub fn run() {
             enqueue_download,
             cancel_download,
             retry_download,
-            list_downloads
+            list_downloads,
+            list_download_history
         ])
         .run(tauri::generate_context!())
         .expect("error while running Dreamland");

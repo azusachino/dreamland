@@ -10,6 +10,7 @@ import {
   listPools,
   listFavorites,
   listDownloads,
+  listDownloadHistory,
   cancelDownload,
   retryDownload,
   loadConfig,
@@ -36,7 +37,7 @@ import {
 type ViewMode = "latest" | "popular" | "search" | "downloads" | "pools" | "favorites";
 type PopularPeriod = "Day" | "Week" | "Month";
 type ToastTone = "success" | "info" | "error";
-type IconName = "clock" | "trend" | "download" | "grid" | "heart" | "search" | "refresh" | "settings" | "close" | "back" | "check";
+type IconName = "clock" | "trend" | "download" | "book" | "heart" | "search" | "refresh" | "settings" | "close" | "back" | "check";
 
 interface ToastState {
   id: number;
@@ -62,12 +63,16 @@ function contentPolicyLabel(policy: ContentPolicy): string {
   }
 }
 
+function isActiveDownload(status: DownloadStatus): boolean {
+  return status === "Queued" || status === "Running";
+}
+
 function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, string> = {
     clock: "M12 6v6l4 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
     trend: "m4 16 5-5 4 3 7-8M15 6h5v5",
     download: "M12 3v12m0 0 5-5m-5 5-5-5M4 21h16",
-    grid: "M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h6v6h-6z",
+    book: "M4 5.5A2.5 2.5 0 0 1 6.5 3H11v17H6.5A2.5 2.5 0 0 0 4 22V5.5Zm16 0A2.5 2.5 0 0 0 17.5 3H13v17h4.5A2.5 2.5 0 0 1 20 22V5.5Z",
     heart: "m12 20-7-7a4.5 4.5 0 0 1 6.4-6.3L12 8.3l.6-1.6A4.5 4.5 0 0 1 19 13z",
     search: "m21 21-4.4-4.4m2.4-5.1a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z",
     refresh: "M20 11a8 8 0 1 0 2 5m0-5v-5m0 5h-5",
@@ -163,15 +168,21 @@ function App() {
       if (session) void cancelQuery(session).catch(() => undefined);
     };
   }, [request]);
-  const downloadsQuery = useQuery({
+  const downloadsQuery = useInfiniteQuery({
     queryKey: ["downloads"],
-    queryFn: () => listDownloads(50),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => pageParam === 0 ? listDownloads(50) : listDownloadHistory(50, pageParam),
+    getNextPageParam: (lastPage, pages) => {
+      const historyCount = lastPage.filter((record) => !isActiveDownload(record.status)).length;
+      return historyCount === 50 ? pages.length * 50 : undefined;
+    },
     enabled: configQuery.isSuccess,
     refetchInterval: 1_500,
   });
   useEffect(() => {
-    if (!downloadsQuery.data) return;
-    for (const record of downloadsQuery.data) {
+    const records = downloadsQuery.data?.pages.flatMap((page) => page) ?? [];
+    if (!records.length) return;
+    for (const record of records) {
       const previous = downloadStatuses.current.get(record.id);
       if (previous && previous !== record.status) {
         if (record.status === "Completed") {
@@ -252,7 +263,10 @@ function App() {
   const selectedPosts = images.filter((post) => selectedPostIds.has(post.post.id));
   const loading = configQuery.isPending || imagesQuery.isPending;
   const loadingMore = imagesQuery.isFetchingNextPage;
-  const downloadRecords = downloadsQuery.data ?? [];
+  const downloadRecords = useMemo(() => {
+    const records = downloadsQuery.data?.pages.flatMap((page) => page) ?? [];
+    return [...new Map(records.map((record) => [record.id, record])).values()];
+  }, [downloadsQuery.data]);
   const title = view === "search"
     ? "Search results"
     : view === "popular"
@@ -473,9 +487,9 @@ function App() {
           <nav className="view-tabs shell-surface" aria-label="Dreamland sections" role="tablist">
           <NavButton active={view === "latest"} label="Latest" icon="clock" onClick={() => changeView("latest")} />
           <NavButton active={view === "popular"} label="Popular" icon="trend" onClick={() => changeView("popular")} />
-          <NavButton active={view === "downloads"} label="Downloads" icon="download" onClick={() => changeView("downloads")} />
-          <NavButton active={view === "pools"} label="Pools" icon="grid" onClick={() => changeView("pools")} />
+          <NavButton active={view === "pools"} label="Pools" icon="book" onClick={() => changeView("pools")} />
           <NavButton active={view === "favorites"} label="Favorites" icon="heart" onClick={() => changeView("favorites")} />
+          <NavButton active={view === "downloads"} label="Downloads" icon="download" onClick={() => changeView("downloads")} />
           <span className="view-status">
             <span className="connection-dot" aria-hidden="true" />
             <span>Yandere connected</span>
@@ -568,6 +582,8 @@ function App() {
           ) : view === "downloads" ? (
             <DownloadPanel
               records={downloadRecords}
+              historyHasNext={Boolean(downloadsQuery.hasNextPage)}
+              historyLoading={downloadsQuery.isFetchingNextPage}
               onCancel={async (id) => {
                 await cancelDownload(id);
                 await queryClient.invalidateQueries({ queryKey: ["downloads"] });
@@ -576,6 +592,7 @@ function App() {
                 await retryDownload(id);
                 await queryClient.invalidateQueries({ queryKey: ["downloads"] });
               }}
+              onLoadMore={() => void downloadsQuery.fetchNextPage()}
             />
           ) : view === "pools" ? (
             <PoolPanel
@@ -878,12 +895,23 @@ function DetailImage({ post }: { post: Post }) {
 
 interface DownloadPanelProps {
   records: DownloadRecord[];
+  historyHasNext: boolean;
+  historyLoading: boolean;
   onCancel: (id: string) => Promise<void>;
   onRetry: (id: string) => Promise<void>;
+  onLoadMore: () => void;
 }
 
-function DownloadPanel({ records, onCancel, onRetry }: DownloadPanelProps) {
-  const active = records.filter((record) => record.status === "Queued" || record.status === "Running");
+function DownloadPanel({ records, historyHasNext, historyLoading, onCancel, onRetry, onLoadMore }: DownloadPanelProps) {
+  const active = records.filter((record) => isActiveDownload(record.status));
+  const history = records.filter((record) => !isActiveDownload(record.status));
+  const groups = new Map<string, DownloadRecord[]>();
+  for (const record of history) {
+    const date = new Date(record.created_at_ms);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    groups.set(key, [...(groups.get(key) ?? []), record]);
+  }
+  const historyGroups = [...groups.entries()].sort(([a], [b]) => b.localeCompare(a));
   return (
     <section className="workspace-panel shell-surface" aria-label="Downloads">
       <div className="inspector-heading">
@@ -893,9 +921,30 @@ function DownloadPanel({ records, onCancel, onRetry }: DownloadPanelProps) {
       {records.length === 0 ? (
         <div className="panel-empty">Your download history will appear here.</div>
       ) : (
-        <div className="download-list">
-          {records.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} />)}
-        </div>
+        <>
+          {active.length > 0 && <section className="download-section">
+            <h3 className="download-section-title">In progress</h3>
+            <div className="download-list">
+              {active.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} />)}
+            </div>
+          </section>}
+          {historyGroups.length > 0 && <section className="download-section">
+            <h3 className="download-section-title">History</h3>
+            <div className="download-history">
+              {historyGroups.map(([key, group]) => {
+                const [year, month] = key.split("-");
+                const monthName = new Date(Number(year), Number(month) - 1, 1).toLocaleString(undefined, { month: "long" });
+                return <section className="download-month" key={key}>
+                  <h4>{year}<span>{monthName}</span></h4>
+                  <div className="download-list">
+                    {group.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} />)}
+                  </div>
+                </section>;
+              })}
+            </div>
+            <LoadMore hasNext={historyHasNext} loading={historyLoading} onLoadMore={onLoadMore} />
+          </section>}
+        </>
       )}
     </section>
   );
