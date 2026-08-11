@@ -106,7 +106,7 @@ select:focus-visible {
   align-items: center;
   display: grid;
   gap: 1.5rem;
-  grid-template-columns: minmax(12rem, 0.7fr) minmax(16rem, 1fr) minmax(10rem, 0.7fr);
+  grid-template-columns: minmax(18rem, 1fr) minmax(20rem, 1.8fr) auto;
   min-height: 5.3rem;
   padding: 0.8rem clamp(1rem, 3vw, 2.5rem);
   position: sticky;
@@ -137,7 +137,7 @@ select:focus-visible {
 .site-picker {
   display: grid;
   gap: 0.22rem;
-  min-width: 8.5rem;
+  min-width: 0;
 }
 
 .site-picker > span {
@@ -148,35 +148,76 @@ select:focus-visible {
   text-transform: uppercase;
 }
 
-.site-picker select {
+.site-switcher {
+  align-items: center;
   background: var(--surface-container);
   border: 1px solid var(--outline);
-  border-radius: 0.65rem;
+  border-radius: 0.78rem;
+  display: flex;
+  flex: 1 1 auto;
+  gap: 0.15rem;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 0.18rem;
+  scrollbar-width: none;
+}
+
+.site-switcher::-webkit-scrollbar {
+  display: none;
+}
+
+.site-option {
+  align-items: center;
+  background: transparent;
+  border-radius: 0.58rem;
+  color: var(--ink-muted);
   cursor: pointer;
-  font-size: 0.78rem;
-  font-weight: 700;
-  min-height: 2.2rem;
-  padding: 0.42rem 1.8rem 0.42rem 0.65rem;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 0.76rem;
+  font-weight: 750;
+  gap: 0.35rem;
+  min-height: 2rem;
+  padding: 0.38rem 0.68rem;
+  white-space: nowrap;
+}
+
+.site-option:hover:not(:disabled) {
+  background: var(--surface-high);
+  color: var(--ink);
+}
+
+.site-option.active {
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+
+.site-option:disabled {
+  color: var(--ink-subtle);
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.site-option small {
+  font-size: 0.58rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
 }
 
 .site-picker-controls {
   align-items: center;
   display: flex;
   gap: 0.35rem;
-}
-
-.site-picker-controls select {
   min-width: 0;
 }
 
 .site-open {
   flex: 0 0 auto;
   font-size: 0.72rem;
-  padding: 0.42rem 0.35rem;
-}
-
-.site-picker select:disabled {
-  cursor: not-allowed;
+  min-height: 2.2rem;
+  padding: 0.42rem 0.2rem;
+  white-space: nowrap;
 }
 
 .brand-lockup h1,

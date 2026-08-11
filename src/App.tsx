@@ -932,20 +932,22 @@ function App() {
           <div className="site-picker">
             <span>browse site</span>
             <div className="site-picker-controls">
-              <select
-                aria-label="choose image board site"
-                value={activeSiteId}
-                onChange={(event) => {
-                  const site = sitesQuery.data?.find((candidate) => candidate.id === event.target.value);
-                  if (site) selectSite(site);
-                }}
-              >
+              <div className="site-switcher" role="group" aria-label="choose image board site">
                 {(sitesQuery.data ?? []).map((site) => (
-                  <option key={site.id} value={site.id} disabled={!site.capabilities.browse}>
-                    {site.name}{site.capabilities.browse ? "" : " · coming later"}
-                  </option>
+                  <button
+                    key={site.id}
+                    className={`site-option${site.id === activeSiteId ? " active" : ""}`}
+                    type="button"
+                    aria-pressed={site.id === activeSiteId}
+                    disabled={!site.capabilities.browse}
+                    onClick={() => selectSite(site)}
+                    title={site.capabilities.browse ? `browse ${site.name}` : `${site.name} coming later`}
+                  >
+                    {site.name}
+                    {!site.capabilities.browse && <small>later</small>}
+                  </button>
                 ))}
-              </select>
+              </div>
               <button className="button button-text site-open" type="button" onClick={() => void handleOpenSite()} disabled={!activeSite}>
                 open site
               </button>
