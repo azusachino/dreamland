@@ -30,6 +30,11 @@ fn post_cache_key(site_id: &str, post_id: &str) -> String {
     format!("{site_id}:{post_id}")
 }
 
+fn parse_yande_user_id(value: &str) -> Option<String> {
+    let id = value.split(';').next()?.trim().parse::<u64>().ok()?;
+    (id > 0).then(|| id.to_string())
+}
+
 impl RuntimeState {
     fn new(config: &AppConfig) -> anyhow::Result<Self> {
         Ok(Self {
@@ -251,11 +256,17 @@ async fn auth_status(app: AppHandle, state: State<'_, RuntimeState>) -> Result<A
                 .map_err(|error| format!("invalid yandere URL: {error}"))?,
         )
         .map_err(|error| error.to_string())?;
-    let authenticated = cookies.iter().any(|cookie| cookie.name() == "user_id");
     let user_id = cookies
         .iter()
         .find(|cookie| cookie.name() == "user_id")
-        .map(|cookie| cookie.value().to_owned());
+        .and_then(|cookie| parse_yande_user_id(cookie.value()))
+        .or_else(|| {
+            cookies
+                .iter()
+                .find(|cookie| cookie.name() == "user_info")
+                .and_then(|cookie| parse_yande_user_id(cookie.value()))
+        });
+    let authenticated = user_id.is_some();
     let cookie_header = cookies
         .iter()
         .map(|cookie| format!("{}={}", cookie.name(), cookie.value()))
@@ -916,4 +927,20 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Dreamland");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_yande_user_id;
+
+    #[test]
+    fn parses_current_yande_user_info_cookie() {
+        assert_eq!(parse_yande_user_id("12345;20;1"), Some("12345".to_owned()));
+    }
+
+    #[test]
+    fn rejects_empty_and_anonymous_user_info() {
+        assert_eq!(parse_yande_user_id(""), None);
+        assert_eq!(parse_yande_user_id("0;0;0"), None);
+    }
 }

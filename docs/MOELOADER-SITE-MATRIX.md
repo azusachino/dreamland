@@ -108,7 +108,8 @@ The Yande trace in this section is pinned MoeLoaderP behavior (`post.xml` and
 `tag.xml`). The live Dreamland v1 profile is JSON-based and separately backed
 by the read-only Yande observations in `MOEBOORU-UX-LEARNINGS.md`.
 
-- **Yande:** `YandeSite` detects a `user_id` cookie, requests tag hints from
+- **Yande:** `YandeSite` detects the current `user_info` cookie (and accepts a
+  legacy `user_id` cookie), requests tag hints from
   `tag.xml`, and requests posts from `post.xml` with `page`, `limit`, and a
   site tag expression. Its class does not override `ThumbAsync` or
   `StarAsync`; account detection therefore does not imply an online mutation
@@ -273,7 +274,7 @@ operations:
   selected window supports infinite scroll, matching the vendored MoeBooru
   `ImageDataSource` behavior.
 - **Login:** open/import the Yande browser session at `/user/login`, detect
-  the `user_id` cookie, and keep the cookie session in the secret/session
+  the `user_info` cookie, and keep the cookie session in the secret/session
   boundary. No raw cookie is returned to React or persisted in ordinary TOML.
 - **Favorite mutation:** expose add/remove favorite only when authenticated.
   Yande’s current web client uses `POST /post/vote.json` with `id` and

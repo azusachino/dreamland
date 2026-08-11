@@ -1129,7 +1129,8 @@ pub trait SiteAuth: Send + Sync {
 
 Rules:
 
-- Yande uses BrowserSession with /user/login and user_id cookie detection.
+- Yande uses BrowserSession with /user/login and current `user_info` cookie
+  detection; the adapter also accepts the legacy `user_id` cookie.
   Browser integration imports session state into the runtime secret store;
   React receives only AuthStatus and safe challenge metadata.
 - Site methods obtain an internal session handle from runtime context; no
@@ -1540,7 +1541,7 @@ the operation_id and preserves retryable separately from the safe message.
 | RemoteCollectionCapability | Searchable public pool metadata from `/pool.json?query=…` with ordered pool posts. |
 | RemoteFavoriteListCapability | Not advertised until authorized current-user favorite-list semantics are verified. |
 | CollectionDownloadCapability | Yande pool ZIP is exposed at `/pool/zip/:id`; the public pool page links it, but the observed request redirects anonymous users to login. |
-| SiteAuth | Browser session at /user/login, user_id cookie detection, secret-store-backed session. |
+| SiteAuth | Browser session at /user/login, user_info cookie detection with legacy user_id compatibility, secret-store-backed session. |
 | Media | Preview, sample, JPEG/large, original, MD5, dimensions, rating, score, source, posting account, and timestamps where present. |
 
 ## Konachan v1 profile

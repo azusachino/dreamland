@@ -36,8 +36,9 @@ them:
 - `PostLookupCapability` is optional and hydrates one `PostRef`.
 - `RemoteFavoriteCapability` is optional and sets remote favorite state for a
   site-scoped post reference.
-- `SiteAuth` is optional; Yande uses a browser session and `user_id`
-  cookie rather than a generic username/password request.
+- `SiteAuth` is optional; Yande uses a browser session and its `user_info`
+  cookie (with legacy `user_id` compatibility) rather than a generic
+  username/password request.
 - `RemoteFavoriteListCapability` is optional and reads the authenticated
   current user's remote favorites, distinct from setting favorite state.
 - `RemoteCollectionCapability` is optional and exposes pool metadata and
