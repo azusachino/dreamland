@@ -1,8 +1,8 @@
 # Dreamland API v1
 
-Status: proposed for human review, 2026-08-10. This is the specification
-phase of API v1. It is not implementation approval until the review gaps at
-the end of this document are resolved.
+Status: implementation baseline, 2026-08-11. The core site/runtime boundary
+is accepted for incremental implementation; the review gaps at the end of
+this document remain explicit follow-up decisions.
 
 ## Naming decision
 
@@ -63,6 +63,13 @@ direct media variants, browser-cookie detection, and web favorite mutations
 through /post/vote.json. The current popular endpoints return fixed-size result
 windows and do not honor ordinary page/limit navigation, but their date
 parameters select different day/week/month windows.
+
+Konachan is the second real Moebooru adapter. Its primary API and browser
+origin are `https://konachan.com`; the adapter accepts the full
+`ContentPolicy` range. If the primary API is challenged by bot protection,
+safe-only requests may retry against the separate G-rated
+`https://konachan.net` mirror. Non-safe requests never use that fallback and
+surface the `.com` browser recovery route instead.
 
 ## Boundaries
 
@@ -629,6 +636,25 @@ pub struct TagSuggestion {
 }
 
 #[async_trait]
+pub trait RelatedTagCapability: Send + Sync {
+    async fn related_tags(
+        &self,
+        request: RelatedTagRequest,
+        context: RequestContext,
+    ) -> Result<Vec<RelatedTag>, SiteError>;
+}
+
+pub struct RelatedTagRequest {
+    pub tags: Vec<String>,
+    pub limit: u16,
+}
+
+pub struct RelatedTag {
+    pub name: String,
+    pub post_count: Option<u64>,
+}
+
+#[async_trait]
 pub trait PostLookupCapability: Send + Sync {
     async fn lookup(
         &self,
@@ -902,7 +928,7 @@ Rules:
   always starts a new query session without relying on a current screen,
   page position, session ID, or opaque site cursor.
 - Pin/order changes are local-only UI state. They do not change site query
-  semantics.
+  semantics. Reordering is atomic within one pin group.
 - Download history records the local outcome and path; it is not a site
   feature and does not require authentication. Its tag snapshot supports
   local tag/account search and remains useful after the remote post changes.
@@ -935,6 +961,7 @@ pub trait SiteAdapter: Send + Sync {
     fn capabilities(&self, context: CapabilityContext) -> EffectiveCapabilities;
     fn query(&self) -> &dyn PostQueryCapability;
     fn tags(&self) -> Option<&dyn TagSuggestionCapability>;
+    fn related_tags(&self) -> Option<&dyn RelatedTagCapability>;
     fn lookup(&self) -> Option<&dyn PostLookupCapability>;
     fn detail(&self) -> Option<&dyn PostDetailCapability>;
     fn favorites(&self) -> Option<&dyn RemoteFavoriteCapability>;
@@ -1102,7 +1129,8 @@ pub trait SiteAuth: Send + Sync {
 
 Rules:
 
-- Yande uses BrowserSession with /user/login and user_id cookie detection.
+- Yande uses BrowserSession with /user/login and current `user_info` cookie
+  detection; the adapter also accepts the legacy `user_id` cookie.
   Browser integration imports session state into the runtime secret store;
   React receives only AuthStatus and safe challenge metadata.
 - Site methods obtain an internal session handle from runtime context; no
@@ -1393,6 +1421,7 @@ pub struct EnqueueDownloadResult {
     list_remote_favorites(SiteId, PaginationRequest) -> PostPage
     save_query(SavedQueryInput) -> SavedQuery
     list_saved_queries(bool) -> Vec<SavedQuery>
+    move_saved_query(LocalRecordId, Direction) -> ()
     delete_saved_query(LocalRecordId) -> ()
     download_history(PaginationRequest) -> Vec<DownloadRecord>
     open_download(LocalRecordId) -> ()
@@ -1401,6 +1430,17 @@ pub struct EnqueueDownloadResult {
     enqueue_download(DownloadRequest) -> EnqueueDownloadResult
     cancel_download(LocalRecordId) -> ()
     retry_download(LocalRecordId) -> EnqueueDownloadResult
+    open_site(SiteId) -> ()
+    open_post(PostRef) -> ()
+
+The current Tauri shell uses `open_site` for an explicit site-owned browser
+route and for feed-error recovery. It validates the registered browse
+capability first; the frontend cannot supply an arbitrary URL. For Konachan
+this route is `https://konachan.com/post`, matching its feed/search transport
+origin.
+The post-detail action uses the same site-owned route boundary for
+`https://konachan.com/post/show/<id>` and validates the site/post reference
+before opening it.
 
 Command rules:
 
@@ -1493,16 +1533,32 @@ the operation_id and preserves retryable separately from the safe message.
 
 | Capability | Yande behavior |
 | --- | --- |
-| PostQueryCapability | Search and `Feed(Popular { period, anchor_date })`; tag search uses /post.json and popular uses /post/popular_by_*.json. |
-| Pagination | Tag search is page/limit; popular modes are date-selected fixed windows with no continuation in current evidence. |
+| PostQueryCapability | Search and `Feed(Popular { period, anchor_date })`; both use `/post.json`, while popular adds a date expression and `order:score`. |
+| Pagination | Tag search and popular modes use page/limit; popular continuation stays inside the selected day/week/month window. |
 | TagSuggestionCapability | Live Yande `/tag.json` with name/count/type/ambiguity metadata; the pinned MoeLoaderP adapter's `/tag.xml` behavior is source evidence, not the v1 endpoint contract. |
 | PostLookupCapability | ID-filtered post query, subject to verified response behavior. |
 | RemoteFavoriteCapability | Authenticated POST /post/vote.json; Yande maps favorite add/remove to score 3/2. |
-| RemoteCollectionCapability | Public pools and ordered pool posts. |
+| RemoteCollectionCapability | Searchable public pool metadata from `/pool.json?query=…` with ordered pool posts. |
 | RemoteFavoriteListCapability | Not advertised until authorized current-user favorite-list semantics are verified. |
 | CollectionDownloadCapability | Yande pool ZIP is exposed at `/pool/zip/:id`; the public pool page links it, but the observed request redirects anonymous users to login. |
-| SiteAuth | Browser session at /user/login, user_id cookie detection, secret-store-backed session. |
+| SiteAuth | Browser session at /user/login, user_info cookie detection with legacy user_id compatibility, secret-store-backed session. |
 | Media | Preview, sample, JPEG/large, original, MD5, dimensions, rating, score, source, posting account, and timestamps where present. |
+
+## Konachan v1 profile
+
+| Capability | Konachan behavior |
+| --- | --- |
+| PostQueryCapability | Anonymous tag search and latest browse through the safe `.net` Moebooru JSON API. |
+| Pagination | Page-numbered `post.json` requests with the requested limit. |
+| TagSuggestionCapability | The same Moebooru tag JSON shape, normalized at the adapter boundary. |
+| RelatedTagCapability | Explicit post-detail related-tag lookup through `/tag/related.json`; tuple counts are normalized and resulting searches still use the safe content policy. |
+| PostLookupCapability | Exact numeric IDs are resolved with the safe `.net` API's `id:<post-id>` tag expression and verified against the returned post ID. |
+| Browser post route | The detail action opens the site-owned `https://konachan.com/post/show/<id>` page; this is a browser route for bot-protected access, not a substitute API transport. |
+| Similar search | The detail action opens the site-owned `https://konachan.com/post/similar` form; no direct API or query parameter is assumed. |
+| RemoteCollectionCapability | Searchable public pool metadata from `/pool.json?query=…` with page/limit pagination, plus ordered safe-visible posts from `/pool/show.json?id=…`; the API may return the complete visible pool in one response. |
+| Content policy | Safe only for the initial release; explicit-host access is not advertised because `.com` API requests are bot-protection sensitive. |
+| Media | Preview, sample, full URL, dimensions, rating, score, author, source, checksum, and normalized timestamps where present. |
+| Auth/favorites/pool ZIP | Not advertised in this slice; browser-session auth and remote favorites remain unverified, and Konachan does not expose a ZIP download capability. |
 
 ## Verification contract
 
@@ -1512,7 +1568,8 @@ Before API v1 approval, plan tests for:
 2. Yande legacy-array and v2 post envelopes;
 3. tag encoding, suggestions, safe policy, empty pages, malformed responses,
    and rate-limit mapping;
-4. all popular endpoints, fixed-window continuation, and no misleading page UI;
+4. popular day/week/month expression mapping, Monday-first week boundaries,
+   page-2 continuation, short-page termination, and infinite-scroll UI;
 5. missing metadata, rating/checksum mapping, scoped identity, and variants;
 6. auth transitions without secret serialization;
 7. favorite score 3/2 mapping, auth_required, idempotency, and race safety;

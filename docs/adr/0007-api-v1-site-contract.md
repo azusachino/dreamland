@@ -28,15 +28,17 @@ already required the last three entries for Y-07/Y-09 before this ADR listed
 them:
 
 - `PostQueryCapability` handles explicit browse, site query-expression
-  search, and Yande’s day/week/month popular modes. Page/limit pagination is
-  used only where the selected mode supports it.
+  search, and Yande’s day/week/month popular modes. Yande popular modes are
+  ordinary `/post.json` page queries with a date expression and
+  `order:score`, so page/limit continuation stays within the selected window.
 - `TagSuggestionCapability` is optional and returns tag names plus optional
   site metadata.
 - `PostLookupCapability` is optional and hydrates one `PostRef`.
 - `RemoteFavoriteCapability` is optional and sets remote favorite state for a
   site-scoped post reference.
-- `SiteAuth` is optional; Yande uses a browser session and `user_id`
-  cookie rather than a generic username/password request.
+- `SiteAuth` is optional; Yande uses a browser session and its `user_info`
+  cookie (with legacy `user_id` compatibility) rather than a generic
+  username/password request.
 - `RemoteFavoriteListCapability` is optional and reads the authenticated
   current user's remote favorites, distinct from setting favorite state.
 - `RemoteCollectionCapability` is optional and exposes pool metadata and

@@ -11,9 +11,10 @@ current index; it deliberately does not duplicate their full rationale.
 | --- | --- |
 | [0001](adr/0001-platform-and-toolchain.md) | macOS/Windows first-class; Nix project toolchain with uv daily scripts |
 | [0002](adr/0002-frontend-stack.md) | React, TypeScript, Vite, Bun, Tailwind CSS, and TanStack Query |
-| [0003](adr/0003-rust-workspace-boundaries.md) | Cargo workspace with isolated core, runtime, site adapter, and Tauri shell crates |
+| [0003](adr/0003-rust-workspace-boundaries.md) | Cargo workspace with isolated core, shared protocol, runtime, site adapter, and Tauri shell crates |
 | [0004](adr/0004-site-runtime-boundary.md) | Rust-owned site/runtime boundary; `yandere` is one site ID |
-| [0005](adr/0005-toml-runtime-configuration.md) | TOML runtime settings with a legacy JSON fallback (accepted; implementation pending -- `AppConfig` still reads/writes JSON only) |
+| [0005](adr/0005-toml-runtime-configuration.md) | TOML runtime settings with a legacy JSON fallback (accepted design; migration remains pending) |
+| [0008](adr/0008-frontend-visual-language.md) | Material 3 Expressive content system with restrained Liquid Glass shell and opaque cross-platform fallback |
 
 ## Proposed, not yet accepted
 
@@ -25,12 +26,18 @@ current index; it deliberately does not duplicate their full rationale.
   [ARCHITECTURE-V1.md](ARCHITECTURE-V1.md)'s feature-to-flow bindings (one
   list, not two). The ADR's own status is still "proposed research
   hypothesis," pending the site-wide matrix review.
+- [ADR 0009](adr/0009-runtime-operation-context-and-common-services.md)
+  proposes an explicit lifecycle context plus typed runtime services for
+  auth, cache, logging, and configuration. It deliberately does not add a
+  generic Go-style dependency bag or claim that the current switchboard is
+  already a trait registry.
 
 ## Pending gates
 
-- [API and runtime design v1](API-V1.md) and [ADR 0007](adr/0007-api-v1-site-contract.md)
-  must be approved before site capabilities or registry behavior are
-  implemented.
+- [API and runtime design v1](API-V1.md) is the implementation baseline for
+  incremental site capabilities. [ADR 0007](adr/0007-api-v1-site-contract.md)
+  remains the explicit trait-review record; each new site still needs its own
+  capability and live-acceptance gate.
 - The Yande release ([YANDE-RELEASE-GATE.md](YANDE-RELEASE-GATE.md), Y-01
   through Y-09) and the "Proposed 0.1.0 gate"
   ([ROADMAP.md](ROADMAP.md)) are the same milestone: Yande-scoped search,

@@ -6,7 +6,7 @@ Dreamland is being rebuilt as a focused Tauri application: a React and
 TypeScript interface over a Rust runtime that owns site adapters, configuration,
 local data, and downloads.
 
-**Status:** foundation rework in progress  ·  **Targets:** macOS, Windows  ·
+**Status:** 0.1.0 milestone in progress  ·  **Targets:** macOS, Windows  ·
 **Site ID:** `yandere`
 
 ## What exists now
@@ -16,7 +16,8 @@ local data, and downloads.
 - Typed Tauri IPC wrappers
 - Tailwind CSS styling foundation
 - TanStack Query for command-backed asynchronous state
-- Rust Cargo workspace with core, runtime, and Yandere adapter boundaries
+- Rust Cargo workspace with site-neutral core, shared Moebooru protocol, runtime,
+  and site adapter boundaries
 - Browse, pagination, settings, and image downloads through Rust commands
 
 Linux and mobile are not planned targets. There is no release schedule or
@@ -32,15 +33,18 @@ src-tauri/                  desktop commands and window lifecycle
         │
         ├── dreamland-runtime       config, persistence, downloads
         ├── dreamland-core          site-neutral domain contracts
+        ├── dreamland-moe           shared Moebooru wire/protocol behavior
         ├── dreamland-sites          composition root and site registry
         ├── dreamland-site-yandere   active Yande adapter and fixtures
+        ├── dreamland-site-konachan safe-mode Konachan adapter and fixtures
         ├── dreamland-site-pixiv     descriptor-only skeleton
         └── dreamland-site-twitter   descriptor-only skeleton
 ```
 
 The frontend does not call remote sites or access the filesystem directly.
 Site capabilities, registry behavior, and the site-neutral v1 command model
-remain gated by [API and runtime design v1](docs/API-V1.md).
+follow [API and runtime design v1](docs/API-V1.md); external and authenticated
+release evidence remains tracked by the release gate.
 
 ## Stack
 
@@ -81,7 +85,7 @@ Windows; Linux is intentionally outside the acceptance matrix.
 
 - [Development guide](docs/DEVELOPMENT.md) — setup, commands, and troubleshooting
 - [Project spec](docs/PROJECT-SPEC.md) — scope and acceptance criteria
-- [API v1 draft](docs/API-V1.md) — contract gate before site/runtime capabilities
+- [API v1](docs/API-V1.md) — implementation baseline for site/runtime capabilities
 - [v1 user stories](docs/USER-STORIES-V1.md) — user-facing acceptance and
   failure/edge-case coverage
 - [v1 architecture](docs/ARCHITECTURE-V1.md) — ownership, workflows, dataflow,

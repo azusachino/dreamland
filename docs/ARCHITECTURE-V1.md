@@ -1,8 +1,8 @@
 # Dreamland v1 architecture
 
-Status: design gate, 2026-08-11. This document turns the API and user stories
-into ownership, workflow, dataflow, and failure-boundary rules. It does not
-authorize implementation until the API and release gates are approved.
+Status: implementation baseline, 2026-08-12. This document turns the API and
+user stories into ownership, workflow, dataflow, and failure-boundary rules.
+The release gate still controls external and authenticated acceptance.
 
 ## Component ownership
 
@@ -14,7 +14,7 @@ Tauri command boundary
   │ validation, operation IDs, cancellation
   ▼
 Dreamland runtime
-  ├── dreamland-sites composition root → selected SiteAdapter → remote HTTP
+  ├── dreamland-sites composition root → selected SiteAdapter → shared/site protocol → remote HTTP
   ├── Auth/session bridge → browser flow + secret store
   ├── SQLite LocalStateStore → saved queries, history, queue, cache metadata
   ├── Download worker → site media/archive resolution
@@ -52,12 +52,38 @@ user intent
   → React view state
 ```
 
+### Exploration navigation
+
+The UI uses an in-memory application history for exploration context. A feed
+is a source screen, a post detail is a destination entry, and following a tag
+from detail creates another destination entry:
+
+```text
+Forward: popular feed snapshot ──> post detail ──> tag search
+Back:    popular feed snapshot <── post detail <── tag search
+```
+
+Each entry stores replayable intent and UI context: site, view/source,
+popular period and anchor date, search expression, selected post, selected
+position, and scroll offset. Loaded feed pages remain in the TanStack Query
+cache for the live session. Back therefore restores the previous popular feed
+where exploration stopped; if the cache is cold, the runtime replays the
+intent rather than using an expired continuation token. Forward retraces the
+same entries.
+
+Opening an adjacent post with the detail arrows, loading another feed page,
+or refreshing a feed does not create a history entry. Closing detail and the
+Escape key perform the same action as Back. Route history is session-local and
+is not persisted in SQLite; query history stores replayable searches, not
+scroll positions or opaque cursors.
+
 `dreamland-sites` is the composition root: it assembles the active registered
 site crates and keeps descriptor-only Pixiv/Twitter skeletons separate from
 the active registry. It is the only site-discovery dependency the Tauri shell
-needs. The adapter is the only place that knows Yande request syntax,
-response envelopes, cookie names, popular endpoint families, pool ZIP routes,
-or a future site's equivalent. The runtime is the only place that knows
+needs. Site adapters own site configuration, site-specific capabilities, cookie
+names, and site-only routes. Shared protocol crates such as `dreamland-moe`
+own Moebooru-compatible request syntax and response envelopes without making
+one site adapter the dependency of another. The runtime is the only place that knows
 operation lifetimes, safe URL policy, SQLite, cache paths, canonical filenames,
 and filesystem access.
 
@@ -118,7 +144,7 @@ handle and never receive raw cookie material.
 | User-visible action | Required capability/command | Site-specific part | Runtime-owned part |
 | --- | --- | --- | --- |
 | Tag search | `PostQueryCapability` + `TagSuggestionCapability` | Yande tag expression and `/tag` mapping | query session, safe filtering, stale-result suppression |
-| Popular feed | `PostQueryCapability` | day/week/month endpoint and fixed-window/date semantics | feed state and no-false-pagination UI data |
+| Popular feed | `PostQueryCapability` | day/week/month date expression plus `order:score` on `/post.json` | feed state, page continuation, and selected-window labels |
 | Post detail | lookup/detail/children capabilities as advertised | response hydration and media variants | partial state, caching, common model |
 | Favorite add/remove | `RemoteFavoriteCapability` + `SiteAuth` | Yande score 3/2 mutation | auth gating, idempotency, race protection |
 | Favorite page | `RemoteFavoriteListCapability` + `SiteAuth` | verified current-user read route/query | collection session, loading/empty/error states |

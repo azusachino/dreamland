@@ -13,3 +13,5 @@ new alternatives or superseding choices get a new ADR.
 | [0005](0005-toml-runtime-configuration.md) | TOML runtime configuration | Accepted; implementation pending |
 | [0006](0006-roadmap-and-github-issues.md) | Roadmap and GitHub Issues | Proposed |
 | [0007](0007-api-v1-site-contract.md) | API v1 site contract | Proposed research hypothesis |
+| [0008](0008-frontend-visual-language.md) | Frontend visual language and cross-platform rendering | Accepted |
+| [0009](0009-runtime-operation-context-and-common-services.md) | Runtime operation context and common services | Proposed |

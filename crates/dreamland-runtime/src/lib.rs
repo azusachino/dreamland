@@ -1,84 +1,47 @@
 mod config;
+mod local_state;
+mod media;
+mod sessions;
 
-pub use config::AppConfig;
+pub use config::{detect_proxy, AppConfig, ProxyDetection};
+pub use local_state::{
+    ArchiveRecord, ArchiveRequest, DownloadCancellation, DownloadManager, DownloadRecord,
+    DownloadRequest, DownloadStatus, LocalStateStore,
+};
+pub use media::{
+    cache_detail_image, cache_detail_image_at, download_archive, download_image,
+    download_image_with_detail_cache, find_cached_detail_image_at, log_detail_failure,
+    DownloadOutcome,
+};
+pub use sessions::{QuerySession, QuerySessionStore, SessionOperation};
 
-pub async fn download_image(
-    url: &str,
-    identifier: &str,
-    download_dir: &std::path::Path,
-) -> anyhow::Result<std::path::PathBuf> {
-    validate_image_identifier(identifier)?;
-    tokio::fs::create_dir_all(download_dir).await?;
-    let (temporary_path, content_type) = download_file(url, download_dir).await?;
-    let extension = mime_to_extension(&content_type).unwrap_or("jpg");
-    let filename = image_filename(identifier, extension)?;
-    let final_path = download_dir.join(filename);
-
-    tokio::fs::rename(&temporary_path, &final_path).await?;
-    Ok(final_path)
+pub fn default_state_path() -> std::path::PathBuf {
+    std::env::var_os("XDG_DATA_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(dirs::data_local_dir)
+        .or_else(dirs::data_dir)
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("dreamland")
+        .join("state.sqlite3")
 }
 
-async fn download_file(
-    url: &str,
-    download_dir: &std::path::Path,
-) -> anyhow::Result<(std::path::PathBuf, String)> {
-    let response = reqwest::Client::new()
-        .get(url)
-        .send()
-        .await?
-        .error_for_status()?;
-    let content_type = response
-        .headers()
-        .get("content-type")
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("image/jpeg")
-        .split(';')
-        .next()
-        .unwrap_or("image/jpeg")
-        .to_string();
-    let temporary_path = download_dir.join(format!("temp_{}", uuid::Uuid::new_v4()));
-
-    tokio::fs::write(&temporary_path, response.bytes().await?).await?;
-    Ok((temporary_path, content_type))
+pub fn default_cache_path() -> std::path::PathBuf {
+    std::env::var_os("XDG_CACHE_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(dirs::cache_dir)
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("dreamland")
+        .join("downloads")
 }
 
-fn mime_to_extension(content_type: &str) -> Option<&str> {
-    match content_type {
-        "image/jpeg" => Some("jpg"),
-        "image/png" => Some("png"),
-        "image/gif" => Some("gif"),
-        "image/webp" => Some("webp"),
-        "image/bmp" => Some("bmp"),
-        "image/svg+xml" => Some("svg"),
-        _ => None,
-    }
-}
-
-fn image_filename(identifier: &str, extension: &str) -> anyhow::Result<String> {
-    validate_image_identifier(identifier)?;
-    Ok(format!("{}.{}", identifier.trim(), extension))
-}
-
-fn validate_image_identifier(value: &str) -> anyhow::Result<()> {
-    let value = value.trim();
-    if value.is_empty() || !value.chars().all(|character| character.is_ascii_hexdigit()) {
-        anyhow::bail!("image identifier is not a hexadecimal value");
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn mime_types_map_to_extensions() {
-        assert_eq!(mime_to_extension("image/jpeg"), Some("jpg"));
-        assert_eq!(mime_to_extension("image/unknown"), None);
-    }
-
-    #[test]
-    fn image_filename_rejects_path_traversal() {
-        assert!(image_filename("../dreamland", "jpg").is_err());
-    }
+pub fn default_log_path() -> std::path::PathBuf {
+    std::env::var_os("XDG_STATE_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(dirs::data_local_dir)
+        .or_else(dirs::data_dir)
+        .or_else(dirs::cache_dir)
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("dreamland")
+        .join("logs")
+        .join("dreamland.log")
 }

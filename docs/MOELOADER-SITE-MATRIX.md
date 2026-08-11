@@ -108,7 +108,8 @@ The Yande trace in this section is pinned MoeLoaderP behavior (`post.xml` and
 `tag.xml`). The live Dreamland v1 profile is JSON-based and separately backed
 by the read-only Yande observations in `MOEBOORU-UX-LEARNINGS.md`.
 
-- **Yande:** `YandeSite` detects a `user_id` cookie, requests tag hints from
+- **Yande:** `YandeSite` detects the current `user_info` cookie (and accepts a
+  legacy `user_id` cookie), requests tag hints from
   `tag.xml`, and requests posts from `post.xml` with `page`, `limit`, and a
   site tag expression. Its class does not override `ThumbAsync` or
   `StarAsync`; account detection therefore does not imply an online mutation
@@ -267,21 +268,22 @@ operations:
   expression, page number, and page size. The live JSON API supports both the
   legacy array response and the `api_version=2` `{ "posts": [...] }` envelope.
 - **Popular browse:** expose `day`, `week`, and `month` as explicit browse
-  modes mapped to `/post/popular_by_day.json`,
-  `/post/popular_by_week.json`, and `/post/popular_by_month.json`.
-  Live requests on 2026-08-10 returned 40 posts for each endpoint and did not
-  change when `page=2` or `limit=2` was supplied. The adapter must therefore
-  model these as non-pageable result windows unless a future Yande contract
-  proves otherwise.
+  modes mapped to the ordinary `/post.json` query with `order:score` and a
+  date expression. Day is one date, week is the Monday-Sunday window, and
+  month is the calendar-month window. `page` and `limit` remain active so the
+  selected window supports infinite scroll, matching the vendored MoeBooru
+  `ImageDataSource` behavior.
 - **Login:** open/import the Yande browser session at `/user/login`, detect
-  the `user_id` cookie, and keep the cookie session in the secret/session
+  the `user_info` cookie, and keep the cookie session in the secret/session
   boundary. No raw cookie is returned to React or persisted in ordinary TOML.
 - **Favorite mutation:** expose add/remove favorite only when authenticated.
   Yande’s current web client uses `POST /post/vote.json` with `id` and
   `score=3` to add a favorite and `score=2` to remove the favorite. This is a
   site adapter detail behind a stable `RemoteFavoriteCapability` operation.
 
-The popular endpoints are not ordinary page-number pagination, and favorite
-is not a local-only flag. The API must preserve both facts instead of
-pretending that every browse mode has `page + has_next` semantics or that
-remote favorites are equivalent to Dreamland’s local saved items.
+Yande's raw `/post/popular_by_day.json`, `/post/popular_by_week.json`, and
+`/post/popular_by_month.json` endpoints are not ordinary page-number
+pagination: live requests returned fixed 40-item windows even when `page` and
+`limit` were supplied. Dreamland therefore follows MoeBooru's scrollable
+behavior through `/post.json` date-plus-score queries, while keeping remote
+favorites distinct from Dreamland's local saved items.

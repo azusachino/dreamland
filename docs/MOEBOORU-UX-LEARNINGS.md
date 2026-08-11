@@ -62,15 +62,18 @@ That is a collection-archive operation, not batch downloading the currently
 selected cards one by one. It should be shown on a pool page and use the
 site's auth/capability state.
 
-The prior assumption that every popular endpoint is one fixed window is too
-narrow for the desired UX. Yande endpoint behavior must be verified per period
-and date before the API promises continuation or date navigation.
+The vendored implementation resolves the popular-feed shape: `PopularActivity`
+selects a day/week/month date window, while its `ImageDataSource` pages the
+ordinary `post.json` query with the selected `date` expression,
+`order:score`, and a requested load size. Dreamland follows that behavior.
+Yande's separate `popular_by_*` endpoints remain fixed windows and are not the
+scrollable feed path.
 
 ## Post interaction and download
 
 - Tapping a card opens a preview/detail screen with swipe navigation.
 - Long-pressing a card exposes tag inspection, local download, and favorite.
-- A post can expose preview, sample/JPEG, and original media choices.
+- A post can expose preview, sample/JPEG, and original media choices; Dreamland's detail view now starts with the sample image and falls back safely.
 - The reference app's quality preference chooses between JPEG and original;
   its default is not automatically “best quality”. Dreamland may choose best
   quality as its product default, but that is a deliberate UX decision.
@@ -147,9 +150,13 @@ Read-only probes on 2026-08-10 found:
   result window;
 - ordinary `page`/`limit` parameters do not turn those popular responses into
   normal pagination;
+- the vendored MoeBooru app instead uses `post.json` with
+  `order:score` plus a date expression, and its normal page source provides
+  infinite scroll within that selected window;
 - `GET /pool.json` returns public pool records with ID, name, date, owner,
-  visibility, and post count; `tags=pool:<id>` returns the pool's posts with
-  normal page semantics;
+  visibility, and post count; `query` filters by title and `page`/`limit`
+  paginate the result; `tags=pool:<id>` returns the pool's posts with normal
+  page semantics;
 - the public pool page links to `/pool/zip/<id>` for a ZIP archive; an
   unauthenticated request currently redirects to the login page;
 - post responses expose preview, sample, JPEG, and original URLs with separate

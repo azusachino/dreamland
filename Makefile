@@ -8,7 +8,7 @@ NIX_RUN :=
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: help install doctor dev build frontend fmt test check
+.PHONY: help install doctor dev build frontend fmt test check validate
 
 help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | \
@@ -38,3 +38,5 @@ test: ## Run platform-aware tests
 
 check: ## Run platform-aware project checks
 	$(NIX_RUN)uv run scripts/check.py
+
+validate: check ## Alias for check used by workstation PR gates

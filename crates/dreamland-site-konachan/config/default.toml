@@ -1,0 +1,5 @@
+# Konachan's real site and API are hosted on .com. The .net origin is only a
+# safe-policy fallback after .com is blocked by bot protection.
+api_url = "https://konachan.com/post.json"
+safe_api_url = "https://konachan.net/post.json"
+browser_url = "https://konachan.com/post"
