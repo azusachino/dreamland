@@ -1,6 +1,6 @@
 # Konachan adapter release gate
 
-Status: safe browse, public pool, and safe post lookup integration implemented, 2026-08-11. This is not a claim
+Status: safe browse, public pool, safe post lookup, and browser post-route integration implemented, 2026-08-11. This is not a claim
 that Cloudflare bot protection has been solved.
 
 ## Implemented
@@ -16,6 +16,7 @@ that Cloudflare bot protection has been solved.
 | K-07 | Public pool metadata uses `/pool.json`; ordered safe-visible posts use `/pool/show.json?id=…`; the app exposes browsing but not pool ZIP downloads | Pass; live response shape and adapter fixtures verified |
 | K-08 | Selecting a Konachan result hydrates the exact post through the safe API's `id:<post-id>` query, rejects non-numeric IDs, and keeps the feed snapshot visible on lookup failure | Pass; live `id:407162` response and adapter/runtime tests verified |
 | K-09 | Pool browsing accepts a title query and resets page-number pagination for a new search; the UI exposes `search pools` and `clear` | Pass; live `Kona_Garage` query returned one match on page 1 and none on page 2; shared transport test and typecheck pass |
+| K-10 | Post detail exposes a site-owned `open <site> post` action that validates numeric IDs and opens `/post/show/<id>` in a dedicated browser window | Pass; adapter and registry URL tests pass; `.com` HTML access remains subject to bot protection |
 
 ## Not advertised yet
 

@@ -1137,6 +1137,13 @@ select:focus-visible {
   white-space: nowrap;
 }
 
+.detail-post-link {
+  font-size: 0.7rem;
+  height: 2.1rem;
+  min-height: 2.1rem;
+  padding: 0.45rem 0.7rem;
+}
+
 .detail-helper {
   color: var(--ink-subtle);
   font-size: 0.7rem;

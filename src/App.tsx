@@ -21,6 +21,7 @@ import {
   listSites,
   moveSavedQuery,
   openDownload,
+  openPost,
   openSite,
   retryDownload,
   loadConfig,
@@ -885,6 +886,15 @@ function App() {
     }
   }
 
+  async function handleOpenPost(post: Post) {
+    setError("");
+    try {
+      await openPost(post.post.site, post.post.id);
+    } catch (reason) {
+      setError(`could not open ${activeSite?.name ?? "site"} post: ${errorMessage(reason)}`);
+    }
+  }
+
   return (
     <div className="app">
       <header className="app-header shell-surface">
@@ -1255,6 +1265,7 @@ function App() {
             previewTotal={previewPosts.length}
             onPrevious={() => selectAdjacentPost(-1)}
             onNext={() => selectAdjacentPost(1)}
+            onOpenPost={handleOpenPost}
             onDownload={handleDownload}
             favorited={favoritePostIds.has(selectedPost.post.id)}
             onFavorite={handleFavorite}
@@ -1570,13 +1581,14 @@ interface PostInspectorProps {
   previewTotal: number;
   onPrevious: () => void;
   onNext: () => void;
+  onOpenPost: (post: Post) => Promise<void>;
   onDownload: (post: Post) => Promise<void>;
   onFavorite: (post: Post) => Promise<void>;
   onTag: (tag: string) => void;
   downloadVariant: MediaVariant;
 }
 
-function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onDownload, onFavorite, onTag, downloadVariant }: PostInspectorProps) {
+function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onOpenPost, onDownload, onFavorite, onTag, downloadVariant }: PostInspectorProps) {
   const originalUrl = post.full_url ?? post.sample_url ?? post.preview_url;
   return (
     <aside className="detail-panel shell-surface" aria-label="post details">
@@ -1598,6 +1610,7 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
       <div className="detail-summary">
         <span>{siteName} post #{post.post.id}</span>
         {post.author && <span>author: {post.author}</span>}
+        <button className="button button-outlined detail-post-link" type="button" onClick={() => void onOpenPost(post)}>open {siteName} post</button>
         {originalUrl && <a href={originalUrl} target="_blank" rel="noreferrer">open original</a>}
         {post.source && <a href={post.source} target="_blank" rel="noreferrer">open source</a>}
       </div>

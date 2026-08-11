@@ -176,6 +176,36 @@ fn open_site(app: AppHandle, site_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_post(app: AppHandle, site_id: String, post_id: String) -> Result<(), String> {
+    if !dreamland_sites::is_active_browse_site(&site_id) {
+        return Err(format!(
+            "'{site_id}' is not a registered, browse-capable site"
+        ));
+    }
+    let url =
+        dreamland_sites::browser_post_url(&site_id, &post_id).map_err(|error| error.to_string())?;
+    let label = format!("site-{site_id}-post-{post_id}");
+    if let Some(window) = app.get_webview_window(&label) {
+        window.show().map_err(|error| error.to_string())?;
+        window.set_focus().map_err(|error| error.to_string())?;
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(
+        &app,
+        &label,
+        WebviewUrl::External(
+            url.parse()
+                .map_err(|error| format!("invalid post URL: {error}"))?,
+        ),
+    )
+    .title(format!("Dreamland · {site_id} post #{post_id}"))
+    .inner_size(1100.0, 800.0)
+    .build()
+    .map(|_| ())
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 async fn auth_status(app: AppHandle, state: State<'_, RuntimeState>) -> Result<AuthStatus, String> {
     let Some(window) = app.get_webview_window("yande-auth") else {
         return Ok(AuthStatus {
@@ -731,6 +761,7 @@ pub fn run() {
             detect_proxy,
             begin_auth,
             open_site,
+            open_post,
             auth_status,
             sign_out,
             list_pools,

@@ -1410,12 +1410,16 @@ pub struct EnqueueDownloadResult {
     cancel_download(LocalRecordId) -> ()
     retry_download(LocalRecordId) -> EnqueueDownloadResult
     open_site(SiteId) -> ()
+    open_post(PostRef) -> ()
 
 The current Tauri shell uses `open_site` for an explicit site-owned browser
 route and for feed-error recovery. It validates the registered browse
 capability first; the frontend cannot supply an arbitrary URL. For Konachan
 this route is `https://konachan.com/post`, while feed/search transport remains
 the safe `https://konachan.net/post.json` adapter configuration.
+The post-detail action uses the same site-owned route boundary for
+`https://konachan.com/post/show/<id>` and validates the site/post reference
+before opening it.
 
 Command rules:
 
@@ -1527,6 +1531,7 @@ the operation_id and preserves retryable separately from the safe message.
 | Pagination | Page-numbered `post.json` requests with the requested limit. |
 | TagSuggestionCapability | The same Moebooru tag JSON shape, normalized at the adapter boundary. |
 | PostLookupCapability | Exact numeric IDs are resolved with the safe `.net` API's `id:<post-id>` tag expression and verified against the returned post ID. |
+| Browser post route | The detail action opens the site-owned `https://konachan.com/post/show/<id>` page; this is a browser recovery route, not a safe API request. |
 | RemoteCollectionCapability | Searchable public pool metadata from `/pool.json?query=…` with page/limit pagination, plus ordered safe-visible posts from `/pool/show.json?id=…`; the API may return the complete visible pool in one response. |
 | Content policy | Safe only for the initial release; explicit-host access is not advertised because `.com` API requests are bot-protection sensitive. |
 | Media | Preview, sample, full URL, dimensions, rating, score, author, source, checksum, and normalized timestamps where present. |

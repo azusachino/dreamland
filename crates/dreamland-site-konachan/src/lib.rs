@@ -129,6 +129,14 @@ pub fn pool_endpoint(base_url: &str) -> Result<String> {
     Ok(url.to_string())
 }
 
+pub fn browser_post_url(browser_url: &str, post_id: &str) -> Result<String> {
+    validate_post_id(post_id)?;
+    let mut url = reqwest::Url::parse(browser_url).context("parse Konachan browser URL")?;
+    url.set_path(&format!("/post/show/{post_id}"));
+    url.set_query(None);
+    Ok(url.to_string())
+}
+
 pub fn pool_posts_endpoint(base_url: &str) -> Result<String> {
     let mut url = reqwest::Url::parse(base_url).context("parse Konachan API URL")?;
     url.set_path("/pool/show.json");
@@ -139,6 +147,13 @@ pub fn pool_posts_endpoint(base_url: &str) -> Result<String> {
 fn validate_pool_id(pool_id: &str) -> Result<()> {
     if pool_id.is_empty() || !pool_id.chars().all(|value| value.is_ascii_digit()) {
         bail!("Konachan pool id must be numeric");
+    }
+    Ok(())
+}
+
+fn validate_post_id(post_id: &str) -> Result<()> {
+    if post_id.is_empty() || !post_id.chars().all(|value| value.is_ascii_digit()) {
+        bail!("Konachan post id must be numeric");
     }
     Ok(())
 }
@@ -300,6 +315,11 @@ mod tests {
 
         assert_eq!(config.api_url, "https://konachan.net/post.json");
         assert_eq!(config.browser_url, "https://konachan.com/post");
+        assert_eq!(
+            browser_post_url(&config.browser_url, "407162").unwrap(),
+            "https://konachan.com/post/show/407162"
+        );
+        assert!(browser_post_url(&config.browser_url, "not-a-number").is_err());
     }
 
     #[test]

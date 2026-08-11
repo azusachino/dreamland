@@ -108,6 +108,16 @@ pub fn pool_endpoint(base_url: &str) -> Result<String> {
     Ok(url.to_string())
 }
 
+pub fn browser_post_url(browser_url: &str, post_id: &str) -> Result<String> {
+    if post_id.is_empty() || !post_id.chars().all(|value| value.is_ascii_digit()) {
+        bail!("Yande post id must be numeric");
+    }
+    let mut url = reqwest::Url::parse(browser_url).context("parse Yande browser URL")?;
+    url.set_path(&format!("/post/show/{post_id}"));
+    url.set_query(None);
+    Ok(url.to_string())
+}
+
 pub fn pool_posts_expression(pool_id: &str) -> Result<String> {
     if pool_id.is_empty() || !pool_id.chars().all(|value| value.is_ascii_digit()) {
         bail!("Yande pool id must be numeric");
@@ -672,5 +682,15 @@ mod tests {
     #[test]
     fn default_config_is_loaded_from_the_bundled_toml_not_hardcoded() {
         assert_eq!(default_config().api_url, "https://yande.re/post.json");
+    }
+
+    #[test]
+    fn browser_post_url_is_site_owned_and_validated() {
+        let config = default_config();
+        assert_eq!(
+            browser_post_url(&config.browser_url, "407162").unwrap(),
+            "https://yande.re/post/show/407162"
+        );
+        assert!(browser_post_url(&config.browser_url, "not-a-number").is_err());
     }
 }

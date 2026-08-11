@@ -198,6 +198,20 @@ pub fn browser_url(site_id: &str) -> Result<String> {
     }
 }
 
+pub fn browser_post_url(site_id: &str, post_id: &str) -> Result<String> {
+    match site_id {
+        dreamland_site_yandere::SITE_ID => {
+            let config = dreamland_site_yandere::default_config();
+            dreamland_site_yandere::browser_post_url(&config.browser_url, post_id)
+        }
+        dreamland_site_konachan::SITE_ID => {
+            let config = dreamland_site_konachan::default_config();
+            dreamland_site_konachan::browser_post_url(&config.browser_url, post_id)
+        }
+        _ => bail!("site '{site_id}' has no active browser route"),
+    }
+}
+
 pub fn descriptors() -> Vec<SiteDescriptor> {
     vec![
         dreamland_site_yandere::descriptor(),
@@ -225,7 +239,7 @@ pub fn is_active_browse_site(site_id: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{browser_url, descriptors, is_active_browse_site};
+    use super::{browser_post_url, browser_url, descriptors, is_active_browse_site};
 
     #[test]
     fn registry_contains_yandere() {
@@ -267,5 +281,10 @@ mod tests {
             "https://konachan.com/post"
         );
         assert!(browser_url("pixiv").is_err());
+        assert_eq!(
+            browser_post_url("konachan", "407162").unwrap(),
+            "https://konachan.com/post/show/407162"
+        );
+        assert!(browser_post_url("konachan", "not-a-number").is_err());
     }
 }

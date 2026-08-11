@@ -214,6 +214,10 @@ export function openSite(siteId: string): Promise<void> {
   return invoke<void>("open_site", { siteId });
 }
 
+export function openPost(siteId: string, postId: string): Promise<void> {
+  return invoke<void>("open_post", { siteId, postId });
+}
+
 export function authStatus(): Promise<AuthStatus> {
   return invoke<AuthStatus>("auth_status");
 }
