@@ -21,7 +21,9 @@ site set, API pagination, settings, and image-download behavior.
 - `index.html` — Vite entry document
 - `src/` — React + TypeScript frontend
 - `dist/` — Vite build output loaded by Tauri
-- `crates/` — core, runtime, and Yandere adapter crates
+- `crates/` — core, runtime, sites composition root, and site adapter crates
+  (`dreamland-site-yandere` active; `dreamland-site-pixiv`/`-twitter`
+  descriptor-only skeletons)
 - `src-tauri/` — Tauri application and command boundary
 - `docs/` — project specification, decisions, ADRs, roadmap, and references
 - `scripts/` — uv-runnable daily tooling and platform-aware checks
@@ -51,7 +53,8 @@ TypeScript and Vite production checks.
 
 ## Success Criteria
 
-- The repository has a Tauri 2 project structure and no Dioxus dependencies.
+- The repository has a Tauri 2 project structure. (The pre-Tauri Dioxus
+  migration is long complete; that criterion is retired.)
 - The Rust code is organized as a workspace with isolated runtime/site
   boundaries.
 - The frontend is strict TypeScript with typed IPC wrappers.

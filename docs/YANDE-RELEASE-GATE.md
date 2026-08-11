@@ -25,13 +25,13 @@ state.
 | ID | Feature | Acceptance boundary |
 | --- | --- | --- |
 | Y-01 | Yande site registration | Site descriptor, stable `yandere` identity, safe default, and config entry are available through the runtime. |
-| Y-02 | Tag search | Site tag expression is encoded and queried through the paged post API; page size, safe filtering, empty results, and both response envelopes are handled. |
+| Y-02 | Tag search | Site tag expression is encoded and queried through the paged post API; page size, safe filtering, empty results, and both response envelopes are handled. Per [MOEBOORU-UX-LEARNINGS.md](MOEBOORU-UX-LEARNINGS.md), this includes round-tripping negative-tag (`-tag`) prefixes and space-tokenized multi-term queries -- not yet in G-02's fixture list below. |
 | Y-03 | Tag suggestions | Live Yande `/tag.json` autocomplete returns name/count/type/ambiguity metadata and handles empty/error responses; pinned MoeLoaderP `/tag.xml` behavior remains separate source evidence. |
 | Y-04 | Popular by day/week/month | `PopularPeriod` plus an explicit anchor date maps to the three `popular_by_*` endpoints; each response is a fixed result window, not page-number pagination. |
 | Y-05 | Browser-session login | The user can open/import Yande login state; the runtime detects the `user_id` cookie, reports auth state, and never exposes raw cookies or credentials to React/TOML. |
 | Y-06 | Add/remove remote favorite | Authenticated `RemoteFavoriteCapability` maps Yande favorite add to score 3 and remove to score 2; unauthenticated calls return `auth_required`. |
 | Y-07 | Remote favorite page | An authenticated user can open a dedicated favorite page through `RemoteFavoriteListCapability`, load the user’s remote favorites, paginate when the verified site mechanism supports it, and see loading/empty/error/auth-required states. The exact Yande list mechanism is a release blocker until verified. |
-| Y-08 | Post cards and download | Normalized identity, tags, rating, dimensions, preview/sample/original variants, safe filtering, and reference-based download work for all Yande result modes. |
+| Y-08 | Post cards and download | Normalized identity, tags, rating, dimensions, preview/sample/original variants, safe filtering, and reference-based download work for all Yande result modes. Per [REFERENCE-LEARNINGS.md](REFERENCE-LEARNINGS.md), Yande also resolves an existing image by checksum via `md5:<hash>`; whether the download path uses this for dedupe is not yet decided or gated. |
 | Y-09 | Pool browse and ZIP | Public pool metadata and ordered posts are browseable; an authenticated user can request the site ZIP route through `CollectionDownloadCapability`; the runtime owns the destination and history. |
 
 ### Should ship
@@ -59,7 +59,11 @@ state.
 The favorite page is required, but the implementation must not guess its
 backend route. The live evidence currently establishes:
 
-- `/post/vote.json` is the web mutation endpoint;
+- `/post/vote.json` is the web mutation endpoint (asserted from MoeLoaderP
+  research, undated and unverified against a live account -- this claim has
+  not had the same authorized-verification treatment as the favorite-list
+  read below, even though it is the riskier operation because it mutates a
+  real account; G-06 should not be marked `PASS` on mock coverage alone);
 - `post.json` accepts site tag expressions and page/limit parameters;
 - `/favorites` currently returns 404 without an authenticated route;
 - the candidate read path is a user-scoped favorite query such as
@@ -88,13 +92,13 @@ evidence. “Build passes” alone is not a release decision.
 | G-01 | Site contract | Fake site tests descriptor, capability negotiation, safe defaults, operation IDs, cancellation, and unsupported-capability errors. | Pending API approval |
 | G-02 | Tag search | Fixture tests for legacy array and v2 envelope, tag encoding, page/limit, safe mode, empty page, malformed response, and rate-limit/error mapping. | Pending |
 | G-03 | Tag suggestions | Fixture tests for tag name/count/category mapping, empty response, cancellation, and remote error. | Pending |
-| G-04 | Popular modes | Fixtures assert endpoint mapping, date-window parameters, 40-item fixed-window handling, `has_next=false`, and no page-control UI. | Live shape observed; fixtures pending |
+| G-04 | Popular modes | Fixtures assert endpoint mapping, date-window parameters, 40-item fixed-window handling, `has_next=false`, and no page-control UI. Per [MOEBOORU-UX-LEARNINGS.md](MOEBOORU-UX-LEARNINGS.md), "every popular endpoint is a fixed window" was flagged as too narrow and needing per-period, per-date verification; the single-date probe below does not meet that bar yet. | Live shape observed for one date only; fixtures pending |
 | G-05 | Login/auth | Auth-state tests with absent/valid/expired cookie; Tauri serialization test proves cookies never cross the command boundary; manual browser-session smoke on a clean profile. | Manual auth smoke pending |
 | G-06 | Favorite mutation | Mock tests assert score 3/2 mapping and idempotent state handling; authorized live smoke adds then removes one explicitly selected test post and verifies the remote result. | Live write authorization pending |
 | G-07 | Favorite page | Authorized live read smoke proves current-user identity, private visibility, ordering, empty state, pagination/continuation, and refresh after mutation; fixture tests cover all UI states. | **BLOCKED: read mechanism unverified** |
 | G-08 | Download | Fixture-to-runtime tests prove the frontend supplies only a `DownloadTarget`; async queue durability, temporary-cache staging, atomic rename, existing-target abort, URL scheme, referer, safe filtering, and local path ownership are enforced. | Pending |
 | G-09 | Pool ZIP | Fixtures cover pool metadata/order and archive target mapping; authorized live smoke verifies the ZIP route, auth redirect, content type, and terminal history state without storing the archive in fixtures. | Authenticated live smoke pending |
-| G-10 | Regression gate | `make check` plus site/runtime tests pass. Current workstation evidence is blocked because the Dreamland dev shell lacks `tsc`. | Blocked by environment |
+| G-10 | Regression gate | `make check` plus site/runtime tests pass. | Verified 2026-08-11: `bun run typecheck` and `make check`'s Rust/frontend steps run and pass. Not hermetic -- `flake.nix` provides `bun` but not `typescript`; a fresh shell needs `bun install` (network) before `tsc` exists. |
 
 ## Live verification rules
 

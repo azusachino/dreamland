@@ -4,6 +4,13 @@ Status: design gate, 2026-08-11. These stories describe the first useful
 desktop workflow. They are the UX acceptance layer above [API v1](API-V1.md)
 and the [Yande release gate](YANDE-RELEASE-GATE.md).
 
+"v1" here means the complete Yande site-profile design -- what the site
+adapter should eventually support end to end. It is not the same scope as
+[ROADMAP.md](ROADMAP.md)'s "Phase 1 foundation" milestone. Search (US-Y-04)
+and remote favorites (US-Y-09/US-Y-10) are specified here as part of that
+full profile, but ship in ROADMAP's Phase 2/3, not Phase 1 -- see
+[DECISIONS.md](DECISIONS.md#pending-gates).
+
 ## Product boundary
 
 The target user explores image-board posts and downloads selected media.
@@ -78,4 +85,6 @@ following behavior.
 - [ ] The existing-target and restart/recovery rules are accepted.
 - [ ] “One month space” is resolved before adding retention or storage-quota
       behavior; v1 currently specifies neither month directories nor a free-
-      space reservation.
+      space reservation. The phrase's origin is not recorded anywhere in
+      these docs -- whoever introduced it should either define it here or
+      confirm it can be dropped as a stale reference.

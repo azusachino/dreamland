@@ -1,5 +1,7 @@
 # Dreamland roadmap
 
+Last updated: 2026-08-11.
+
 This is a product roadmap, not a release schedule. Release packaging,
 signing, distribution, and store submission are intentionally outside the
 current plan.
@@ -73,6 +75,10 @@ and formalize the existing API/runtime behavior before adding product features:
 
 ## Phase 2 — discovery
 
+Already specified in [USER-STORIES-V1.md](USER-STORIES-V1.md) (US-Y-04) as
+part of the full Yande site profile; this phase is when it ships, not when
+it gets designed.
+
 Add the first user-facing product expansion:
 
 - site-aware search;
@@ -84,6 +90,10 @@ Search and tags must follow site capabilities. The UI should not present a
 search control for a site that cannot implement it.
 
 ## Phase 3 — personal organization
+
+Already specified in [USER-STORIES-V1.md](USER-STORIES-V1.md) (US-Y-09/10)
+as remote favorite state on the active site, not a local bookmark; this
+phase is when it ships, not when it gets designed.
 
 - favorite posts across sites;
 - view and filter favorites;

@@ -103,4 +103,8 @@ Windows; Linux is intentionally outside the acceptance matrix.
 
 The next architectural gate is approval of API v1. Until then, keep changes
 inside the documented boundaries and avoid adding site capabilities, registries,
-search, favorites, tags, or batch workflows speculatively.
+search, favorites, tags, or batch workflows speculatively. "Speculative" means
+implementing or shipping these in code ahead of approval -- the
+`docs/API-V1.md`, `docs/ARCHITECTURE-V1.md`, and `docs/USER-STORIES-V1.md`
+design-gate documents specifying them ahead of approval is the intended
+process, not an exception to it.

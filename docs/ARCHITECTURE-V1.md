@@ -157,7 +157,9 @@ directory keys. Date remains a filter, not the primary organization.
 
 The current v1 does not define month directories, free-space reservations, or
 retention quotas. Those are separate decisions; the phrase “one month space”
-must not silently become a storage policy.
+must not silently become a storage policy. Its origin is not recorded in any
+Dreamland doc -- see the open checklist item in
+[USER-STORIES-V1.md](USER-STORIES-V1.md#approval-checklist).
 
 ## Security and evil-case boundaries
 
