@@ -1,25 +1,19 @@
 # Reference learnings
 
-These notes capture what Dreamland should learn from the read-only references,
+These notes capture what Dreamland should learn from the pinned research
+sources,
 not what it should copy wholesale.
 
-## `xiao-po/yande`
+## Vendored `xplusky/MoeLoaderP`
 
-- Separate remote HTTP sources from local persistence. Its application has an
-  HTTP data source pool and a DAO data source instead of treating favorites as
-  provider data.
-- Persist favorites, tag shortcuts, blocked tags, and download status/path.
-- Keep rating filtering and blocked-tag filtering in the runtime/service layer,
-  before results reach the UI.
-- A provider can expose both post queries and tag autocomplete; these are
-  distinct operations.
-- A large provider response model is useful as an adapter DTO, but should not
-  become Dreamland’s cross-provider domain model.
+Dreamland carries MoeLoaderP as the nested git submodule at
+`vendor/moeloaderp`, pinned by the current Dreamland gitlink to commit
+`0025dd999306258103ed2b239b2132d3913c99e0`. The checkout is the source of
+truth for the site inventory below; GitHub links are only convenient
+navigation.
 
-## `xplusky/MoeLoaderP`
-
-- `SiteManager` and `MoeSite` demonstrate a provider registry with per-site
-  capability flags and per-provider settings.
+- `SiteManager` and `MoeSite` demonstrate a site registry with per-site
+  capability flags and per-site settings.
 - `SearchSession` demonstrates why search needs ownership of query state,
   page progression, history, cancellation, and stale-result handling.
 - `MoeItem`/`UrlInfo` demonstrate that a post may have children and multiple
@@ -32,11 +26,53 @@ not what it should copy wholesale.
 
 ## Dreamland decisions
 
-- Adopt a small provider core plus optional capability traits; avoid one giant
-  provider interface with fake unsupported methods.
-- Use `(provider_id, post_id)` as the stable local identity.
-- Keep remote metadata, local favorites/tags, cache records, and download
-  records in separate runtime-owned stores.
-- Treat yande.re as one complete provider adapter, not the universal API.
+- Adopt a small site core plus optional capability traits; avoid one giant
+  site interface with fake unsupported methods.
+- Use `(site_id, post_id)` as the stable local identity.
+- The pinned MoeBooru UX reference stores saved query definitions and pin/order
+  state. Dreamland v1 follows that observed model for local state: saved
+  queries, query history, cache, and download records. Yande favorites remain
+  remote site state; a local post-bookmark collection is a deferred,
+  explicitly separate feature.
+- Treat yande.re as one complete site adapter, not the universal API.
 - Build toward MoeLoaderP-level breadth in phases, with the API v1 design as
-  the gate before implementing provider or runtime traits.
+  the gate before implementing site/runtime capabilities.
+
+## Yande and MoeLoaderP evidence used for API v1
+
+The vendored MoeLoaderP checkout implements Yande as a `BooruSite`:
+
+- `YandeSite` uses one paged post query, passing `page`, `limit`, and a keyword
+  expression as `tags`; safe mode appends `rating:s`.
+- The same adapter exposes tag autocomplete through `tag.xml`, ordered by
+  count, with a bounded result count.
+- The shared booru parser normalizes tags, ID, dimensions, posting account, source,
+  rating, date, score, preview URL, sample URL, JPEG URL, original URL, and
+  original file size.
+- The shared site configuration enables keyword, rating, resolution, and
+  score-aware behavior, but resolution/orientation and safe/explicit filtering
+  happen locally after the response is decoded.
+- Yande enables cookie-based account detection. Its current web client uses
+  the post-vote endpoint for remote favorite add/remove, so account/session
+  state and a site-specific favorite action are part of the Yande v1
+  profile even though they are optional across the wider site API.
+
+The adapter’s generic `SearchPara` contains date, ordering, multi-keyword, and
+cursor fields, but `YandeSite` does not translate those fields into its query.
+Those controls are evidence about the larger product space, not evidence that
+Yande supports each one in Dreamland v1.
+
+The live JSON API also confirms that Yande supports both legacy array responses
+and the `api_version=2` `{ "posts": [...] }` envelope for `/post.json`, direct
+ID filtering through `id`, tag filtering through `tags`, page/limit controls,
+and `/tag.json` results with `name`, `count`, `type`, and `ambiguous` fields.
+
+The live API also exposes `/post/popular_by_day.json`,
+`/post/popular_by_week.json`, and `/post/popular_by_month.json`. At the current
+runtime watermark each returned a fixed 40-item window; `page` and `limit` did
+not change the result window. The Yande web client submits favorite changes to
+`/post/vote.json` with score 3 for favorite and score 2 to remove it, behind a
+logged-in browser session. Public pool pages expose ordered pool posts and link
+to `/pool/zip/:id`; the observed anonymous ZIP request redirects to login.
+Yande also resolves an existing image conservatively by checksum through a
+query such as `md5:<hash>`, returning one matching post in the observed case.

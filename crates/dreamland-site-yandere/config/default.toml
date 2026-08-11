@@ -1,0 +1,5 @@
+# Default runtime configuration for the Yande.re adapter.
+# Consistent with docs/adr/0005-toml-runtime-configuration.md: config is data,
+# not a Rust source-code literal. A user override in AppConfig always wins;
+# this only supplies the value shown before a user ever sets one.
+api_url = "https://yande.re/post.json"

@@ -18,6 +18,8 @@ path = "src/main.rs"
 tauri-build.workspace = true
 
 [dependencies]
-dreamland-provider-yandere = { path = "../crates/dreamland-provider-yandere" }
+dreamland-core = { path = "../crates/dreamland-core" }
+dreamland-site-yandere = { path = "../crates/dreamland-site-yandere" }
+dreamland-sites = { path = "../crates/dreamland-sites" }
 dreamland-runtime = { path = "../crates/dreamland-runtime" }
 tauri.workspace = true

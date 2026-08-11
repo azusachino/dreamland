@@ -1,5 +1,5 @@
 [package]
-name = "dreamland-provider-yandere"
+name = "dreamland-site-yandere"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,6 +7,8 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+dreamland-core = { path = "../dreamland-core" }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+toml.workspace = true

@@ -10,10 +10,9 @@ import {
   loadImages,
   saveConfig,
   type AppConfig,
-  type ImagePost,
+  type MediaVariant,
+  type Post,
 } from "./lib/ipc";
-
-const defaultApiUrl = "https://yande.re/post.json";
 
 function errorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);
@@ -24,7 +23,7 @@ function App() {
   const [page, setPage] = useState(1);
   const [imagesRequested, setImagesRequested] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -48,7 +47,7 @@ function App() {
     onError: (reason) => setError(`Failed to save settings: ${errorMessage(reason)}`),
   });
   const downloadMutation = useMutation({
-    mutationFn: downloadImage,
+    mutationFn: ({ postId, variant }: DownloadInput) => downloadImage(postId, variant),
     onSuccess: (path) => setNotice(`Downloaded to ${path}`),
     onError: (reason) => setError(`Download failed: ${errorMessage(reason)}`),
   });
@@ -72,12 +71,12 @@ function App() {
     setPage(nextPage);
   }
 
-  async function handleDownload(image: ImagePost) {
-    setDownloadingId(image.id);
+  async function handleDownload(post: Post) {
+    setDownloadingId(post.post.id);
     setError("");
     setNotice("");
     try {
-      await downloadMutation.mutateAsync(image);
+      await downloadMutation.mutateAsync({ postId: post.post.id, variant: "Full" });
     } catch {
       // The mutation reports the user-facing error.
     } finally {
@@ -126,11 +125,11 @@ function App() {
         ) : (
           <>
             <div className="gallery-grid">
-              {images.map((image) => (
+              {images.map((post) => (
                 <ImageCard
-                  key={image.id}
-                  image={image}
-                  downloading={downloadingId === image.id}
+                  key={post.post.id}
+                  post={post}
+                  downloading={downloadingId === post.post.id}
                   onDownload={handleDownload}
                 />
               ))}
@@ -172,29 +171,34 @@ interface ConfigInput {
   apiUrl: string;
 }
 
-interface ImageCardProps {
-  image: ImagePost;
-  downloading: boolean;
-  onDownload: (image: ImagePost) => Promise<void>;
+interface DownloadInput {
+  postId: string;
+  variant: MediaVariant;
 }
 
-function ImageCard({ image, downloading, onDownload }: ImageCardProps) {
+interface ImageCardProps {
+  post: Post;
+  downloading: boolean;
+  onDownload: (post: Post) => Promise<void>;
+}
+
+function ImageCard({ post, downloading, onDownload }: ImageCardProps) {
   return (
     <article className="card">
       <div className="preview">
-        <img src={image.preview_url} alt="Image preview" loading="lazy" />
+        <img src={post.preview_url} alt="Image preview" loading="lazy" />
         <span className="dimensions">
-          {image.width}x{image.height}
+          {post.width}x{post.height}
         </span>
       </div>
       <div className="card-details">
-        <p className="tags">Tags: {image.tags}</p>
+        <p className="tags">Tags: {post.tags.join(" ")}</p>
         <div className="card-footer">
-          <span className="rating">Rating: {image.rating}</span>
+          <span className="rating">Rating: {post.rating}</span>
           <button
             className="button button-warning"
             disabled={downloading}
-            onClick={() => void onDownload(image)}
+            onClick={() => void onDownload(post)}
           >
             {downloading ? "Saving..." : "Download"}
           </button>
@@ -211,7 +215,10 @@ interface SettingsDialogProps {
 }
 
 function SettingsDialog({ config, onCancel, onSave }: SettingsDialogProps) {
-  const [apiUrl, setApiUrl] = useState(config?.api_url ?? defaultApiUrl);
+  // The backend always resolves a real default (owned by the active site
+  // adapter) before this dialog can open, so there is no local fallback URL
+  // to duplicate here.
+  const [apiUrl, setApiUrl] = useState(config?.api_url ?? "");
   const [downloadPath, setDownloadPath] = useState(config?.download_path ?? "");
   const [saving, setSaving] = useState(false);
 

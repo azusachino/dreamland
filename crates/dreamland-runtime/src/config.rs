@@ -14,19 +14,11 @@ fn default_images_per_page() -> usize {
     20
 }
 
-impl Default for AppConfig {
-    fn default() -> Self {
-        let download_path = dirs::download_dir()
-            .or_else(dirs::home_dir)
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("dreamland_images");
-
-        Self {
-            download_path,
-            api_url: "https://yande.re/post.json".to_string(),
-            images_per_page: 20,
-        }
-    }
+fn default_download_path() -> PathBuf {
+    dirs::download_dir()
+        .or_else(dirs::home_dir)
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("dreamland_images")
 }
 
 impl AppConfig {
@@ -37,11 +29,15 @@ impl AppConfig {
         Ok(Self {
             download_path,
             api_url,
-            ..Self::default()
+            images_per_page: default_images_per_page(),
         })
     }
 
-    pub fn load() -> anyhow::Result<Self> {
+    /// Load the saved config, or build a default seeded with `default_api_url`.
+    /// The runtime stays site-neutral: the caller (the composition point that
+    /// already knows which site is active) supplies the default URL rather
+    /// than this crate hard-coding one.
+    pub fn load_or_default(default_api_url: &str) -> anyhow::Result<Self> {
         let config_path = Self::config_dir().join("config.json");
         if config_path.exists() {
             let mut config: Self = serde_json::from_str(&std::fs::read_to_string(config_path)?)?;
@@ -50,7 +46,11 @@ impl AppConfig {
             config.validate()?;
             Ok(config)
         } else {
-            Ok(Self::default())
+            Ok(Self {
+                download_path: default_download_path(),
+                api_url: validate_api_url(default_api_url.to_string())?,
+                images_per_page: default_images_per_page(),
+            })
         }
     }
 

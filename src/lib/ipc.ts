@@ -1,22 +1,38 @@
 import { invoke } from "@tauri-apps/api/core";
 
+// Dreamland is a single-site app today (see docs/API-V1.md). The active
+// site id is fixed here rather than exposed as a picker, since there is
+// only one browse-capable site to pick.
+const ACTIVE_SITE_ID = "yandere";
+
+export type MediaVariant = "Preview" | "Sample" | "Full";
+
+export type Rating = "Safe" | "Questionable" | "Explicit" | "Unknown";
+
+export interface PostRef {
+  site: string;
+  id: string;
+}
+
 export interface AppConfig {
   download_path: string;
   api_url: string;
   images_per_page: number;
 }
 
-export interface ImagePost {
-  id: number;
-  tags: string;
+// Site-neutral post shape returned by every site adapter -- never a site's
+// raw response JSON. Field names intentionally do not mirror any one site's
+// wire format.
+export interface Post {
+  post: PostRef;
+  tags: string[];
   width: number;
   height: number;
-  file_url: string;
-  sample_url: string;
-  preview_url: string;
-  rating: string;
+  rating: Rating;
   score: number | null;
-  md5: string;
+  preview_url: string;
+  sample_url: string;
+  full_url: string;
   file_size: number | null;
 }
 
@@ -28,10 +44,14 @@ export function saveConfig(downloadPath: string, apiUrl: string): Promise<AppCon
   return invoke<AppConfig>("save_config", { downloadPath, apiUrl });
 }
 
-export function loadImages(page: number): Promise<ImagePost[]> {
-  return invoke<ImagePost[]>("load_images", { page });
+export function loadImages(page: number): Promise<Post[]> {
+  return invoke<Post[]>("load_images", { siteId: ACTIVE_SITE_ID, page });
 }
 
-export function downloadImage(image: ImagePost): Promise<string> {
-  return invoke<string>("download_image", { image });
+export function downloadImage(postId: string, variant: MediaVariant): Promise<string> {
+  return invoke<string>("download_image", {
+    siteId: ACTIVE_SITE_ID,
+    postId,
+    variant,
+  });
 }
