@@ -34,6 +34,7 @@ pub fn descriptor() -> SiteDescriptor {
             browse: true,
             post_search: true,
             tag_search: true,
+            related_tags: true,
             tag_query: true,
             post_lookup: false,
             page_numbers: true,
@@ -99,6 +100,18 @@ pub fn tag_query_params(
 
 pub fn tag_endpoint(base_url: &str) -> Result<String> {
     dreamland_moe::tag_endpoint(base_url)
+}
+
+pub fn related_tag_endpoint(base_url: &str) -> Result<String> {
+    dreamland_moe::related_tag_endpoint(base_url)
+}
+
+pub async fn fetch_related_tags(
+    endpoint: &str,
+    request: &dreamland_core::RelatedTagRequest,
+    network: &NetworkPolicy,
+) -> Result<Vec<dreamland_core::RelatedTag>> {
+    dreamland_moe::fetch_related_tags(endpoint, request, network, SITE_ID).await
 }
 
 pub fn pool_endpoint(base_url: &str) -> Result<String> {

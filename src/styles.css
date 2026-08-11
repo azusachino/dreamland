@@ -1157,6 +1157,11 @@ select:focus-visible {
   gap: 0.5rem;
 }
 
+.detail-related-tags {
+  display: grid;
+  gap: 0.6rem;
+}
+
 .detail-helper {
   color: var(--ink-subtle);
   font-size: 0.7rem;

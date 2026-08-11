@@ -24,6 +24,7 @@ pub struct SiteCapabilities {
     pub browse: bool,
     pub post_search: bool,
     pub tag_search: bool,
+    pub related_tags: bool,
     pub tag_query: bool,
     pub post_lookup: bool,
     pub page_numbers: bool,
@@ -67,12 +68,24 @@ pub struct TagSuggestionRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RelatedTagRequest {
+    pub tags: Vec<String>,
+    pub limit: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TagSuggestion {
     pub name: String,
     pub category: Option<TagCategory>,
     pub post_count: Option<u64>,
     pub ambiguous: Option<bool>,
     pub aliases: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RelatedTag {
+    pub name: String,
+    pub post_count: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

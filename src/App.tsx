@@ -23,6 +23,7 @@ import {
   openDownload,
   openPost,
   openSite,
+  relatedTags,
   retryDownload,
   loadConfig,
   queryPosts,
@@ -45,6 +46,7 @@ import {
   type PostQueryRequest,
   type Pool,
   type ProxyMode,
+  type RelatedTag,
   type SavedQuery,
   type SiteDescriptor,
 } from "./lib/ipc";
@@ -340,6 +342,7 @@ function App() {
   const [poolSearchDraft, setPoolSearchDraft] = useState("");
   const [submittedPoolSearch, setSubmittedPoolSearch] = useState("");
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [relatedTagsOpen, setRelatedTagsOpen] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
   const [favoritePostIds, setFavoritePostIds] = useState<Set<string>>(new Set());
@@ -493,6 +496,12 @@ function App() {
     enabled: Boolean(selectedPost) && activeSite?.capabilities.post_lookup === true,
     staleTime: 60_000,
   });
+  const relatedTagsQuery = useQuery({
+    queryKey: ["related-tags", activeSiteId, selectedPost?.post.id, selectedPost?.tags],
+    queryFn: () => relatedTags(activeSiteId, selectedPost!.tags, 12),
+    enabled: relatedTagsOpen && Boolean(selectedPost) && activeSite?.capabilities.related_tags === true,
+    staleTime: 300_000,
+  });
   const favoritesQuery = useInfiniteQuery({
     queryKey: ["favorites"],
     initialPageParam: 1,
@@ -624,6 +633,7 @@ function App() {
     setPoolSearchDraft("");
     setSubmittedPoolSearch("");
     setSelectedPost(null);
+    setRelatedTagsOpen(false);
     setSelectedPostIds(new Set());
     setSelectionMode(false);
   }
@@ -652,6 +662,8 @@ function App() {
     setSelectedSavedQueryId(null);
     setEditingSavedQueryId(null);
     setSelectedPool(null);
+    setSelectedPost(null);
+    setRelatedTagsOpen(false);
     setSelectedPostIds(new Set());
     setSelectionMode(false);
   }
@@ -1271,6 +1283,12 @@ function App() {
             favorited={favoritePostIds.has(selectedPost.post.id)}
             onFavorite={handleFavorite}
             onTag={chooseTag}
+            relatedTagsSupported={activeSite?.capabilities.related_tags === true}
+            relatedTagsOpen={relatedTagsOpen}
+            relatedTags={relatedTagsQuery.data ?? []}
+            relatedTagsLoading={relatedTagsQuery.isPending || relatedTagsQuery.isFetching}
+            relatedTagsError={relatedTagsQuery.error ? errorMessage(relatedTagsQuery.error) : ""}
+            onToggleRelatedTags={() => setRelatedTagsOpen((current) => !current)}
             downloadVariant={configQuery.data?.download_variant ?? "Full"}
           />
         )}
@@ -1586,10 +1604,16 @@ interface PostInspectorProps {
   onDownload: (post: Post) => Promise<void>;
   onFavorite: (post: Post) => Promise<void>;
   onTag: (tag: string) => void;
+  relatedTagsSupported: boolean;
+  relatedTagsOpen: boolean;
+  relatedTags: RelatedTag[];
+  relatedTagsLoading: boolean;
+  relatedTagsError: string;
+  onToggleRelatedTags: () => void;
   downloadVariant: MediaVariant;
 }
 
-function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onOpenPost, onDownload, onFavorite, onTag, downloadVariant }: PostInspectorProps) {
+function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onOpenPost, onDownload, onFavorite, onTag, relatedTagsSupported, relatedTagsOpen, relatedTags, relatedTagsLoading, relatedTagsError, onToggleRelatedTags, downloadVariant }: PostInspectorProps) {
   const originalUrl = post.full_url ?? post.sample_url ?? post.preview_url;
   return (
     <aside className="detail-panel shell-surface" aria-label="post details">
@@ -1619,6 +1643,24 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
         <div className="detail-related-actions" aria-label="related posts">
           {post.parent_id && <button className="button button-outlined detail-post-link" type="button" onClick={() => onTag(`id:${post.parent_id}`)}>find parent #{post.parent_id}</button>}
           {post.has_children && <button className="button button-outlined detail-post-link" type="button" onClick={() => onTag(`parent:${post.post.id}`)}>find child posts</button>}
+        </div>
+      )}
+      {relatedTagsSupported && (
+        <div className="detail-related-tags">
+          <button className="button button-outlined detail-post-link" type="button" onClick={onToggleRelatedTags}>
+            {relatedTagsOpen ? "hide related tags" : "show related tags"}
+          </button>
+          {relatedTagsOpen && <p className="detail-helper">site metadata may include tags outside the current rating filter; post results still follow content policy.</p>}
+          {relatedTagsOpen && relatedTagsLoading && <p className="detail-helper" role="status">loading related tags…</p>}
+          {relatedTagsOpen && relatedTagsError && <p className="detail-helper" role="alert">couldn’t load related tags. {relatedTagsError}</p>}
+          {relatedTagsOpen && !relatedTagsLoading && !relatedTagsError && relatedTags.length > 0 && (
+            <div className="tag-list" aria-label="related tags">
+              {relatedTags.map((tag) => (
+                <button key={tag.name} className="tag-chip" type="button" title={tag.post_count === null ? undefined : `${tag.post_count.toLocaleString()} posts`} onClick={() => onTag(tag.name)}>{tag.name}</button>
+              ))}
+            </div>
+          )}
+          {relatedTagsOpen && !relatedTagsLoading && !relatedTagsError && relatedTags.length === 0 && <p className="detail-helper">no related tags found.</p>}
         </div>
       )}
       {detailLoading && <p className="detail-helper" role="status">refreshing post details…</p>}

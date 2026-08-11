@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use dreamland_core::{
-    ContentPolicy, MediaVariant, NetworkPolicy, PoolPage, Post, PostQueryRequest, SitePage,
-    TagSuggestion, TagSuggestionRequest,
+    ContentPolicy, MediaVariant, NetworkPolicy, PoolPage, Post, PostQueryRequest, RelatedTag,
+    RelatedTagRequest, SitePage, TagSuggestion, TagSuggestionRequest,
 };
 
 pub use dreamland_core::SiteDescriptor;
@@ -53,6 +53,26 @@ pub async fn suggest_tags(
             dreamland_site_konachan::fetch_tag_suggestions(&endpoint, request, network).await
         }
         _ => bail!("site '{site_id}' has no active tag suggestion adapter"),
+    }
+}
+
+pub async fn related_tags(
+    site_id: &str,
+    request: &RelatedTagRequest,
+    network: &NetworkPolicy,
+) -> Result<Vec<RelatedTag>> {
+    match site_id {
+        dreamland_site_yandere::SITE_ID => {
+            let config = dreamland_site_yandere::default_config();
+            let endpoint = dreamland_site_yandere::related_tag_endpoint(&config.api_url)?;
+            dreamland_site_yandere::fetch_related_tags(&endpoint, request, network).await
+        }
+        dreamland_site_konachan::SITE_ID => {
+            let config = dreamland_site_konachan::default_config();
+            let endpoint = dreamland_site_konachan::related_tag_endpoint(&config.api_url)?;
+            dreamland_site_konachan::fetch_related_tags(&endpoint, request, network).await
+        }
+        _ => bail!("site '{site_id}' has no active related tag adapter"),
     }
 }
 

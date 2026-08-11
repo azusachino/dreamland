@@ -572,6 +572,29 @@ async fn lookup_post(
 }
 
 #[tauri::command]
+async fn related_tags(
+    site_id: String,
+    tags: Vec<String>,
+    limit: u16,
+) -> Result<Vec<dreamland_core::RelatedTag>, String> {
+    let site = dreamland_sites::descriptors()
+        .into_iter()
+        .find(|site| site.id.as_str() == site_id)
+        .ok_or_else(|| format!("site '{site_id}' is not registered"))?;
+    if !site.capabilities.related_tags {
+        return Err(format!("site '{site_id}' does not support related tags"));
+    }
+    let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
+    dreamland_sites::related_tags(
+        &site_id,
+        &dreamland_core::RelatedTagRequest { tags, limit },
+        &config.network,
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 async fn continue_query(
     state: State<'_, RuntimeState>,
     session: QuerySessionId,
@@ -775,6 +798,7 @@ pub fn run() {
             set_favorite,
             query_posts,
             lookup_post,
+            related_tags,
             continue_query,
             cancel_query,
             suggest_tags,

@@ -30,6 +30,7 @@ pub fn descriptor() -> SiteDescriptor {
             browse: true,
             post_search: true,
             tag_search: true,
+            related_tags: true,
             tag_query: true,
             post_lookup: true,
             page_numbers: true,
@@ -110,6 +111,20 @@ pub async fn fetch_tag_suggestions(
 
 pub fn tag_endpoint(base_url: &str) -> Result<String> {
     dreamland_moe::tag_endpoint(base_url)
+}
+
+pub fn related_tag_endpoint(base_url: &str) -> Result<String> {
+    dreamland_moe::related_tag_endpoint(base_url)
+}
+
+pub async fn fetch_related_tags(
+    endpoint: &str,
+    request: &dreamland_core::RelatedTagRequest,
+    network: &NetworkPolicy,
+) -> Result<Vec<dreamland_core::RelatedTag>> {
+    dreamland_moe::fetch_related_tags(endpoint, request, network, SITE_ID)
+        .await
+        .map_err(map_transport_error)
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -333,6 +348,10 @@ mod tests {
         assert_eq!(
             pool_posts_endpoint(&config.api_url).unwrap(),
             "https://konachan.net/pool/show.json"
+        );
+        assert_eq!(
+            related_tag_endpoint(&config.api_url).unwrap(),
+            "https://konachan.net/tag/related.json"
         );
         assert!(validate_pool_id("not-a-number").is_err());
     }

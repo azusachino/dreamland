@@ -19,6 +19,7 @@ that Cloudflare bot protection has been solved.
 | K-10 | Post detail exposes a site-owned `open <site> post` action that validates numeric IDs and opens `/post/show/<id>` in a dedicated browser window | Pass; adapter and registry URL tests pass; `.com` HTML access remains subject to bot protection |
 | K-11 | Post detail author identity is an exact `user:<name>` search action, kept distinct from artwork tag chips | Pass; live Konachan `otaku_emmy` and Yande `moonian` queries returned matching posts; TypeScript and full gate pass |
 | K-12 | Post detail parent/child state exposes exact `id:<parent-id>` and `parent:<post-id>` searches, returning to the result view | Pass; live Konachan `id:407153` and `parent:407153` queries returned the observed parent/child relationship; TypeScript and full gate pass |
+| K-13 | Post detail can explicitly load related tags from the site endpoint and use them as safe-policy searches | Pass; live `tag/related.json?tags=cirno` returned related tuples; decoder normalizes string/numeric counts and focused tests pass |
 
 ## Not advertised yet
 
@@ -31,3 +32,8 @@ The official Konachan API documentation describes `/post.json` with `tags`,
 `page`, and `limit` parameters. The safe `.net` API is therefore a valid
 initial browse/search transport, but `.com` bot protection remains a release
 boundary rather than something the runtime should bypass.
+
+Related-tag names and counts are site metadata and are not treated as
+rating-filtered post results. Dreamland loads them only after an explicit
+detail action; clicking a related tag returns to the ordinary content-policy
+filtered post search.

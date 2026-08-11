@@ -636,6 +636,25 @@ pub struct TagSuggestion {
 }
 
 #[async_trait]
+pub trait RelatedTagCapability: Send + Sync {
+    async fn related_tags(
+        &self,
+        request: RelatedTagRequest,
+        context: RequestContext,
+    ) -> Result<Vec<RelatedTag>, SiteError>;
+}
+
+pub struct RelatedTagRequest {
+    pub tags: Vec<String>,
+    pub limit: u16,
+}
+
+pub struct RelatedTag {
+    pub name: String,
+    pub post_count: Option<u64>,
+}
+
+#[async_trait]
 pub trait PostLookupCapability: Send + Sync {
     async fn lookup(
         &self,
@@ -942,6 +961,7 @@ pub trait SiteAdapter: Send + Sync {
     fn capabilities(&self, context: CapabilityContext) -> EffectiveCapabilities;
     fn query(&self) -> &dyn PostQueryCapability;
     fn tags(&self) -> Option<&dyn TagSuggestionCapability>;
+    fn related_tags(&self) -> Option<&dyn RelatedTagCapability>;
     fn lookup(&self) -> Option<&dyn PostLookupCapability>;
     fn detail(&self) -> Option<&dyn PostDetailCapability>;
     fn favorites(&self) -> Option<&dyn RemoteFavoriteCapability>;
@@ -1530,6 +1550,7 @@ the operation_id and preserves retryable separately from the safe message.
 | PostQueryCapability | Anonymous tag search and latest browse through the safe `.net` Moebooru JSON API. |
 | Pagination | Page-numbered `post.json` requests with the requested limit. |
 | TagSuggestionCapability | The same Moebooru tag JSON shape, normalized at the adapter boundary. |
+| RelatedTagCapability | Explicit post-detail related-tag lookup through `/tag/related.json`; tuple counts are normalized and resulting searches still use the safe content policy. |
 | PostLookupCapability | Exact numeric IDs are resolved with the safe `.net` API's `id:<post-id>` tag expression and verified against the returned post ID. |
 | Browser post route | The detail action opens the site-owned `https://konachan.com/post/show/<id>` page; this is a browser recovery route, not a safe API request. |
 | RemoteCollectionCapability | Searchable public pool metadata from `/pool.json?query=…` with page/limit pagination, plus ordered safe-visible posts from `/pool/show.json?id=…`; the API may return the complete visible pool in one response. |

@@ -1,10 +1,12 @@
 use anyhow::{bail, Context, Result};
 use dreamland_core::{
     ContentPolicy, Continuation, DiscoverySource, FeedKind, NetworkPolicy, PaginationRequest,
-    PopularPeriod, Post, PostQueryRequest, PostRef, ProxyMode, Rating, SiteError, SiteErrorCode,
-    SiteId, SitePage, TagCategory, TagSuggestion, TagSuggestionRequest,
+    PopularPeriod, Post, PostQueryRequest, PostRef, ProxyMode, Rating, RelatedTag,
+    RelatedTagRequest, SiteError, SiteErrorCode, SiteId, SitePage, TagCategory, TagSuggestion,
+    TagSuggestionRequest,
 };
 use serde::Deserialize;
+use serde_json::Value;
 
 const USER_AGENT: &str = concat!("Dreamland/", env!("CARGO_PKG_VERSION"));
 
@@ -179,6 +181,13 @@ pub fn tag_query_params(
 pub fn tag_endpoint(base_url: &str) -> Result<String> {
     let mut url = reqwest::Url::parse(base_url).context("parse Moebooru API URL")?;
     url.set_path("/tag.json");
+    url.set_query(None);
+    Ok(url.to_string())
+}
+
+pub fn related_tag_endpoint(base_url: &str) -> Result<String> {
+    let mut url = reqwest::Url::parse(base_url).context("parse Moebooru API URL")?;
+    url.set_path("/tag/related.json");
     url.set_query(None);
     Ok(url.to_string())
 }
@@ -574,6 +583,89 @@ pub async fn fetch_tag_suggestions(
     decode_tag_suggestions(&get_bytes(&client, url, &params, network, site_name).await?)
 }
 
+pub fn decode_related_tags(body: &[u8], request: &RelatedTagRequest) -> Result<Vec<RelatedTag>> {
+    if request.limit == 0 {
+        bail!("related tag limit must be greater than zero");
+    }
+    let excluded = request
+        .tags
+        .iter()
+        .map(|tag| tag.trim())
+        .filter(|tag| !tag.is_empty())
+        .collect::<std::collections::HashSet<_>>();
+    let response = serde_json::from_slice::<Value>(body).context("decode Moebooru related tags")?;
+    let object = response
+        .as_object()
+        .context("Moebooru related tag response must be an object")?;
+    let mut related = std::collections::HashMap::<String, Option<u64>>::new();
+    for values in object.values() {
+        let values = values
+            .as_array()
+            .context("Moebooru related tag values must be arrays")?;
+        for value in values {
+            let pair = value
+                .as_array()
+                .context("Moebooru related tag entries must be arrays")?;
+            let Some(name) = pair.first().and_then(Value::as_str).map(str::trim) else {
+                continue;
+            };
+            if name.is_empty() || excluded.contains(name) {
+                continue;
+            }
+            let count = pair.get(1).and_then(parse_related_tag_count);
+            related
+                .entry(name.to_owned())
+                .and_modify(|current| {
+                    if count > *current {
+                        *current = count;
+                    }
+                })
+                .or_insert(count);
+        }
+    }
+    let mut related = related
+        .into_iter()
+        .map(|(name, post_count)| RelatedTag { name, post_count })
+        .collect::<Vec<_>>();
+    related.sort_by(|left, right| {
+        right
+            .post_count
+            .cmp(&left.post_count)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    related.truncate(usize::from(request.limit));
+    Ok(related)
+}
+
+fn parse_related_tag_count(value: &Value) -> Option<u64> {
+    value
+        .as_u64()
+        .or_else(|| value.as_str().and_then(|value| value.parse().ok()))
+}
+
+pub async fn fetch_related_tags(
+    url: &str,
+    request: &RelatedTagRequest,
+    network: &NetworkPolicy,
+    site_name: &str,
+) -> Result<Vec<RelatedTag>> {
+    let tags = request
+        .tags
+        .iter()
+        .map(|tag| tag.trim())
+        .filter(|tag| !tag.is_empty())
+        .collect::<Vec<_>>();
+    if tags.is_empty() {
+        bail!("related tag request must include a tag");
+    }
+    let params = [("tags", tags.join(" "))];
+    let client = build_client(network)?;
+    decode_related_tags(
+        &get_bytes(&client, url, &params, network, site_name).await?,
+        request,
+    )
+}
+
 pub async fn set_favorite(
     api_url: &str,
     post_id: &str,
@@ -668,6 +760,32 @@ mod tests {
 
         assert_eq!(tags[0].category, Some(TagCategory::Artist));
         assert_eq!(tags[0].post_count, Some(12));
+    }
+
+    #[test]
+    fn decodes_related_tags_with_string_and_numeric_counts() {
+        let tags = decode_related_tags(
+            br#"{"cirno":[["cirno","911"],["touhou","910"],["fairy",810]],"touhou":[["touhou",20305],["wings","4028"]]}"#,
+            &RelatedTagRequest {
+                tags: vec!["cirno".to_owned(), "touhou".to_owned()],
+                limit: 2,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            tags,
+            vec![
+                RelatedTag {
+                    name: "wings".to_owned(),
+                    post_count: Some(4028),
+                },
+                RelatedTag {
+                    name: "fairy".to_owned(),
+                    post_count: Some(810),
+                },
+            ]
+        );
     }
 
     #[test]

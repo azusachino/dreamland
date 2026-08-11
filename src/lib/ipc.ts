@@ -35,6 +35,7 @@ export interface SiteCapabilities {
   browse: boolean;
   post_search: boolean;
   tag_search: boolean;
+  related_tags: boolean;
   tag_query: boolean;
   post_lookup: boolean;
   page_numbers: boolean;
@@ -165,6 +166,11 @@ export interface TagSuggestion {
   aliases: string[];
 }
 
+export interface RelatedTag {
+  name: string;
+  post_count: number | null;
+}
+
 export type DownloadStatus =
   | "Queued"
   | "Running"
@@ -290,6 +296,10 @@ export function suggestTags(siteId: string, query: string, limit = 5): Promise<T
       request: { query, limit },
     },
   });
+}
+
+export function relatedTags(siteId: string, tags: string[], limit = 12): Promise<RelatedTag[]> {
+  return invoke<RelatedTag[]>("related_tags", { siteId, tags, limit });
 }
 
 export function continueQuery(session: string): Promise<SitePage> {
