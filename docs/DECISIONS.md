@@ -26,6 +26,11 @@ current index; it deliberately does not duplicate their full rationale.
   [ARCHITECTURE-V1.md](ARCHITECTURE-V1.md)'s feature-to-flow bindings (one
   list, not two). The ADR's own status is still "proposed research
   hypothesis," pending the site-wide matrix review.
+- [ADR 0009](adr/0009-runtime-operation-context-and-common-services.md)
+  proposes an explicit lifecycle context plus typed runtime services for
+  auth, cache, logging, and configuration. It deliberately does not add a
+  generic Go-style dependency bag or claim that the current switchboard is
+  already a trait registry.
 
 ## Pending gates
 
