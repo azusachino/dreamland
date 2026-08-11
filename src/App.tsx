@@ -1189,7 +1189,6 @@ function App() {
           />
           <section className="content-heading">
             <div>
-              <p className="eyebrow">explore freely</p>
               <h2>{title}</h2>
               <p className="subtitle">{subtitle}</p>
             </div>
@@ -2044,9 +2043,6 @@ interface AccountPanelProps {
 function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favoritesHasNext, loading, authFlowStarted, onBeginAuth, onRefresh, onRetry, onLoadMore, onSelect, onDownload, favoriteSupported, favorited, favoriteUpdating, onFavorite, onTag, onSignOut }: AccountPanelProps) {
   return (
     <section className="workspace-panel shell-surface" aria-label="favorites account">
-      <div className="inspector-heading">
-        <div><p className="eyebrow">yandere account</p><h2>favorites</h2></div>
-      </div>
       {auth?.authenticated ? (
         <>
           <p className="account-connected"><span className="connection-dot" /> {auth.username ? `${auth.username} connected` : "yandere account connected"}</p>
