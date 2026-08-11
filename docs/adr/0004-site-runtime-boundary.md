@@ -17,6 +17,11 @@ application data, and downloads. React communicates through narrow,
 site-neutral Tauri commands and never receives arbitrary filesystem or
 network capabilities.
 
+Site-specific endpoint and protocol settings are owned by the corresponding
+adapter crate. Shared app settings contain only app-wide concerns such as the
+download root, content policy, and network resilience. They are not a second
+site configuration surface.
+
 The stable site ID for the Yande.re adapter is `yandere`. Site capabilities
 belong at the site boundary. Local favorites, tags, cache, and download
 records belong to Dreamland-owned runtime stores rather than site DTOs.

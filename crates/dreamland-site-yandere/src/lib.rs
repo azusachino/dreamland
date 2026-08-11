@@ -8,6 +8,7 @@ use dreamland_core::{
 use serde::{Deserialize, Serialize};
 
 pub const SITE_ID: &str = "yandere";
+const USER_AGENT: &str = concat!("Dreamland/", env!("CARGO_PKG_VERSION"));
 
 const DEFAULT_CONFIG_TOML: &str = include_str!("../config/default.toml");
 
@@ -275,7 +276,7 @@ pub async fn query_posts(
 }
 
 fn build_client(network: &NetworkPolicy) -> Result<reqwest::Client> {
-    let mut builder = reqwest::Client::builder();
+    let mut builder = reqwest::Client::builder().user_agent(USER_AGENT);
     match &network.proxy {
         ProxyMode::Auto => {}
         ProxyMode::Direct => builder = builder.no_proxy(),
@@ -642,6 +643,46 @@ mod tests {
         );
         assert!(!map_http_status(reqwest::StatusCode::UNAUTHORIZED).retryable);
         assert!(map_http_status(reqwest::StatusCode::SERVICE_UNAVAILABLE).retryable);
+    }
+
+    #[tokio::test]
+    async fn yande_client_identifies_dreamland() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        use std::thread;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            loop {
+                let count = stream.read(&mut buffer).unwrap();
+                request.extend_from_slice(&buffer[..count]);
+                if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n[]")
+                .unwrap();
+            request
+        });
+        let response = build_client(&NetworkPolicy {
+            proxy: ProxyMode::Direct,
+            ..NetworkPolicy::default()
+        })
+        .unwrap()
+        .get(format!("http://{address}/post.json"))
+        .send()
+        .await
+        .unwrap();
+        assert!(response.status().is_success());
+        let request = server.join().unwrap();
+        assert!(request
+            .windows(b"user-agent: dreamland/".len())
+            .any(|window| { window.eq_ignore_ascii_case(b"user-agent: dreamland/") }));
     }
 
     #[test]

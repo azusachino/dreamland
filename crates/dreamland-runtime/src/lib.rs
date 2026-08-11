@@ -5,6 +5,8 @@ mod sessions;
 use dreamland_core::{NetworkPolicy, ProxyMode};
 use tokio::io::AsyncWriteExt;
 
+const USER_AGENT: &str = concat!("Dreamland/", env!("CARGO_PKG_VERSION"));
+
 pub use config::{detect_proxy, AppConfig, ProxyDetection};
 pub use local_state::{
     DownloadCancellation, DownloadManager, DownloadRecord, DownloadRequest, DownloadStatus,
@@ -182,7 +184,7 @@ async fn download_file(
 }
 
 fn build_client(network: &NetworkPolicy) -> anyhow::Result<reqwest::Client> {
-    let mut builder = reqwest::Client::builder();
+    let mut builder = reqwest::Client::builder().user_agent(USER_AGENT);
     match &network.proxy {
         ProxyMode::Auto => {}
         ProxyMode::Direct => {
@@ -386,7 +388,7 @@ mod tests {
             },
         )
         .unwrap();
-        manager.spawn_worker();
+        tokio::spawn(manager.worker());
         let queued = manager
             .enqueue(DownloadRequest {
                 site: SiteId::new("yandere"),

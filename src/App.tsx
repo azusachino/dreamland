@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   detectProxy,
@@ -11,6 +11,7 @@ import {
   saveConfig,
   suggestTags,
   type AppConfig,
+  type ContentPolicy,
   type DiscoverySource,
   type DownloadRecord,
   type DownloadStatus,
@@ -23,6 +24,14 @@ import {
 
 type ViewMode = "latest" | "popular" | "search";
 type PopularPeriod = "Day" | "Week" | "Month";
+type ToastTone = "success" | "info" | "error";
+
+interface ToastState {
+  id: number;
+  title: string;
+  message: string;
+  tone: ToastTone;
+}
 
 function errorMessage(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);
@@ -30,6 +39,15 @@ function errorMessage(reason: unknown): string {
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function contentPolicyLabel(policy: ContentPolicy): string {
+  switch (policy) {
+    case "SafeOnly": return "Safe only";
+    case "AllowQuestionable": return "Safe + questionable";
+    case "AllowExplicit": return "All ratings";
+    case "ExplicitOnly": return "Explicit only";
+  }
 }
 
 function App() {
@@ -46,12 +64,24 @@ function App() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [toast, setToast] = useState<ToastState | null>(null);
+  const toastId = useRef(0);
+  const downloadStatuses = useRef(new Map<string, DownloadStatus>());
+
+  function showToast(title: string, message: string, tone: ToastTone = "success") {
+    const id = ++toastId.current;
+    setToast({ id, title, message, tone });
+    window.setTimeout(() => {
+      setToast((current) => current?.id === id ? null : current);
+    }, 4_500);
+  }
 
   const configQuery = useQuery({
     queryKey: ["config"],
     queryFn: loadConfig,
   });
   const pageSize = configQuery.data?.images_per_page ?? 20;
+  const contentPolicy = configQuery.data?.content_policy ?? "SafeOnly";
   const request = useMemo<PostQueryRequest>(() => {
     let source: DiscoverySource = "Browse";
     if (view === "popular") {
@@ -67,10 +97,12 @@ function App() {
     }
 
     return {
-      query: { source, content_policy: "SafeOnly" },
-      pagination: { Page: { number: page, page_size: pageSize } },
+      query: { source, content_policy: contentPolicy },
+      pagination: view === "popular"
+        ? "FixedWindow"
+        : { Page: { number: page, page_size: pageSize } },
     };
-  }, [page, pageSize, popularPeriod, submittedSearch, view]);
+  }, [contentPolicy, page, pageSize, popularPeriod, submittedSearch, view]);
   const imagesQuery = useQuery({
     queryKey: ["posts", request],
     queryFn: () => queryPosts(request),
@@ -82,6 +114,22 @@ function App() {
     enabled: configQuery.isSuccess,
     refetchInterval: 1_500,
   });
+  useEffect(() => {
+    if (!downloadsQuery.data) return;
+    for (const record of downloadsQuery.data) {
+      const previous = downloadStatuses.current.get(record.id);
+      if (previous && previous !== record.status) {
+        if (record.status === "Completed") {
+          showToast("Download complete", `Post #${record.post_id} is ready in Downloads.`);
+        } else if (record.status === "ExistingTarget") {
+          showToast("Already downloaded", `Post #${record.post_id} was not overwritten.`, "info");
+        } else if (record.status === "Failed") {
+          showToast("Download failed", record.error ?? `Post #${record.post_id} could not be saved.`, "error");
+        }
+      }
+      downloadStatuses.current.set(record.id, record.status);
+    }
+  }, [downloadsQuery.data]);
   const suggestionsQuery = useQuery({
     queryKey: ["tag-suggestions", searchDraft.trim()],
     queryFn: () => suggestTags(searchDraft.trim(), 7),
@@ -89,12 +137,13 @@ function App() {
     staleTime: 30_000,
   });
   const saveConfigMutation = useMutation({
-    mutationFn: ({ downloadPath, apiUrl, network }: ConfigInput) =>
-      saveConfig(downloadPath, apiUrl, network),
+    mutationFn: ({ downloadPath, contentPolicy, network }: ConfigInput) =>
+      saveConfig(downloadPath, contentPolicy, network),
     onSuccess: (nextConfig) => {
       queryClient.setQueryData(["config"], nextConfig);
       setSettingsOpen(false);
       setNotice("Settings saved");
+      showToast("Settings saved", "Your preferences are now active.");
     },
     onError: (reason) => setError(`Failed to save settings: ${errorMessage(reason)}`),
   });
@@ -102,7 +151,9 @@ function App() {
     mutationFn: ({ postId, variant }: DownloadInput) => enqueueDownload(postId, variant),
     onSuccess: (record) => {
       void queryClient.invalidateQueries({ queryKey: ["downloads"] });
+      downloadStatuses.current.set(record.id, record.status);
       setNotice(`Added post #${record.post_id} to the download queue`);
+      showToast("Download queued", `Post #${record.post_id} will be saved at the configured path.`);
     },
     onError: (reason) => setError(`Download failed: ${errorMessage(reason)}`),
   });
@@ -177,13 +228,13 @@ function App() {
 
   async function handleSaveConfig(
     downloadPath: string,
-    apiUrl: string,
+    contentPolicy: ContentPolicy,
     network: NetworkPolicy,
   ) {
     setError("");
     setNotice("");
     try {
-      await saveConfigMutation.mutateAsync({ downloadPath, apiUrl, network });
+      await saveConfigMutation.mutateAsync({ downloadPath, contentPolicy, network });
     } catch {
       // The mutation reports the user-facing error.
     }
@@ -294,14 +345,16 @@ function App() {
                   </select>
                 </label>
               )}
-              <span className="content-policy">Safe by default</span>
+              <span className="content-policy">{contentPolicyLabel(contentPolicy)}</span>
             </div>
           </section>
 
-          {(error || queryError) && <p className="message message-error" role="alert">{error || queryError}</p>}
+          {error && !queryError && <p className="message message-error" role="alert">{error}</p>}
           {notice && <p className="message message-success" role="status">{notice}</p>}
           {loading && <div className="loading-line" role="status"><span /> Finding something good…</div>}
-          {!loading && images.length === 0 ? (
+          {queryError ? (
+            <ErrorState message={queryError} onRetry={() => void imagesQuery.refetch()} />
+          ) : !loading && images.length === 0 ? (
             <div className="empty-state">
               <span className="empty-symbol" aria-hidden="true">✦</span>
               <h3>No posts found</h3>
@@ -321,15 +374,17 @@ function App() {
                   />
                 ))}
               </div>
-              <div className="pagination">
-                <button className="button button-outlined" disabled={loading || page <= 1} onClick={() => void requestPage(page - 1)}>
-                  Previous
-                </button>
-                <span>Page {page}</span>
-                <button className="button button-outlined" disabled={loading || images.length < pageSize} onClick={() => void requestPage(page + 1)}>
-                  Next
-                </button>
-              </div>
+              {view !== "popular" && (
+                <div className="pagination">
+                  <button className="button button-outlined" disabled={loading || page <= 1} onClick={() => void requestPage(page - 1)}>
+                    Previous
+                  </button>
+                  <span>Page {page}</span>
+                  <button className="button button-outlined" disabled={loading || images.length < pageSize} onClick={() => void requestPage(page + 1)}>
+                    Next
+                  </button>
+                </div>
+              )}
             </>
           )}
         </main>
@@ -366,13 +421,14 @@ function App() {
           }}
         />
       )}
+      {toast && <Toast state={toast} onClose={() => setToast(null)} />}
     </div>
   );
 }
 
 interface ConfigInput {
   downloadPath: string;
-  apiUrl: string;
+  contentPolicy: ContentPolicy;
   network: NetworkPolicy;
 }
 
@@ -397,6 +453,41 @@ function NavButton({ active, disabled, hint, icon, label, onClick }: NavButtonPr
       <span>{label}</span>
       {hint && <small>{hint}</small>}
     </button>
+  );
+}
+
+interface ErrorStateProps {
+  message: string;
+  onRetry: () => void;
+}
+
+function ErrorState({ message, onRetry }: ErrorStateProps) {
+  return (
+    <div className="error-state" role="alert">
+      <span className="error-symbol" aria-hidden="true">!</span>
+      <div>
+        <h3>Couldn’t load this feed</h3>
+        <p>{message.replace("Failed to load images: ", "")}</p>
+      </div>
+      <button className="button button-outlined" type="button" onClick={onRetry}>Try again</button>
+    </div>
+  );
+}
+
+interface ToastProps {
+  state: ToastState;
+  onClose: () => void;
+}
+
+function Toast({ state, onClose }: ToastProps) {
+  return (
+    <aside className={`toast toast-${state.tone}`} role="status" aria-live="polite">
+      <div>
+        <strong>{state.title}</strong>
+        <p>{state.message}</p>
+      </div>
+      <button className="icon-button" type="button" aria-label="Dismiss notification" onClick={onClose}>×</button>
+    </aside>
   );
 }
 
@@ -455,6 +546,7 @@ interface PostInspectorProps {
 
 function PostInspector({ post, downloading, onClose, onDownload, onTag }: PostInspectorProps) {
   const previewUrl = post.sample_url ?? post.full_url ?? post.preview_url;
+  const originalUrl = post.full_url ?? post.sample_url ?? post.preview_url;
   return (
     <aside className="detail-panel shell-surface" aria-label="Post details">
       <div className="inspector-heading">
@@ -467,6 +559,10 @@ function PostInspector({ post, downloading, onClose, onDownload, onTag }: PostIn
       <div className="detail-preview">
         {previewUrl ? <img src={previewUrl} alt={`Post ${post.post.id}`} /> : <span>Preview unavailable</span>}
       </div>
+      <div className="detail-summary">
+        <span>Yande.re post #{post.post.id}</span>
+        {originalUrl && <a href={originalUrl} target="_blank" rel="noreferrer">Open original</a>}
+      </div>
       <div className="inspector-section">
         <span className="section-label">Tags</span>
         <div className="tag-list">
@@ -474,11 +570,14 @@ function PostInspector({ post, downloading, onClose, onDownload, onTag }: PostIn
         </div>
       </div>
       <dl className="metadata">
+        <div><dt>Site</dt><dd>Yande.re</dd></div>
+        <div><dt>Post ID</dt><dd>{post.post.id}</dd></div>
         <div><dt>Rating</dt><dd>{post.rating}</dd></div>
         <div><dt>Size</dt><dd>{post.width ?? "?"}×{post.height ?? "?"}</dd></div>
         <div><dt>Score</dt><dd>{post.score ?? "—"}</dd></div>
         <div><dt>File size</dt><dd>{post.file_size ? `${Math.round(post.file_size / 1024)} KB` : "—"}</dd></div>
       </dl>
+      <p className="detail-helper">Tags and metadata come from the feed result. Yande does not expose a separate post-lookup operation in this release.</p>
       <button className="button button-primary button-wide" disabled={downloading} onClick={() => void onDownload(post)}>
         {downloading ? "Saving…" : "Download best quality"}
       </button>
@@ -553,12 +652,12 @@ function downloadStatusLabel(status: DownloadStatus): string {
 interface SettingsDialogProps {
   config: AppConfig | null;
   onCancel: () => void;
-  onSave: (downloadPath: string, apiUrl: string, network: NetworkPolicy) => Promise<void>;
+  onSave: (downloadPath: string, contentPolicy: ContentPolicy, network: NetworkPolicy) => Promise<void>;
 }
 
 function SettingsDialog({ config, onCancel, onSave }: SettingsDialogProps) {
-  const [apiUrl, setApiUrl] = useState(config?.api_url ?? "");
   const [downloadPath, setDownloadPath] = useState(config?.download_path ?? "");
+  const [contentPolicy, setContentPolicy] = useState<ContentPolicy>(config?.content_policy ?? "SafeOnly");
   const configuredProxy = config?.network.proxy ?? "Auto";
   const [proxyMode, setProxyMode] = useState<"Auto" | "Direct" | "Manual">(
     typeof configuredProxy === "string" ? configuredProxy : "Manual",
@@ -575,7 +674,7 @@ function SettingsDialog({ config, onCancel, onSave }: SettingsDialogProps) {
     event.preventDefault();
     setSaving(true);
     const proxy: ProxyMode = proxyMode === "Manual" ? { Manual: { url: proxyUrl } } : proxyMode;
-    await onSave(downloadPath, apiUrl, { proxy, max_retries: maxRetries, retry_delay_ms: retryDelayMs, max_retry_delay_ms: maxRetryDelayMs });
+    await onSave(downloadPath, contentPolicy, { proxy, max_retries: maxRetries, retry_delay_ms: retryDelayMs, max_retry_delay_ms: maxRetryDelayMs });
     setSaving(false);
   }
 
@@ -602,8 +701,16 @@ function SettingsDialog({ config, onCancel, onSave }: SettingsDialogProps) {
         </div>
         <div className="settings-section">
           <p className="section-label">Storage & site</p>
-          <label className="field">API URL<input required value={apiUrl} onChange={(event) => setApiUrl(event.target.value)} /></label>
           <label className="field">Download path<input required value={downloadPath} onChange={(event) => setDownloadPath(event.target.value)} /></label>
+          <label className="field">Content policy
+            <select value={contentPolicy} onChange={(event) => setContentPolicy(event.target.value as ContentPolicy)}>
+              <option value="SafeOnly">Safe only (default)</option>
+              <option value="AllowQuestionable">Allow questionable</option>
+              <option value="AllowExplicit">Allow explicit</option>
+              <option value="ExplicitOnly">Explicit only</option>
+            </select>
+          </label>
+          <p className="helper-text">This controls which ratings appear in feeds and searches.</p>
         </div>
         <div className="settings-section">
           <p className="section-label">Connection resilience</p>

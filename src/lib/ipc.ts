@@ -21,8 +21,8 @@ export interface PostRef {
 
 export interface AppConfig {
   download_path: string;
-  api_url: string;
   images_per_page: number;
+  content_policy: ContentPolicy;
   network: NetworkPolicy;
 }
 
@@ -121,10 +121,10 @@ export function loadConfig(): Promise<AppConfig> {
 
 export function saveConfig(
   downloadPath: string,
-  apiUrl: string,
+  contentPolicy: ContentPolicy,
   network: NetworkPolicy,
 ): Promise<AppConfig> {
-  return invoke<AppConfig>("save_config", { downloadPath, apiUrl, network });
+  return invoke<AppConfig>("save_config", { downloadPath, contentPolicy, network });
 }
 
 export function detectProxy(): Promise<ProxyDetection> {

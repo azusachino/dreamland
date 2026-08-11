@@ -1,6 +1,7 @@
 # Rust and Tauri build output
 target/
 dist/
+src-tauri/gen/
 
 # Frontend dependencies
 node_modules/

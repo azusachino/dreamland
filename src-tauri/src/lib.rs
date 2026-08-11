@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use dreamland_core::{
-    MediaVariant, NetworkPolicy, Post, PostQueryRequest, QuerySessionId, SiteId, SitePage,
-    TagSuggestion, TagSuggestionRequest,
+    ContentPolicy, MediaVariant, NetworkPolicy, Post, PostQueryRequest, QuerySessionId, SiteId,
+    SitePage, TagSuggestion, TagSuggestionRequest,
 };
 use dreamland_runtime::{AppConfig, DownloadRecord, DownloadRequest};
 use dreamland_sites::SiteDescriptor;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::{Manager, State};
 
 /// Posts from the most recent typed query, keyed by post id. Downloads resolve
@@ -45,33 +45,52 @@ struct TagSuggestionInput {
     request: TagSuggestionRequest,
 }
 
+#[derive(Debug, Serialize)]
+struct AppConfigView {
+    download_path: String,
+    images_per_page: usize,
+    content_policy: ContentPolicy,
+    network: NetworkPolicy,
+}
+
+impl From<&AppConfig> for AppConfigView {
+    fn from(config: &AppConfig) -> Self {
+        Self {
+            download_path: config.download_path.to_string_lossy().into_owned(),
+            images_per_page: config.images_per_page,
+            content_policy: config.content_policy,
+            network: config.network.clone(),
+        }
+    }
+}
+
 #[tauri::command]
 fn list_sites() -> Vec<SiteDescriptor> {
     dreamland_sites::descriptors()
 }
 
 #[tauri::command]
-fn load_config() -> Result<AppConfig, String> {
-    AppConfig::load_or_default(
-        &dreamland_sites::default_api_url(dreamland_sites::DEFAULT_SITE_ID)
-            .expect("the active default site must provide a default API URL"),
-    )
-    .map_err(|error| error.to_string())
+fn load_config() -> Result<AppConfigView, String> {
+    let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
+    Ok(AppConfigView::from(&config))
 }
 
 #[tauri::command]
 fn save_config(
     state: State<'_, RuntimeState>,
     download_path: String,
-    api_url: String,
+    content_policy: ContentPolicy,
     network: NetworkPolicy,
-) -> Result<AppConfig, String> {
+) -> Result<AppConfigView, String> {
+    let current = AppConfig::load_or_default().map_err(|error| error.to_string())?;
     let mut config =
-        AppConfig::from_user_input(download_path, api_url).map_err(|error| error.to_string())?;
+        AppConfig::from_user_input(download_path).map_err(|error| error.to_string())?;
+    config.images_per_page = current.images_per_page;
+    config.content_policy = content_policy;
     config.network = network.clone();
     config.save().map_err(|error| error.to_string())?;
     state.downloads.set_network_policy(network);
-    Ok(config)
+    Ok(AppConfigView::from(&config))
 }
 
 #[tauri::command]
@@ -102,18 +121,10 @@ async fn execute_session_query(
     session: dreamland_runtime::QuerySession,
     operation: dreamland_runtime::SessionOperation,
 ) -> Result<SitePage, String> {
-    let config = AppConfig::load_or_default(
-        &dreamland_sites::default_api_url(dreamland_sites::DEFAULT_SITE_ID)
-            .expect("the active default site must provide a default API URL"),
-    )
-    .map_err(|error| error.to_string())?;
-    let result = dreamland_sites::query_posts(
-        session.site.as_str(),
-        &config.api_url,
-        &session.request,
-        &config.network,
-    )
-    .await;
+    let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
+    let result =
+        dreamland_sites::query_posts(session.site.as_str(), &session.request, &config.network)
+            .await;
     let mut page = match result {
         Ok(page) => page,
         Err(error) => {
@@ -172,19 +183,10 @@ async fn suggest_tags(input: TagSuggestionInput) -> Result<Vec<TagSuggestion>, S
             input.site.as_str()
         ));
     }
-    let config = AppConfig::load_or_default(
-        &dreamland_sites::default_api_url(dreamland_sites::DEFAULT_SITE_ID)
-            .expect("the active default site must provide a default API URL"),
-    )
-    .map_err(|error| error.to_string())?;
-    dreamland_sites::suggest_tags(
-        input.site.as_str(),
-        &config.api_url,
-        &input.request,
-        &config.network,
-    )
-    .await
-    .map_err(|error| error.to_string())
+    let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
+    dreamland_sites::suggest_tags(input.site.as_str(), &input.request, &config.network)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -206,11 +208,7 @@ async fn enqueue_download(
             .cloned()
             .ok_or_else(|| "post not found; reload images before downloading".to_string())?
     };
-    let config = AppConfig::load_or_default(
-        &dreamland_sites::default_api_url(dreamland_sites::DEFAULT_SITE_ID)
-            .expect("the active default site must provide a default API URL"),
-    )
-    .map_err(|error| error.to_string())?;
+    let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
     let url = dreamland_sites::resolve_media_url(&site_id, &post, variant).ok_or_else(|| {
         format!(
             "requested {variant:?} variant is unavailable for post {}",
@@ -265,16 +263,15 @@ async fn list_downloads(
 }
 
 pub fn run() {
-    let default_url = dreamland_sites::default_api_url(dreamland_sites::DEFAULT_SITE_ID)
-        .expect("the active default site must provide a default API URL");
-    let config = AppConfig::load_or_default(&default_url)
-        .expect("Dreamland runtime configuration must be loadable");
+    let config =
+        AppConfig::load_or_default().expect("Dreamland runtime configuration must be loadable");
     let runtime_state =
         RuntimeState::new(&config).expect("Dreamland local SQLite state must be initializable");
     tauri::Builder::default()
         .manage(runtime_state)
         .setup(|app| {
-            app.state::<RuntimeState>().downloads.spawn_worker();
+            let downloads = app.state::<RuntimeState>().downloads.clone();
+            tauri::async_runtime::spawn(downloads.worker());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

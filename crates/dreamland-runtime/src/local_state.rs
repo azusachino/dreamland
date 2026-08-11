@@ -429,9 +429,9 @@ impl DownloadManager {
         })
     }
 
-    pub fn spawn_worker(&self) {
+    pub fn worker(&self) -> impl std::future::Future<Output = ()> + Send + 'static {
         let manager = self.clone();
-        tokio::spawn(async move { manager.run_worker().await });
+        async move { manager.run_worker().await }
     }
 
     pub fn set_network_policy(&self, network: NetworkPolicy) {

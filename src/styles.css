@@ -442,6 +442,44 @@ select:focus-visible {
   color: var(--success);
 }
 
+.toast {
+  align-items: flex-start;
+  background: var(--glass-fallback);
+  border: 1px solid var(--outline-strong);
+  border-left: 0.25rem solid var(--success);
+  border-radius: var(--radius-md);
+  bottom: 1.5rem;
+  box-shadow: var(--shadow);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  max-width: min(28rem, calc(100vw - 2rem));
+  padding: 0.9rem 1rem;
+  position: fixed;
+  right: 1.5rem;
+  width: 28rem;
+  z-index: 30;
+}
+
+.toast-info {
+  border-left-color: var(--primary);
+}
+
+.toast-error {
+  border-left-color: var(--danger);
+}
+
+.toast strong {
+  display: block;
+  font-size: 0.82rem;
+}
+
+.toast p {
+  color: var(--ink-muted);
+  font-size: 0.74rem;
+  margin: 0.25rem 0 0;
+}
+
 .loading-line {
   align-items: center;
   color: var(--ink-muted);
@@ -614,6 +652,45 @@ select:focus-visible {
   margin: 0;
 }
 
+.error-state {
+  align-items: center;
+  background: rgb(255 180 171 / 8%);
+  border: 1px solid rgb(255 180 171 / 35%);
+  border-radius: var(--radius-lg);
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding: 1rem 1.15rem;
+}
+
+.error-symbol {
+  align-items: center;
+  background: var(--danger);
+  border-radius: 50%;
+  color: var(--surface);
+  display: flex;
+  flex: 0 0 1.7rem;
+  font-weight: 800;
+  height: 1.7rem;
+  justify-content: center;
+}
+
+.error-state h3 {
+  font-size: 0.95rem;
+  margin: 0 0 0.25rem;
+}
+
+.error-state p {
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  margin: 0;
+}
+
+.error-state .button {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
 .detail-panel {
   align-self: start;
   border-radius: var(--radius-lg);
@@ -746,6 +823,27 @@ select:focus-visible {
   height: 100%;
   object-fit: contain;
   width: 100%;
+}
+
+.detail-summary {
+  align-items: center;
+  color: var(--ink-muted);
+  display: flex;
+  font-size: 0.72rem;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.detail-summary a {
+  color: var(--primary);
+  white-space: nowrap;
+}
+
+.detail-helper {
+  color: var(--ink-subtle);
+  font-size: 0.7rem;
+  line-height: 1.45;
+  margin: 0;
 }
 
 .inspector-section,

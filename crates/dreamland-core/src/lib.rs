@@ -106,6 +106,12 @@ pub enum ContentPolicy {
     ExplicitOnly,
 }
 
+impl Default for ContentPolicy {
+    fn default() -> Self {
+        Self::SafeOnly
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SiteErrorCode {
     InvalidRequest,

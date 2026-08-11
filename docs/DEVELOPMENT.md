@@ -57,8 +57,8 @@ Architecture rationale is recorded in [DECISIONS.md](DECISIONS.md) and
   prerequisites before running the desktop build.
 - **Windows setup:** use a native Windows environment or CI runner with the
   pinned Rust and Bun versions and the native Tauri build prerequisites.
-- **Network errors:** check the configured API URL, use Settings → Detect
-  proxy, and choose Direct or Manual proxy if Auto is wrong. GET requests
+- **Network errors:** check the active site's bundled endpoint, use Settings →
+  Detect proxy, and choose Direct or Manual proxy if Auto is wrong. GET requests
   retry bounded 429/temporary responses and honor numeric `Retry-After` hints.
 - **Permission errors:** ensure the configured download directory is writable.
 - **Configuration reset:** remove `config.json` from the platform configuration
