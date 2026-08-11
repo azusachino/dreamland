@@ -5,7 +5,7 @@ use std::sync::Mutex;
 
 use dreamland_core::{
     ContentPolicy, MediaVariant, NetworkPolicy, PoolPage, Post, PostQueryRequest, QuerySessionId,
-    SiteId, SitePage, TagSuggestion, TagSuggestionRequest,
+    SavedQuery, SiteId, SitePage, TagSuggestion, TagSuggestionRequest,
 };
 use dreamland_runtime::{AppConfig, DownloadRecord, DownloadRequest};
 use dreamland_sites::SiteDescriptor;
@@ -289,6 +289,39 @@ async fn list_favorites(
 }
 
 #[tauri::command]
+async fn list_saved_queries(state: State<'_, RuntimeState>) -> Result<Vec<SavedQuery>, String> {
+    state
+        .downloads
+        .saved_queries()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn save_saved_query(
+    state: State<'_, RuntimeState>,
+    saved: SavedQuery,
+) -> Result<SavedQuery, String> {
+    if saved.site.as_str() != dreamland_sites::DEFAULT_SITE_ID {
+        return Err(format!("site '{}' is not active", saved.site.as_str()));
+    }
+    state
+        .downloads
+        .save_saved_query(saved)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn delete_saved_query(state: State<'_, RuntimeState>, id: String) -> Result<(), String> {
+    state
+        .downloads
+        .delete_saved_query(&id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 async fn set_favorite(
     state: State<'_, RuntimeState>,
     post_id: String,
@@ -540,6 +573,9 @@ pub fn run() {
             list_pools,
             query_pool_posts,
             list_favorites,
+            list_saved_queries,
+            save_saved_query,
+            delete_saved_query,
             set_favorite,
             query_posts,
             continue_query,

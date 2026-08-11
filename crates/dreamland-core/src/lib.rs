@@ -44,6 +44,17 @@ pub struct ReplayableQuery {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SavedQuery {
+    pub id: String,
+    pub site: SiteId,
+    pub name: String,
+    pub query: ReplayableQuery,
+    pub pinned: bool,
+    pub position: u32,
+    pub updated_at_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TagSuggestionRequest {
     pub query: String,
     pub limit: u16,

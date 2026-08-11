@@ -75,6 +75,19 @@ export interface PostQueryRequest {
   pagination: PaginationRequest;
 }
 
+export interface SavedQuery {
+  id: string;
+  site: string;
+  name: string;
+  query: {
+    source: DiscoverySource;
+    content_policy: ContentPolicy;
+  };
+  pinned: boolean;
+  position: number;
+  updated_at_ms: number;
+}
+
 export interface SitePage {
   posts: Post[];
   continuation: "None" | { Next: string };
@@ -177,6 +190,18 @@ export function setFavorite(postId: string, favorite: boolean): Promise<void> {
 
 export function listFavorites(page = 1, pageSize = 20): Promise<SitePage> {
   return invoke<SitePage>("list_favorites", { page, pageSize });
+}
+
+export function listSavedQueries(): Promise<SavedQuery[]> {
+  return invoke<SavedQuery[]>("list_saved_queries");
+}
+
+export function saveSavedQuery(saved: SavedQuery): Promise<SavedQuery> {
+  return invoke<SavedQuery>("save_saved_query", { saved });
+}
+
+export function deleteSavedQuery(id: string): Promise<void> {
+  return invoke<void>("delete_saved_query", { id });
 }
 
 export function queryDefaultPosts(page: number): Promise<Post[]> {

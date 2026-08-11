@@ -7,7 +7,7 @@ use std::sync::{
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{bail, Context, Result};
-use dreamland_core::{MediaVariant, NetworkPolicy, Post, SiteId};
+use dreamland_core::{MediaVariant, NetworkPolicy, Post, ReplayableQuery, SavedQuery, SiteId};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
@@ -151,6 +151,25 @@ impl LocalStateStore {
                 CREATE INDEX IF NOT EXISTS idx_download_history_updated
                     ON download_history (updated_at_ms DESC);
                 PRAGMA user_version = 1;
+                ",
+            )?;
+        }
+        if version < 2 {
+            connection.execute_batch(
+                "
+                CREATE TABLE IF NOT EXISTS saved_queries (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    site_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    query_json TEXT NOT NULL,
+                    pinned INTEGER NOT NULL DEFAULT 0,
+                    position INTEGER NOT NULL DEFAULT 0,
+                    created_at_ms INTEGER NOT NULL,
+                    updated_at_ms INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_saved_queries_order
+                    ON saved_queries (pinned DESC, position ASC, updated_at_ms DESC);
+                PRAGMA user_version = 2;
                 ",
             )?;
         }
@@ -391,6 +410,62 @@ impl LocalStateStore {
         )
     }
 
+    pub fn saved_queries(&self) -> Result<Vec<SavedQuery>> {
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT id, site_id, name, query_json, pinned, position, updated_at_ms
+             FROM saved_queries
+             ORDER BY pinned DESC, position ASC, updated_at_ms DESC, id ASC",
+        )?;
+        let rows = statement.query_map([], decode_saved_query)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .context("decode saved queries")
+            .map_err(Into::into)
+    }
+
+    pub fn save_saved_query(&self, mut saved: SavedQuery) -> Result<SavedQuery> {
+        let name = saved.name.trim();
+        if name.is_empty() {
+            bail!("saved query name cannot be empty");
+        }
+        saved.name = name.to_owned();
+        if saved.id.is_empty() {
+            saved.id = uuid::Uuid::new_v4().to_string();
+        }
+        let now = now_ms();
+        saved.updated_at_ms = now;
+        let query_json = serde_json::to_string(&saved.query)?;
+        let connection = self.connection()?;
+        connection.execute(
+            "INSERT INTO saved_queries
+                (id, site_id, name, query_json, pinned, position, created_at_ms, updated_at_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+             ON CONFLICT(id) DO UPDATE SET
+                site_id = excluded.site_id,
+                name = excluded.name,
+                query_json = excluded.query_json,
+                pinned = excluded.pinned,
+                position = excluded.position,
+                updated_at_ms = excluded.updated_at_ms",
+            params![
+                saved.id,
+                saved.site.as_str(),
+                saved.name,
+                query_json,
+                saved.pinned,
+                saved.position,
+                now,
+            ],
+        )?;
+        Ok(saved)
+    }
+
+    pub fn delete_saved_query(&self, id: &str) -> Result<()> {
+        let connection = self.connection()?;
+        connection.execute("DELETE FROM saved_queries WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
     fn list_from(&self, query: &str, limit: u32, offset: u32) -> Result<Vec<DownloadRecord>> {
         let connection = self.connection()?;
         let mut statement = connection.prepare(query)?;
@@ -513,6 +588,22 @@ impl DownloadManager {
     pub async fn history_page(&self, limit: u32, offset: u32) -> Result<Vec<DownloadRecord>> {
         let store = self.store.clone();
         tokio::task::spawn_blocking(move || store.history_page(limit, offset)).await?
+    }
+
+    pub async fn saved_queries(&self) -> Result<Vec<SavedQuery>> {
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || store.saved_queries()).await?
+    }
+
+    pub async fn save_saved_query(&self, saved: SavedQuery) -> Result<SavedQuery> {
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || store.save_saved_query(saved)).await?
+    }
+
+    pub async fn delete_saved_query(&self, id: &str) -> Result<()> {
+        let store = self.store.clone();
+        let id = id.to_owned();
+        tokio::task::spawn_blocking(move || store.delete_saved_query(&id)).await?
     }
 
     async fn run_worker(self) {
@@ -690,6 +781,31 @@ fn decode_stored_download(row: &Row<'_>) -> rusqlite::Result<StoredDownload> {
     })
 }
 
+fn decode_saved_query(row: &Row<'_>) -> rusqlite::Result<SavedQuery> {
+    let query_json: String = row.get(3)?;
+    let query = serde_json::from_str::<ReplayableQuery>(&query_json).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(3, rusqlite::types::Type::Text, Box::new(error))
+    })?;
+    Ok(SavedQuery {
+        id: row.get(0)?,
+        site: SiteId::new(row.get::<_, String>(1)?),
+        name: row.get(2)?,
+        query,
+        pinned: row.get::<_, i64>(4)? != 0,
+        position: row.get::<_, i64>(5)?.try_into().map_err(|_| {
+            rusqlite::Error::FromSqlConversionFailure(
+                5,
+                rusqlite::types::Type::Integer,
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "saved query position is negative",
+                )),
+            )
+        })?,
+        updated_at_ms: row.get(6)?,
+    })
+}
+
 fn variant_name(variant: MediaVariant) -> &'static str {
     match variant {
         MediaVariant::Preview => "Preview",
@@ -776,6 +892,34 @@ mod tests {
         assert_eq!(record.status, DownloadStatus::Queued);
         assert_eq!(store.active(10).unwrap().len(), 1);
         assert!(store.history(10).unwrap().is_empty());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn saved_queries_round_trip_and_delete() {
+        let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
+        let store = LocalStateStore::open(&path).unwrap();
+        let saved = store
+            .save_saved_query(SavedQuery {
+                id: String::new(),
+                site: SiteId::new("yandere"),
+                name: "Pinned blue search".to_owned(),
+                query: ReplayableQuery {
+                    source: dreamland_core::DiscoverySource::Search {
+                        expression: "blue_eyes".to_owned(),
+                    },
+                    content_policy: dreamland_core::ContentPolicy::SafeOnly,
+                },
+                pinned: true,
+                position: 0,
+                updated_at_ms: 0,
+            })
+            .unwrap();
+        let listed = store.saved_queries().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0], saved);
+        store.delete_saved_query(&saved.id).unwrap();
+        assert!(store.saved_queries().unwrap().is_empty());
         std::fs::remove_file(path).unwrap();
     }
 
