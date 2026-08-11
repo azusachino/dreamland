@@ -1405,12 +1405,6 @@ select:focus-visible {
   flex: 1 1 14rem;
 }
 
-.detail-author-chip {
-  background: var(--secondary);
-  color: var(--primary-ink);
-  font-weight: 750;
-}
-
 .detail-related-actions {
   display: flex;
   flex-wrap: wrap;

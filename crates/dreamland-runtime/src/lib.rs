@@ -6,6 +6,7 @@ use dreamland_core::{NetworkPolicy, ProxyMode};
 use tokio::io::AsyncWriteExt;
 
 const USER_AGENT: &str = concat!("Dreamland/", env!("CARGO_PKG_VERSION"));
+const DETAIL_IMAGE_EXTENSIONS: [&str; 7] = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "avif"];
 
 pub use config::{detect_proxy, AppConfig, ProxyDetection};
 pub use local_state::{
@@ -15,7 +16,9 @@ pub use local_state::{
 pub use sessions::{QuerySession, QuerySessionStore, SessionOperation};
 
 pub fn default_state_path() -> std::path::PathBuf {
-    dirs::data_local_dir()
+    std::env::var_os("XDG_DATA_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(dirs::data_local_dir)
         .or_else(dirs::data_dir)
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("dreamland")
@@ -23,10 +26,50 @@ pub fn default_state_path() -> std::path::PathBuf {
 }
 
 pub fn default_cache_path() -> std::path::PathBuf {
-    dirs::cache_dir()
+    std::env::var_os("XDG_CACHE_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(dirs::cache_dir)
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("dreamland")
         .join("downloads")
+}
+
+pub fn default_log_path() -> std::path::PathBuf {
+    std::env::var_os("XDG_STATE_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(dirs::data_local_dir)
+        .or_else(dirs::data_dir)
+        .or_else(dirs::cache_dir)
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("dreamland")
+        .join("logs")
+        .join("dreamland.log")
+}
+
+fn log_detail_event(event: &str) {
+    let path = default_log_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        use std::io::Write;
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let _ = writeln!(file, "{timestamp} detail_image {event}");
+    }
+}
+
+pub fn log_detail_failure(site_id: &str, post_id: &str, error: &str) {
+    let error = error.replace(['\r', '\n'], " ");
+    log_detail_event(&format!(
+        "failure site={site_id} post={post_id} error={error}"
+    ));
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,6 +92,9 @@ pub async fn download_image(
     validate_path_component(site_id, "site")?;
     let posts_dir = download_dir.join(site_id).join("posts");
     tokio::fs::create_dir_all(&posts_dir).await?;
+    if let Some(path) = existing_image_path(&posts_dir, identifier).await? {
+        return Ok(DownloadOutcome::ExistingTarget(path));
+    }
     match download_file(
         url,
         site_id,
@@ -150,9 +196,20 @@ pub async fn cache_detail_image(
     post_id: &str,
     network: &NetworkPolicy,
 ) -> anyhow::Result<std::path::PathBuf> {
-    let cache_root = default_cache_path().join("detail");
-    let staging_root = default_cache_path().join("detail-staging");
-    match download_image(
+    validate_image_identifier(post_id)?;
+    validate_path_component(site_id, "site")?;
+    let cache_root = detail_cache_path();
+    let posts_dir = cache_root.join(site_id).join("posts");
+    if let Some(path) = existing_image_path(&posts_dir, post_id).await? {
+        log_detail_event(&format!(
+            "cache_hit site={site_id} post={post_id} path={}",
+            path.display()
+        ));
+        return Ok(path);
+    }
+    let staging_root = detail_cache_staging_path();
+    log_detail_event(&format!("cache_miss site={site_id} post={post_id}"));
+    let result = download_image(
         url,
         site_id,
         post_id,
@@ -161,11 +218,38 @@ pub async fn cache_detail_image(
         network,
         &crate::DownloadCancellation::default(),
     )
-    .await?
-    {
-        DownloadOutcome::Completed(path) | DownloadOutcome::ExistingTarget(path) => Ok(path),
+    .await?;
+    match result {
+        DownloadOutcome::Completed(path) | DownloadOutcome::ExistingTarget(path) => {
+            log_detail_event(&format!(
+                "downloaded site={site_id} post={post_id} path={}",
+                path.display()
+            ));
+            Ok(path)
+        }
         DownloadOutcome::Cancelled => anyhow::bail!("detail image request was cancelled"),
     }
+}
+
+fn detail_cache_path() -> std::path::PathBuf {
+    default_cache_path().with_file_name("detail")
+}
+
+fn detail_cache_staging_path() -> std::path::PathBuf {
+    default_cache_path().with_file_name("detail-staging")
+}
+
+async fn existing_image_path(
+    posts_dir: &std::path::Path,
+    identifier: &str,
+) -> anyhow::Result<Option<std::path::PathBuf>> {
+    for extension in DETAIL_IMAGE_EXTENSIONS {
+        let path = posts_dir.join(format!("{identifier}.{extension}"));
+        if tokio::fs::try_exists(&path).await? {
+            return Ok(Some(path));
+        }
+    }
+    Ok(None)
 }
 
 async fn download_file(
@@ -459,9 +543,8 @@ mod tests {
             .await
             .unwrap();
         tokio::fs::write(&target, b"original").await.unwrap();
-        let (url, server) = image_server();
         let outcome = download_image(
-            &url,
+            "http://127.0.0.1:1/unreachable.png",
             "yandere",
             "123",
             &root,
@@ -474,9 +557,39 @@ mod tests {
         )
         .await
         .unwrap();
-        server.join().unwrap();
         assert_eq!(outcome, DownloadOutcome::ExistingTarget(target.clone()));
         assert_eq!(tokio::fs::read(target).await.unwrap(), b"original");
+        let _ = tokio::fs::remove_dir_all(root).await;
+        let _ = tokio::fs::remove_dir_all(cache).await;
+    }
+
+    #[tokio::test]
+    async fn existing_image_target_does_not_require_remote_request() {
+        let root = std::env::temp_dir().join(format!("dreamland-root-{}", uuid::Uuid::new_v4()));
+        let cache = std::env::temp_dir().join(format!("dreamland-cache-{}", uuid::Uuid::new_v4()));
+        let target = root.join("yandere/posts/123.jpg");
+        tokio::fs::create_dir_all(target.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&target, b"cached").await.unwrap();
+
+        let outcome = download_image(
+            "http://127.0.0.1:1/unreachable.jpg",
+            "yandere",
+            "123",
+            &root,
+            &cache,
+            &NetworkPolicy {
+                proxy: ProxyMode::Direct,
+                ..NetworkPolicy::default()
+            },
+            &DownloadCancellation::default(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(outcome, DownloadOutcome::ExistingTarget(target.clone()));
+        assert_eq!(tokio::fs::read(target).await.unwrap(), b"cached");
         let _ = tokio::fs::remove_dir_all(root).await;
         let _ = tokio::fs::remove_dir_all(cache).await;
     }

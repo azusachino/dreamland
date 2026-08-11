@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
 
-use base64::Engine;
 use dreamland_core::{
     ContentPolicy, MediaVariant, NetworkPolicy, PoolPage, Post, PostQueryRequest, QuerySessionId,
     SavedQuery, SiteId, SitePage, TagSuggestion, TagSuggestionRequest,
@@ -611,36 +610,36 @@ async fn load_detail_image(
     post_id: String,
 ) -> Result<String, String> {
     if !dreamland_sites::is_active_browse_site(&site_id) {
-        return Err(format!(
-            "'{site_id}' is not a registered, browse-capable site"
-        ));
+        let error = format!("'{site_id}' is not a registered, browse-capable site");
+        dreamland_runtime::log_detail_failure(&site_id, &post_id, &error);
+        return Err(error);
     }
     let source_url = {
         let posts = state.posts.lock().expect("post cache lock poisoned");
-        posts
+        match posts
             .get(&post_cache_key(&site_id, &post_id))
             .and_then(|post| post.full_url.clone())
-            .ok_or_else(|| "full image URL is unavailable for this post".to_owned())?
+        {
+            Some(url) => url,
+            None => {
+                let error = "full image URL is unavailable for this post".to_owned();
+                dreamland_runtime::log_detail_failure(&site_id, &post_id, &error);
+                return Err(error);
+            }
+        }
     };
-    let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
-    let path =
-        dreamland_runtime::cache_detail_image(&source_url, &site_id, &post_id, &config.network)
-            .await
-            .map_err(|error| error.to_string())?;
-    let bytes = tokio::fs::read(&path)
+    let config = AppConfig::load_or_default().map_err(|error| {
+        let error = error.to_string();
+        dreamland_runtime::log_detail_failure(&site_id, &post_id, &error);
+        error
+    })?;
+    dreamland_runtime::cache_detail_image(&source_url, &site_id, &post_id, &config.network)
         .await
-        .map_err(|error| error.to_string())?;
-    let mime = match path.extension().and_then(|value| value.to_str()) {
-        Some("png") => "image/png",
-        Some("gif") => "image/gif",
-        Some("webp") => "image/webp",
-        Some("bmp") => "image/bmp",
-        _ => "image/jpeg",
-    };
-    Ok(format!(
-        "data:{mime};base64,{}",
-        base64::engine::general_purpose::STANDARD.encode(bytes)
-    ))
+        .map(|path| path.to_string_lossy().into_owned())
+        .map_err(|error| {
+            dreamland_runtime::log_detail_failure(&site_id, &post_id, &error.to_string());
+            error.to_string()
+        })
 }
 
 #[tauri::command]

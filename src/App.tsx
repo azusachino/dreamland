@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   authStatus,
@@ -1691,7 +1692,7 @@ interface PostInspectorProps {
 }
 
 function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onOpenPost, onOpenSimilarSearch, similarSearchSupported, onDownload, onFavorite, onTag, relatedTagsSupported, relatedTagsOpen, relatedTags, relatedTagsLoading, relatedTagsError, onToggleRelatedTags, downloadVariant }: PostInspectorProps) {
-  const originalUrl = post.full_url ?? post.sample_url ?? post.preview_url;
+  const originalUrl = post.full_url;
   return (
     <div className="detail-overlay" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose();
@@ -1736,8 +1737,7 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
           </div>
           <div className="detail-explore">
             <span className="section-label">explore</span>
-            <div className="tag-list" aria-label="post tags and author">
-              {post.author && <button className="tag-chip detail-author-chip" type="button" title="search posts by this author" onClick={() => onTag(`user:${post.author}`)}>author: {post.author}</button>}
+            <div className="tag-list" aria-label="post tags">
               {post.tags.map((tag) => <button key={tag} className="tag-chip" type="button" onClick={() => onTag(tag)}>{tag}</button>)}
             </div>
             {relatedTagsSupported && (
@@ -1771,7 +1771,6 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
               <dl className="metadata">
                 <div><dt>site</dt><dd>{siteName}</dd></div>
                 <div><dt>post id</dt><dd>{post.post.id}</dd></div>
-                <div><dt>author</dt><dd>{post.author ?? "—"}{post.creator_id ? ` · #${post.creator_id}` : ""}</dd></div>
                 <div><dt>rating</dt><dd>{post.rating.toLowerCase()}</dd></div>
                 <div><dt>size</dt><dd>{post.width ?? "?"}×{post.height ?? "?"}</dd></div>
                 <div><dt>score</dt><dd>{post.score ?? "—"}</dd></div>
@@ -1801,8 +1800,8 @@ function DetailImage({ post }: { post: Post }) {
     setLoaded(false);
     setError(null);
     void loadDetailImage(post.post.site, post.post.id)
-      .then((dataUrl) => {
-        if (active) setSource(dataUrl);
+      .then((cachedPath) => {
+        if (active) setSource(convertFileSrc(cachedPath));
       })
       .catch((reason) => {
         if (active) setError(errorMessage(reason));
