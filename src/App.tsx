@@ -1695,90 +1695,96 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
     <div className="detail-overlay" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}>
-    <aside className="detail-panel shell-surface" role="dialog" aria-modal="true" aria-label="post details" onMouseDown={(event) => event.stopPropagation()}>
-      <div className="inspector-heading">
-        <div>
-          <p className="eyebrow">post details</p>
-          <h2>#{post.post.id}</h2>
+      <aside className="detail-panel" role="dialog" aria-modal="true" aria-label="post details" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="detail-stage">
+          <div className="detail-stage-heading">
+            <div>
+              <p className="eyebrow">post details</p>
+              <h2>#{post.post.id}</h2>
+            </div>
+            <button className="icon-button" type="button" aria-label="close details" onClick={onClose}><Icon name="close" /></button>
+          </div>
+          <div className="detail-preview">
+            <DetailImage key={post.post.id} post={post} />
+          </div>
+          <div className="detail-navigation" aria-label="post preview navigation">
+            <button className="icon-button detail-nav-button" type="button" aria-label="previous post" title="previous post" disabled={!canGoPrevious} onClick={onPrevious}><Icon name="back" /></button>
+            <span>{previewPosition && previewTotal ? `${previewPosition} of ${previewTotal}` : "single post"}</span>
+            <button className="icon-button detail-nav-button" type="button" aria-label="next post" title="next post" disabled={!canGoNext} onClick={onNext}><Icon name="forward" /></button>
+          </div>
         </div>
-        <button className="icon-button" type="button" aria-label="close details" onClick={onClose}><Icon name="close" /></button>
-      </div>
-      <div className="detail-preview">
-        <DetailImage key={post.post.id} post={post} />
-      </div>
-      <div className="detail-navigation" aria-label="post preview navigation">
-        <button className="icon-button detail-nav-button" type="button" aria-label="previous post" title="previous post" disabled={!canGoPrevious} onClick={onPrevious}><Icon name="back" /></button>
-        <span>{previewPosition && previewTotal ? `${previewPosition} of ${previewTotal}` : "single post"}</span>
-        <button className="icon-button detail-nav-button" type="button" aria-label="next post" title="next post" disabled={!canGoNext} onClick={onNext}><Icon name="forward" /></button>
-      </div>
-      <div className="detail-summary">
-        <span>{siteName} post #{post.post.id}</span>
-        <button className="button button-outlined detail-post-link" type="button" onClick={() => void onOpenPost(post)}>open {siteName} post</button>
-        {similarSearchSupported && <button className="button button-outlined detail-post-link" type="button" onClick={() => void onOpenSimilarSearch()}>open similar search</button>}
-        {originalUrl && <a href={originalUrl} target="_blank" rel="noreferrer">open original</a>}
-        {post.source && <a href={post.source} target="_blank" rel="noreferrer">open source</a>}
-      </div>
-      {detailLoading && <p className="detail-helper" role="status">refreshing post details…</p>}
-      {detailError && <p className="detail-helper" role="alert">couldn’t refresh the post; showing the feed snapshot. {detailError}</p>}
-      <div className="detail-explore">
-        <span className="section-label">explore</span>
-        <div className="tag-list" aria-label="post tags and author">
-          {post.author && <button className="tag-chip detail-author-chip" type="button" title="search posts by this author" onClick={() => onTag(`user:${post.author}`)}>author: {post.author}</button>}
-          {post.tags.map((tag) => <button key={tag} className="tag-chip" type="button" onClick={() => onTag(tag)}>{tag}</button>)}
-        </div>
-        {relatedTagsSupported && (
-          <div className="detail-related-tags">
-            <button className="button button-outlined detail-post-link" type="button" onClick={onToggleRelatedTags}>
-              {relatedTagsOpen ? "hide related tags" : "show related tags"}
+        <section className="detail-sheet" aria-label="post actions and exploration">
+          <div className="detail-summary">
+            <span>{siteName} post #{post.post.id}</span>
+            <button className="button button-outlined detail-post-link" type="button" onClick={() => void onOpenPost(post)}>open {siteName} post</button>
+            {similarSearchSupported && <button className="button button-outlined detail-post-link" type="button" onClick={() => void onOpenSimilarSearch()}>open similar search</button>}
+            {originalUrl && <a href={originalUrl} target="_blank" rel="noreferrer">open original</a>}
+            {post.source && <a href={post.source} target="_blank" rel="noreferrer">open source</a>}
+          </div>
+          {detailLoading && <p className="detail-helper" role="status">refreshing post details…</p>}
+          {detailError && <p className="detail-helper" role="alert">couldn’t refresh the post; showing the feed snapshot. {detailError}</p>}
+          <div className="detail-primary-actions">
+            {favoriteSupported && (
+              <button className="button button-outlined" type="button" onClick={() => void onFavorite(post)}>
+                {favorited ? `remove from ${siteName} favorites` : `add to ${siteName} favorites`}
+              </button>
+            )}
+            <button className="button button-primary" disabled={downloading} onClick={() => void onDownload(post)}>
+              {downloading ? "saving…" : `download ${downloadVariant.toLowerCase()} quality`}
             </button>
-            {relatedTagsOpen && <p className="detail-helper">site metadata may include tags outside the current rating filter; post results still follow content policy.</p>}
-            {relatedTagsOpen && relatedTagsLoading && <p className="detail-helper" role="status">loading related tags…</p>}
-            {relatedTagsOpen && relatedTagsError && <p className="detail-helper" role="alert">couldn’t load related tags. {relatedTagsError}</p>}
-            {relatedTagsOpen && !relatedTagsLoading && !relatedTagsError && relatedTags.length > 0 && (
-              <div className="tag-list" aria-label="related tags">
-                {relatedTags.map((tag) => (
-                  <button key={tag.name} className="tag-chip" type="button" title={tag.post_count === null ? undefined : `${tag.post_count.toLocaleString()} posts`} onClick={() => onTag(tag.name)}>{tag.name}</button>
-                ))}
+          </div>
+          <div className="detail-explore">
+            <span className="section-label">explore</span>
+            <div className="tag-list" aria-label="post tags and author">
+              {post.author && <button className="tag-chip detail-author-chip" type="button" title="search posts by this author" onClick={() => onTag(`user:${post.author}`)}>author: {post.author}</button>}
+              {post.tags.map((tag) => <button key={tag} className="tag-chip" type="button" onClick={() => onTag(tag)}>{tag}</button>)}
+            </div>
+            {relatedTagsSupported && (
+              <div className="detail-related-tags">
+                <button className="button button-outlined detail-post-link" type="button" onClick={onToggleRelatedTags}>
+                  {relatedTagsOpen ? "hide related tags" : "show related tags"}
+                </button>
+                {relatedTagsOpen && <p className="detail-helper">site metadata may include tags outside the current rating filter; post results still follow content policy.</p>}
+                {relatedTagsOpen && relatedTagsLoading && <p className="detail-helper" role="status">loading related tags…</p>}
+                {relatedTagsOpen && relatedTagsError && <p className="detail-helper" role="alert">couldn’t load related tags. {relatedTagsError}</p>}
+                {relatedTagsOpen && !relatedTagsLoading && !relatedTagsError && relatedTags.length > 0 && (
+                  <div className="tag-list" aria-label="related tags">
+                    {relatedTags.map((tag) => (
+                      <button key={tag.name} className="tag-chip" type="button" title={tag.post_count === null ? undefined : `${tag.post_count.toLocaleString()} posts`} onClick={() => onTag(tag.name)}>{tag.name}</button>
+                    ))}
+                  </div>
+                )}
+                {relatedTagsOpen && !relatedTagsLoading && !relatedTagsError && relatedTags.length === 0 && <p className="detail-helper">no related tags found.</p>}
               </div>
             )}
-            {relatedTagsOpen && !relatedTagsLoading && !relatedTagsError && relatedTags.length === 0 && <p className="detail-helper">no related tags found.</p>}
           </div>
-        )}
-      </div>
-      {favoriteSupported && (
-        <button className="button button-outlined button-wide" type="button" onClick={() => void onFavorite(post)}>
-          {favorited ? `remove from ${siteName} favorites` : `add to ${siteName} favorites`}
-        </button>
-      )}
-      <button className="button button-primary button-wide" disabled={downloading} onClick={() => void onDownload(post)}>
-        {downloading ? "saving…" : `download ${downloadVariant.toLowerCase()} quality`}
-      </button>
-      <details className="detail-more-data">
-        <summary>more data</summary>
-        <div className="detail-more-data-content">
-          {(post.parent_id || post.has_children) && (
-            <div className="detail-related-actions" aria-label="related posts">
-              {post.parent_id && <button className="button button-outlined detail-post-link" type="button" onClick={() => onTag(`id:${post.parent_id}`)}>find parent #{post.parent_id}</button>}
-              {post.has_children && <button className="button button-outlined detail-post-link" type="button" onClick={() => onTag(`parent:${post.post.id}`)}>find child posts</button>}
+          <details className="detail-more-data">
+            <summary>more data</summary>
+            <div className="detail-more-data-content">
+              {(post.parent_id || post.has_children) && (
+                <div className="detail-related-actions" aria-label="related posts">
+                  {post.parent_id && <button className="button button-outlined detail-post-link" type="button" onClick={() => onTag(`id:${post.parent_id}`)}>find parent #{post.parent_id}</button>}
+                  {post.has_children && <button className="button button-outlined detail-post-link" type="button" onClick={() => onTag(`parent:${post.post.id}`)}>find child posts</button>}
+                </div>
+              )}
+              <dl className="metadata">
+                <div><dt>site</dt><dd>{siteName}</dd></div>
+                <div><dt>post id</dt><dd>{post.post.id}</dd></div>
+                <div><dt>author</dt><dd>{post.author ?? "—"}{post.creator_id ? ` · #${post.creator_id}` : ""}</dd></div>
+                <div><dt>rating</dt><dd>{post.rating.toLowerCase()}</dd></div>
+                <div><dt>size</dt><dd>{post.width ?? "?"}×{post.height ?? "?"}</dd></div>
+                <div><dt>score</dt><dd>{post.score ?? "—"}</dd></div>
+                <div><dt>file size</dt><dd>{post.file_size ? `${Math.round(post.file_size / 1024)} kb` : "—"}</dd></div>
+                <div><dt>md5</dt><dd className="metadata-value">{post.md5 ?? "—"}</dd></div>
+                <div><dt>parent</dt><dd>{post.parent_id ? `#${post.parent_id}` : "none"}</dd></div>
+                <div><dt>children</dt><dd>{post.has_children ? "yes" : "no"}</dd></div>
+                <div><dt>created</dt><dd>{post.created_at ? new Date(post.created_at).toLocaleString() : "—"}</dd></div>
+              </dl>
+              {!detailLoading && !detailError && <p className="detail-helper">post details are hydrated from the site API.</p>}
             </div>
-          )}
-          <dl className="metadata">
-            <div><dt>site</dt><dd>{siteName}</dd></div>
-            <div><dt>post id</dt><dd>{post.post.id}</dd></div>
-            <div><dt>author</dt><dd>{post.author ?? "—"}{post.creator_id ? ` · #${post.creator_id}` : ""}</dd></div>
-            <div><dt>rating</dt><dd>{post.rating.toLowerCase()}</dd></div>
-            <div><dt>size</dt><dd>{post.width ?? "?"}×{post.height ?? "?"}</dd></div>
-            <div><dt>score</dt><dd>{post.score ?? "—"}</dd></div>
-            <div><dt>file size</dt><dd>{post.file_size ? `${Math.round(post.file_size / 1024)} kb` : "—"}</dd></div>
-            <div><dt>md5</dt><dd className="metadata-value">{post.md5 ?? "—"}</dd></div>
-            <div><dt>parent</dt><dd>{post.parent_id ? `#${post.parent_id}` : "none"}</dd></div>
-            <div><dt>children</dt><dd>{post.has_children ? "yes" : "no"}</dd></div>
-            <div><dt>created</dt><dd>{post.created_at ? new Date(post.created_at).toLocaleString() : "—"}</dd></div>
-          </dl>
-          {!detailLoading && !detailError && <p className="detail-helper">post details are hydrated from the site API.</p>}
-        </div>
-      </details>
-    </aside>
+          </details>
+        </section>
+      </aside>
     </div>
   );
 }
@@ -1788,16 +1794,25 @@ function DetailImage({ post }: { post: Post }) {
     (url, index, all): url is string => Boolean(url) && all.indexOf(url) === index,
   );
   const [sourceIndex, setSourceIndex] = useState(0);
+  const [loaded, setLoaded] = useState(false);
   const source = sources[sourceIndex];
 
-  if (!source) return <span>preview unavailable</span>;
+  if (!source) return <div className="detail-image-state" role="status">preview unavailable</div>;
   return (
-    <img
-      src={source}
-      alt={`post ${post.post.id}`}
-      loading="eager"
-      onError={() => setSourceIndex((current) => current + 1)}
-    />
+    <>
+      {!loaded && <div className="detail-image-loading" role="status"><span className="loading-spinner" /> loading full image…</div>}
+      <img
+        className={loaded ? "is-loaded" : ""}
+        src={source}
+        alt={`post ${post.post.id}`}
+        loading="eager"
+        onLoad={() => setLoaded(true)}
+        onError={() => {
+          setLoaded(false);
+          setSourceIndex((current) => current + 1);
+        }}
+      />
+    </>
   );
 }
 
