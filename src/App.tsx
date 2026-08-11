@@ -625,6 +625,15 @@ function App() {
   }, [activeContentPolicy, canGoNext, canGoPrevious, previewPosts, selectedPost, selectedPreviewIndex]);
 
   useEffect(() => {
+    if (!selectedPost) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [selectedPost]);
+
+  useEffect(() => {
     if (!siteMenuOpen) return;
     function closeSiteMenu(event: PointerEvent) {
       if (event.target instanceof Node && !sitePicker.current?.contains(event.target)) {
@@ -1058,7 +1067,7 @@ function App() {
         </div>
       </header>
 
-      <div className={`app-layout${selectedPost ? " has-detail" : ""}`}>
+      <div className="app-layout">
         <main className="content">
           <nav className="view-tabs shell-surface" aria-label="Dreamland sections" role="tablist">
             <NavButton active={view === "latest"} label="latest" icon="clock" onClick={() => changeView("latest")} />
@@ -1668,7 +1677,10 @@ interface PostInspectorProps {
 function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onOpenPost, onOpenSimilarSearch, similarSearchSupported, onDownload, onFavorite, onTag, relatedTagsSupported, relatedTagsOpen, relatedTags, relatedTagsLoading, relatedTagsError, onToggleRelatedTags, downloadVariant }: PostInspectorProps) {
   const originalUrl = post.full_url ?? post.sample_url ?? post.preview_url;
   return (
-    <aside className="detail-panel shell-surface" aria-label="post details">
+    <div className="detail-overlay" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+    <aside className="detail-panel shell-surface" role="dialog" aria-modal="true" aria-label="post details" onMouseDown={(event) => event.stopPropagation()}>
       <div className="inspector-heading">
         <div>
           <p className="eyebrow">post details</p>
@@ -1747,6 +1759,7 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
         {downloading ? "saving…" : `download ${downloadVariant.toLowerCase()} quality`}
       </button>
     </aside>
+    </div>
   );
 }
 

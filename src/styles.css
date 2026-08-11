@@ -965,9 +965,27 @@ select:focus-visible {
   padding: 1rem;
 }
 
+.detail-overlay {
+  align-items: center;
+  background: rgb(7 11 13 / 68%);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: clamp(0.75rem, 3vw, 2.5rem);
+  position: fixed;
+  z-index: 18;
+}
+
 .detail-panel {
-  position: sticky;
-  top: 7.3rem;
+  box-shadow: 0 1.5rem 5rem rgb(0 0 0 / 38%);
+  max-height: min(92dvh, 64rem);
+  max-width: 76rem;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  position: relative;
+  top: auto;
+  width: min(100%, 76rem);
 }
 
 .workspace-panel {
@@ -1196,9 +1214,10 @@ select:focus-visible {
 }
 
 .detail-preview {
-  aspect-ratio: 4 / 5;
+  aspect-ratio: 16 / 10;
   background: var(--surface-container);
   border-radius: var(--radius-md);
+  max-height: min(62dvh, 46rem);
   overflow: hidden;
 }
 
@@ -1443,18 +1462,13 @@ select:focus-visible {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .detail-overlay {
+    padding: 0.75rem;
+  }
+
   .detail-panel {
-    background: var(--glass-fallback);
-    border-radius: var(--radius-lg) 0 0 var(--radius-lg);
-    bottom: 0;
-    box-shadow: var(--shadow);
-    max-width: 25rem;
-    overflow-y: auto;
-    position: fixed;
-    right: 0;
-    top: 0;
-    width: min(90vw, 25rem);
-    z-index: 12;
+    max-height: calc(100dvh - 1.5rem);
+    width: 100%;
   }
 }
 
