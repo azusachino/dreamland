@@ -11,13 +11,16 @@ import {
   listFavorites,
   listDownloads,
   listDownloadHistory,
+  listSavedQueries,
   cancelDownload,
+  deleteSavedQuery,
   openDownload,
   retryDownload,
   loadConfig,
   queryPosts,
   queryPoolPosts,
   saveConfig,
+  saveSavedQuery,
   setFavorite,
   signOut,
   suggestTags,
@@ -33,6 +36,7 @@ import {
   type PostQueryRequest,
   type Pool,
   type ProxyMode,
+  type SavedQuery,
 } from "./lib/ipc";
 
 type ViewMode = "latest" | "popular" | "search" | "downloads" | "pools" | "favorites";
@@ -102,6 +106,23 @@ function shiftPopularAnchor(anchor: string, period: PopularPeriod, direction: -1
   return formatCalendarDate(date);
 }
 
+function savedQueryExpression(saved: SavedQuery): string | null {
+  const source = saved.query.source;
+  return typeof source === "object" && "Search" in source ? source.Search.expression : null;
+}
+
+function savedQueryDescription(saved: SavedQuery): string {
+  const source = saved.query.source;
+  if (source === "Browse") return "Latest posts";
+  if ("Search" in source) return source.Search.expression;
+  if (source.Feed.kind === "Latest") return "Latest feed";
+  return `${source.Feed.kind.Popular.period} popular feed`;
+}
+
+function savedQueryIsRunnable(saved: SavedQuery): boolean {
+  return savedQueryExpression(saved) !== null;
+}
+
 function contentPolicyLabel(policy: ContentPolicy): string {
   switch (policy) {
     case "SafeOnly": return "Safe only";
@@ -138,6 +159,7 @@ function App() {
   const [view, setView] = useState<ViewMode>("latest");
   const [popularPeriod, setPopularPeriod] = useState<PopularPeriod>("Week");
   const [popularAnchorDate, setPopularAnchorDate] = useState(() => normalizePopularAnchor(today(), "Week"));
+  const [selectedSavedQueryId, setSelectedSavedQueryId] = useState<string | null>(null);
   const [searchDraft, setSearchDraft] = useState("");
   const [submittedSearch, setSubmittedSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
@@ -173,8 +195,15 @@ function App() {
     queryKey: ["auth"],
     queryFn: authStatus,
   });
+  const savedQueriesQuery = useQuery({
+    queryKey: ["saved-queries"],
+    queryFn: listSavedQueries,
+    enabled: configQuery.isSuccess,
+  });
   const pageSize = configQuery.data?.images_per_page ?? 20;
   const contentPolicy = configQuery.data?.content_policy ?? "SafeOnly";
+  const activeSavedQuery = savedQueriesQuery.data?.find((saved) => saved.id === selectedSavedQueryId);
+  const activeContentPolicy = activeSavedQuery?.query.content_policy ?? contentPolicy;
   const request = useMemo<PostQueryRequest>(() => {
     let source: DiscoverySource = "Browse";
     if (view === "popular") {
@@ -190,10 +219,10 @@ function App() {
     }
 
     return {
-      query: { source, content_policy: contentPolicy },
+      query: { source, content_policy: activeContentPolicy },
       pagination: { First: { page_size: pageSize } },
     };
-  }, [contentPolicy, pageSize, popularAnchorDate, popularPeriod, submittedSearch, view]);
+  }, [activeContentPolicy, pageSize, popularAnchorDate, popularPeriod, submittedSearch, view]);
   const imagesQuery = useInfiniteQuery({
     queryKey: ["posts", request],
     initialPageParam: null as string | null,
@@ -338,6 +367,7 @@ function App() {
     setError("");
     setNotice("");
     setView(nextView);
+    setSelectedSavedQueryId(null);
     setSelectedPool(null);
     setSelectedPostIds(new Set());
     setSelectionMode(false);
@@ -353,6 +383,7 @@ function App() {
     setError("");
     setNotice("");
     setSubmittedSearch(expression);
+    setSelectedSavedQueryId(null);
     setView("search");
     setSearchFocused(false);
     setSelectedPostIds(new Set());
@@ -362,10 +393,70 @@ function App() {
   function chooseTag(tag: string) {
     setSearchDraft(tag);
     setSubmittedSearch(tag);
+    setSelectedSavedQueryId(null);
     setView("search");
     setSearchFocused(false);
     setSelectedPostIds(new Set());
     setSelectionMode(false);
+  }
+
+  function openSavedQuery(saved: SavedQuery) {
+    const expression = savedQueryExpression(saved);
+    if (!expression) return;
+    setSelectedSavedQueryId(saved.id);
+    setSearchDraft(expression);
+    setSubmittedSearch(expression);
+    setView("search");
+    setError("");
+    setNotice("");
+  }
+
+  async function handleSaveQuery() {
+    if (view !== "search" || !submittedSearch) return;
+    const name = window.prompt("Name this saved query", activeSavedQuery?.name ?? submittedSearch.trim());
+    if (!name?.trim()) return;
+    try {
+      const saved = await saveSavedQuery({
+        id: activeSavedQuery?.id ?? "",
+        site: "yandere",
+        name: name.trim(),
+        query: {
+          source: { Search: { expression: submittedSearch } },
+          content_policy: activeContentPolicy,
+        },
+        pinned: false,
+        position: savedQueriesQuery.data?.length ?? 0,
+        updated_at_ms: 0,
+      });
+      await savedQueriesQuery.refetch();
+      setSelectedSavedQueryId(saved.id);
+      setNotice(`Saved query “${saved.name}”`);
+    } catch (reason) {
+      setError(`Could not save query: ${errorMessage(reason)}`);
+    }
+  }
+
+  async function handleToggleSavedPin(saved: SavedQuery) {
+    try {
+      await saveSavedQuery({ ...saved, pinned: !saved.pinned });
+      await savedQueriesQuery.refetch();
+    } catch (reason) {
+      setError(`Could not update saved query: ${errorMessage(reason)}`);
+    }
+  }
+
+  async function handleDeleteSavedQuery(saved: SavedQuery) {
+    if (!window.confirm(`Delete “${saved.name}”?`)) return;
+    try {
+      await deleteSavedQuery(saved.id);
+      await savedQueriesQuery.refetch();
+      if (selectedSavedQueryId === saved.id) {
+        setSelectedSavedQueryId(null);
+        setView("latest");
+      }
+    } catch (reason) {
+      setError(`Could not delete query: ${errorMessage(reason)}`);
+    }
   }
 
   function togglePostSelection(postId: string) {
@@ -531,6 +622,30 @@ function App() {
           <nav className="view-tabs shell-surface" aria-label="Dreamland sections" role="tablist">
           <NavButton active={view === "latest"} label="Latest" icon="clock" onClick={() => changeView("latest")} />
           <NavButton active={view === "popular"} label="Popular" icon="trend" onClick={() => changeView("popular")} />
+          {savedQueriesQuery.data?.map((saved) => (
+            <div className="saved-query-nav" key={saved.id}>
+              <button
+                className={`nav-item${selectedSavedQueryId === saved.id ? " active" : ""}`}
+                type="button"
+                role="tab"
+                aria-selected={selectedSavedQueryId === saved.id}
+                disabled={!savedQueryIsRunnable(saved)}
+                onClick={() => openSavedQuery(saved)}
+                title={savedQueryIsRunnable(saved) ? savedQueryDescription(saved) : `${savedQueryDescription(saved)} (not supported yet)`}
+              >
+                <Icon name="search" />
+                <span>{saved.name}</span>
+                {!savedQueryIsRunnable(saved) && <small>Unavailable</small>}
+                {saved.pinned && savedQueryIsRunnable(saved) && <small>Pinned</small>}
+              </button>
+              <div className="saved-query-actions">
+                <button className="icon-button" type="button" aria-label={`${saved.pinned ? "Unpin" : "Pin"} ${saved.name}`} onClick={() => void handleToggleSavedPin(saved)}>
+                  {saved.pinned ? "•" : "○"}
+                </button>
+                <button className="icon-button" type="button" aria-label={`Delete ${saved.name}`} onClick={() => void handleDeleteSavedQuery(saved)}>×</button>
+              </div>
+            </div>
+          ))}
           <NavButton active={view === "pools"} label="Pools" icon="book" onClick={() => changeView("pools")} />
           <NavButton active={view === "favorites"} label="Favorites" icon="heart" onClick={() => changeView("favorites")} />
           <NavButton active={view === "downloads"} label="Downloads" icon="download" onClick={() => changeView("downloads")} />
@@ -599,7 +714,10 @@ function App() {
                   </button>
                 </div>
               )}
-              <span className="content-policy">{contentPolicyLabel(contentPolicy)}</span>
+              {view === "search" && submittedSearch && (
+                <button className="button button-outlined" type="button" onClick={() => void handleSaveQuery()}>Save query</button>
+              )}
+              <span className="content-policy">{contentPolicyLabel(activeContentPolicy)}</span>
               </>}
             </div>
           </section>

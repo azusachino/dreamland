@@ -290,9 +290,10 @@ async fn list_favorites(
 
 #[tauri::command]
 async fn list_saved_queries(state: State<'_, RuntimeState>) -> Result<Vec<SavedQuery>, String> {
+    let site = SiteId::new(dreamland_sites::DEFAULT_SITE_ID);
     state
         .downloads
-        .saved_queries()
+        .saved_queries(&site)
         .await
         .map_err(|error| error.to_string())
 }
@@ -302,21 +303,23 @@ async fn save_saved_query(
     state: State<'_, RuntimeState>,
     saved: SavedQuery,
 ) -> Result<SavedQuery, String> {
-    if saved.site.as_str() != dreamland_sites::DEFAULT_SITE_ID {
+    let site = SiteId::new(dreamland_sites::DEFAULT_SITE_ID);
+    if saved.site != site {
         return Err(format!("site '{}' is not active", saved.site.as_str()));
     }
     state
         .downloads
-        .save_saved_query(saved)
+        .save_saved_query(&site, saved)
         .await
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 async fn delete_saved_query(state: State<'_, RuntimeState>, id: String) -> Result<(), String> {
+    let site = SiteId::new(dreamland_sites::DEFAULT_SITE_ID);
     state
         .downloads
-        .delete_saved_query(&id)
+        .delete_saved_query(&site, &id)
         .await
         .map_err(|error| error.to_string())
 }

@@ -410,20 +410,24 @@ impl LocalStateStore {
         )
     }
 
-    pub fn saved_queries(&self) -> Result<Vec<SavedQuery>> {
+    pub fn saved_queries(&self, site: &SiteId) -> Result<Vec<SavedQuery>> {
         let connection = self.connection()?;
         let mut statement = connection.prepare(
             "SELECT id, site_id, name, query_json, pinned, position, updated_at_ms
              FROM saved_queries
+             WHERE site_id = ?1
              ORDER BY pinned DESC, position ASC, updated_at_ms DESC, id ASC",
         )?;
-        let rows = statement.query_map([], decode_saved_query)?;
+        let rows = statement.query_map(params![site.as_str()], decode_saved_query)?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .context("decode saved queries")
             .map_err(Into::into)
     }
 
-    pub fn save_saved_query(&self, mut saved: SavedQuery) -> Result<SavedQuery> {
+    pub fn save_saved_query(&self, site: &SiteId, mut saved: SavedQuery) -> Result<SavedQuery> {
+        if saved.site != *site {
+            bail!("saved query site does not match the active site");
+        }
         let name = saved.name.trim();
         if name.is_empty() {
             bail!("saved query name cannot be empty");
@@ -446,7 +450,8 @@ impl LocalStateStore {
                 query_json = excluded.query_json,
                 pinned = excluded.pinned,
                 position = excluded.position,
-                updated_at_ms = excluded.updated_at_ms",
+                updated_at_ms = excluded.updated_at_ms
+             WHERE saved_queries.site_id = excluded.site_id",
             params![
                 saved.id,
                 saved.site.as_str(),
@@ -457,12 +462,18 @@ impl LocalStateStore {
                 now,
             ],
         )?;
+        if connection.changes() != 1 {
+            bail!("saved query id belongs to another site");
+        }
         Ok(saved)
     }
 
-    pub fn delete_saved_query(&self, id: &str) -> Result<()> {
+    pub fn delete_saved_query(&self, site: &SiteId, id: &str) -> Result<()> {
         let connection = self.connection()?;
-        connection.execute("DELETE FROM saved_queries WHERE id = ?1", params![id])?;
+        connection.execute(
+            "DELETE FROM saved_queries WHERE id = ?1 AND site_id = ?2",
+            params![id, site.as_str()],
+        )?;
         Ok(())
     }
 
@@ -590,20 +601,23 @@ impl DownloadManager {
         tokio::task::spawn_blocking(move || store.history_page(limit, offset)).await?
     }
 
-    pub async fn saved_queries(&self) -> Result<Vec<SavedQuery>> {
+    pub async fn saved_queries(&self, site: &SiteId) -> Result<Vec<SavedQuery>> {
         let store = self.store.clone();
-        tokio::task::spawn_blocking(move || store.saved_queries()).await?
+        let site = site.clone();
+        tokio::task::spawn_blocking(move || store.saved_queries(&site)).await?
     }
 
-    pub async fn save_saved_query(&self, saved: SavedQuery) -> Result<SavedQuery> {
+    pub async fn save_saved_query(&self, site: &SiteId, saved: SavedQuery) -> Result<SavedQuery> {
         let store = self.store.clone();
-        tokio::task::spawn_blocking(move || store.save_saved_query(saved)).await?
+        let site = site.clone();
+        tokio::task::spawn_blocking(move || store.save_saved_query(&site, saved)).await?
     }
 
-    pub async fn delete_saved_query(&self, id: &str) -> Result<()> {
+    pub async fn delete_saved_query(&self, site: &SiteId, id: &str) -> Result<()> {
         let store = self.store.clone();
+        let site = site.clone();
         let id = id.to_owned();
-        tokio::task::spawn_blocking(move || store.delete_saved_query(&id)).await?
+        tokio::task::spawn_blocking(move || store.delete_saved_query(&site, &id)).await?
     }
 
     async fn run_worker(self) {
@@ -898,28 +912,92 @@ mod tests {
     #[test]
     fn saved_queries_round_trip_and_delete() {
         let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
+        let yandere = SiteId::new("yandere");
         let store = LocalStateStore::open(&path).unwrap();
         let saved = store
-            .save_saved_query(SavedQuery {
-                id: String::new(),
-                site: SiteId::new("yandere"),
-                name: "Pinned blue search".to_owned(),
-                query: ReplayableQuery {
-                    source: dreamland_core::DiscoverySource::Search {
-                        expression: "blue_eyes".to_owned(),
+            .save_saved_query(
+                &yandere,
+                SavedQuery {
+                    id: String::new(),
+                    site: yandere.clone(),
+                    name: "Pinned blue search".to_owned(),
+                    query: ReplayableQuery {
+                        source: dreamland_core::DiscoverySource::Search {
+                            expression: "blue_eyes".to_owned(),
+                        },
+                        content_policy: dreamland_core::ContentPolicy::SafeOnly,
                     },
-                    content_policy: dreamland_core::ContentPolicy::SafeOnly,
+                    pinned: true,
+                    position: 0,
+                    updated_at_ms: 0,
                 },
-                pinned: true,
-                position: 0,
-                updated_at_ms: 0,
-            })
+            )
             .unwrap();
-        let listed = store.saved_queries().unwrap();
+        let listed = store.saved_queries(&yandere).unwrap();
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0], saved);
-        store.delete_saved_query(&saved.id).unwrap();
-        assert!(store.saved_queries().unwrap().is_empty());
+        store.delete_saved_query(&yandere, &saved.id).unwrap();
+        assert!(store.saved_queries(&yandere).unwrap().is_empty());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn saved_queries_survive_reopen_and_remain_site_isolated() {
+        let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
+        let yandere = SiteId::new("yandere");
+        let pixiv = SiteId::new("pixiv");
+        let saved = SavedQuery {
+            id: String::new(),
+            site: yandere.clone(),
+            name: "Pinned blue search".to_owned(),
+            query: ReplayableQuery {
+                source: dreamland_core::DiscoverySource::Search {
+                    expression: "blue_eyes".to_owned(),
+                },
+                content_policy: dreamland_core::ContentPolicy::AllowQuestionable,
+            },
+            pinned: true,
+            position: 7,
+            updated_at_ms: 0,
+        };
+        let saved = {
+            let store = LocalStateStore::open(&path).unwrap();
+            let saved = store.save_saved_query(&yandere, saved).unwrap();
+            store
+                .save_saved_query(
+                    &pixiv,
+                    SavedQuery {
+                        id: String::new(),
+                        site: pixiv.clone(),
+                        name: "Pixiv search".to_owned(),
+                        query: saved.query.clone(),
+                        pinned: false,
+                        position: 0,
+                        updated_at_ms: 0,
+                    },
+                )
+                .unwrap();
+            saved
+        };
+        let reopened = LocalStateStore::open(&path).unwrap();
+        assert_eq!(
+            reopened.saved_queries(&yandere).unwrap(),
+            vec![saved.clone()]
+        );
+        assert_eq!(reopened.saved_queries(&pixiv).unwrap().len(), 1);
+        assert!(reopened
+            .save_saved_query(
+                &pixiv,
+                SavedQuery {
+                    site: pixiv.clone(),
+                    id: saved.id.clone(),
+                    ..saved.clone()
+                },
+            )
+            .is_err());
+        reopened.delete_saved_query(&yandere, &saved.id).unwrap();
+        assert!(reopened.saved_queries(&yandere).unwrap().is_empty());
+        assert_eq!(reopened.saved_queries(&pixiv).unwrap().len(), 1);
         std::fs::remove_file(path).unwrap();
     }
 

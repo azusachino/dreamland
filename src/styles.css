@@ -340,6 +340,40 @@ select:focus-visible {
   width: 100%;
 }
 
+.saved-query-nav {
+  align-items: center;
+  display: flex;
+  flex: 1 0 12rem;
+  min-width: 0;
+}
+
+.saved-query-nav .nav-item {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.saved-query-nav .nav-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-query-nav .nav-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.saved-query-actions {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.saved-query-actions .icon-button {
+  font-size: 0.95rem;
+  height: 2rem;
+  width: 2rem;
+}
+
 .nav-item:hover:not(:disabled) {
   background: var(--surface-high);
   color: var(--ink);
