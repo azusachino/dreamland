@@ -565,7 +565,7 @@ function App() {
           favorites={favoritesQuery.data?.posts ?? []}
           favoritesLoading={favoritesQuery.isPending || favoritesQuery.isFetching}
           favoritePage={favoritePage}
-          favoritesHasNext={favoritesQuery.data?.continuation !== "None" && (favoritesQuery.data?.posts.length ?? 0) === 20}
+          favoritesHasNext={(favoritesQuery.data?.posts.length ?? 0) === 20}
           loading={authQuery.isFetching}
           onClose={() => setAccountOpen(false)}
           onBeginAuth={() => void beginAuth()}
