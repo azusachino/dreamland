@@ -902,7 +902,7 @@ Rules:
   always starts a new query session without relying on a current screen,
   page position, session ID, or opaque site cursor.
 - Pin/order changes are local-only UI state. They do not change site query
-  semantics.
+  semantics. Reordering is atomic within one pin group.
 - Download history records the local outcome and path; it is not a site
   feature and does not require authentication. Its tag snapshot supports
   local tag/account search and remains useful after the remote post changes.
@@ -1393,6 +1393,7 @@ pub struct EnqueueDownloadResult {
     list_remote_favorites(SiteId, PaginationRequest) -> PostPage
     save_query(SavedQueryInput) -> SavedQuery
     list_saved_queries(bool) -> Vec<SavedQuery>
+    move_saved_query(LocalRecordId, Direction) -> ()
     delete_saved_query(LocalRecordId) -> ()
     download_history(PaginationRequest) -> Vec<DownloadRecord>
     open_download(LocalRecordId) -> ()

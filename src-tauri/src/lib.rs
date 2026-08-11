@@ -360,6 +360,20 @@ async fn delete_saved_query(state: State<'_, RuntimeState>, id: String) -> Resul
 }
 
 #[tauri::command]
+async fn move_saved_query(
+    state: State<'_, RuntimeState>,
+    id: String,
+    direction: i8,
+) -> Result<(), String> {
+    let site = SiteId::new(dreamland_sites::DEFAULT_SITE_ID);
+    state
+        .downloads
+        .move_saved_query(&site, &id, direction)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 async fn set_favorite(
     state: State<'_, RuntimeState>,
     post_id: String,
@@ -637,6 +651,7 @@ pub fn run() {
             list_saved_queries,
             save_saved_query,
             delete_saved_query,
+            move_saved_query,
             set_favorite,
             query_posts,
             continue_query,

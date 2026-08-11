@@ -232,6 +232,10 @@ export function deleteSavedQuery(id: string): Promise<void> {
   return invoke<void>("delete_saved_query", { id });
 }
 
+export function moveSavedQuery(id: string, direction: -1 | 1): Promise<void> {
+  return invoke<void>("move_saved_query", { id, direction });
+}
+
 export function queryDefaultPosts(page: number): Promise<Post[]> {
   return queryPosts({
     query: { source: "Browse", content_policy: "SafeOnly" },

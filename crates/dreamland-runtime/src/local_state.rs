@@ -553,6 +553,56 @@ impl LocalStateStore {
         Ok(())
     }
 
+    pub fn move_saved_query(&self, site: &SiteId, id: &str, direction: i8) -> Result<()> {
+        if !matches!(direction, -1 | 1) {
+            bail!("saved query direction must be -1 or 1");
+        }
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        let pinned: bool = transaction
+            .query_row(
+                "SELECT pinned FROM saved_queries WHERE id = ?1 AND site_id = ?2",
+                params![id, site.as_str()],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or_else(|| anyhow::anyhow!("saved query not found: {id}"))?;
+        let mut statement = transaction.prepare(
+            "SELECT id FROM saved_queries
+             WHERE site_id = ?1 AND pinned = ?2
+             ORDER BY position ASC, updated_at_ms ASC, id ASC",
+        )?;
+        let ids = statement
+            .query_map(params![site.as_str(), pinned], |row| {
+                row.get::<_, String>(0)
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        drop(statement);
+        let current = ids
+            .iter()
+            .position(|candidate| candidate == id)
+            .ok_or_else(|| anyhow::anyhow!("saved query not found: {id}"))?;
+        let target = if direction < 0 {
+            current.checked_sub(1)
+        } else {
+            current.checked_add(1).filter(|index| *index < ids.len())
+        };
+        let Some(target) = target else {
+            transaction.commit()?;
+            return Ok(());
+        };
+        let mut reordered = ids;
+        reordered.swap(current, target);
+        for (position, query_id) in reordered.iter().enumerate() {
+            transaction.execute(
+                "UPDATE saved_queries SET position = ?1 WHERE id = ?2 AND site_id = ?3",
+                params![position as u32, query_id, site.as_str()],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn enqueue_archive(&self, request: ArchiveRequest) -> Result<ArchiveRecord> {
         validate_archive_request(&request)?;
         let id = uuid::Uuid::new_v4().to_string();
@@ -921,6 +971,13 @@ impl DownloadManager {
         let site = site.clone();
         let id = id.to_owned();
         tokio::task::spawn_blocking(move || store.delete_saved_query(&site, &id)).await?
+    }
+
+    pub async fn move_saved_query(&self, site: &SiteId, id: &str, direction: i8) -> Result<()> {
+        let store = self.store.clone();
+        let site = site.clone();
+        let id = id.to_owned();
+        tokio::task::spawn_blocking(move || store.move_saved_query(&site, &id, direction)).await?
     }
 
     async fn run_worker(self) {
@@ -1445,6 +1502,71 @@ mod tests {
         reopened.delete_saved_query(&yandere, &saved.id).unwrap();
         assert!(reopened.saved_queries(&yandere).unwrap().is_empty());
         assert_eq!(reopened.saved_queries(&pixiv).unwrap().len(), 1);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn saved_queries_move_within_their_pin_group() {
+        let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
+        let yandere = SiteId::new("yandere");
+        let store = LocalStateStore::open(&path).unwrap();
+        let mut ids = Vec::new();
+        for (name, pinned, position) in [
+            ("one", false, 0),
+            ("two", false, 1),
+            ("three", false, 2),
+            ("pinned", true, 0),
+        ] {
+            ids.push(
+                store
+                    .save_saved_query(
+                        &yandere,
+                        SavedQuery {
+                            id: String::new(),
+                            site: yandere.clone(),
+                            name: name.to_owned(),
+                            query: ReplayableQuery {
+                                source: dreamland_core::DiscoverySource::Search {
+                                    expression: name.to_owned(),
+                                },
+                                content_policy: dreamland_core::ContentPolicy::SafeOnly,
+                            },
+                            pinned,
+                            position,
+                            updated_at_ms: 0,
+                        },
+                    )
+                    .unwrap()
+                    .id,
+            );
+        }
+        store.move_saved_query(&yandere, &ids[1], -1).unwrap();
+        let listed = store.saved_queries(&yandere).unwrap();
+        assert_eq!(
+            listed
+                .iter()
+                .map(|saved| saved.name.as_str())
+                .collect::<Vec<_>>(),
+            ["pinned", "two", "one", "three"]
+        );
+        store.move_saved_query(&yandere, &ids[1], 1).unwrap();
+        let listed = store.saved_queries(&yandere).unwrap();
+        assert_eq!(
+            listed
+                .iter()
+                .map(|saved| saved.name.as_str())
+                .collect::<Vec<_>>(),
+            ["pinned", "one", "two", "three"]
+        );
+        store.move_saved_query(&yandere, &ids[3], -1).unwrap();
+        let listed = store.saved_queries(&yandere).unwrap();
+        assert_eq!(
+            listed
+                .iter()
+                .map(|saved| saved.name.as_str())
+                .collect::<Vec<_>>(),
+            ["pinned", "one", "two", "three"]
+        );
         std::fs::remove_file(path).unwrap();
     }
 

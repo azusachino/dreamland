@@ -17,6 +17,7 @@ import {
   listSavedQueries,
   cancelDownload,
   deleteSavedQuery,
+  moveSavedQuery,
   openDownload,
   retryDownload,
   loadConfig,
@@ -209,6 +210,82 @@ function buildAdvancedQuery(form: AdvancedQueryForm, contentPolicy: ContentPolic
   return terms.join(" ");
 }
 
+function emptyAdvancedQueryForm(tags = ""): AdvancedQueryForm {
+  return {
+    tags,
+    order: "",
+    rating: "",
+    score: "",
+    scoreMin: "",
+    scoreMax: "",
+    idMin: "",
+    idMax: "",
+    voteMin: "",
+    voteMax: "",
+    mpixelsMin: "",
+    mpixelsMax: "",
+    widthMin: "",
+    widthMax: "",
+    heightMin: "",
+    heightMax: "",
+    dateFrom: "",
+    dateTo: "",
+    user: "",
+    source: "",
+    parent: "",
+    pool: "",
+    md5: "",
+  };
+}
+
+function parseRange(value: string): [string, string, string] {
+  const range = value.match(/^([^.]*)\.\.([^.]*)$/);
+  if (!range) return [value, "", ""];
+  return ["", range[1] ?? "", range[2] ?? ""];
+}
+
+function parseAdvancedQuery(expression: string): AdvancedQueryForm {
+  const form = emptyAdvancedQueryForm();
+  const rawTags: string[] = [];
+  for (const token of expression.trim().split(/\s+/).filter(Boolean)) {
+    const match = token.match(/^(-?)([a-z_]+):(.+)$/i);
+    if (!match) {
+      rawTags.push(token);
+      continue;
+    }
+    const [, prefix, name, value] = match;
+    const field = name.toLowerCase();
+    if (prefix && !["rating"].includes(field)) {
+      rawTags.push(token);
+      continue;
+    }
+    if (field === "order" && !prefix && ["score", "score_asc", "id", "id_desc", "mpixels", "mpixels_asc", "landscape", "portrait", "vote", "random"].includes(value as QueryOrder)) {
+      form.order = value as QueryOrder;
+    } else if (field === "rating" && ["s", "q", "e"].includes(value)) {
+      form.rating = prefix ? `-${value}` as AdvancedQueryForm["rating"] : value as AdvancedQueryForm["rating"];
+    } else if (["score", "id", "vote", "mpixels", "width", "height"].includes(field)) {
+      const [exact, minimum, maximum] = parseRange(value);
+      if (field === "score") [form.score, form.scoreMin, form.scoreMax] = [exact, minimum, maximum];
+      if (field === "id") [form.idMin, form.idMax] = [minimum || exact, maximum];
+      if (field === "vote") [form.voteMin, form.voteMax] = [minimum || exact, maximum];
+      if (field === "mpixels") [form.mpixelsMin, form.mpixelsMax] = [minimum || exact, maximum];
+      if (field === "width") [form.widthMin, form.widthMax] = [minimum || exact, maximum];
+      if (field === "height") [form.heightMin, form.heightMax] = [minimum || exact, maximum];
+    } else if (field === "date") {
+      const [, minimum, maximum] = parseRange(value);
+      if (minimum || maximum) [form.dateFrom, form.dateTo] = [minimum, maximum];
+      else rawTags.push(token);
+    } else if (["user", "source", "parent", "pool", "md5"].includes(field)) {
+      const identityField = field as "user" | "source" | "parent" | "pool" | "md5";
+      form[identityField] = value;
+    } else {
+      rawTags.push(token);
+    }
+  }
+  form.tags = rawTags.join(" ");
+  return form;
+}
+
 function contentPolicyLabel(policy: ContentPolicy): string {
   switch (policy) {
     case "SafeOnly": return "Safe only";
@@ -246,6 +323,7 @@ function App() {
   const [popularPeriod, setPopularPeriod] = useState<PopularPeriod>("Week");
   const [popularAnchorDate, setPopularAnchorDate] = useState(() => normalizePopularAnchor(today(), "Week"));
   const [selectedSavedQueryId, setSelectedSavedQueryId] = useState<string | null>(null);
+  const [editingSavedQueryId, setEditingSavedQueryId] = useState<string | null>(null);
   const [searchDraft, setSearchDraft] = useState("");
   const [submittedSearch, setSubmittedSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
@@ -461,6 +539,7 @@ function App() {
     setNotice("");
     setView(nextView);
     setSelectedSavedQueryId(null);
+    setEditingSavedQueryId(null);
     setSelectedPool(null);
     setSelectedPostIds(new Set());
     setSelectionMode(false);
@@ -477,6 +556,7 @@ function App() {
     setNotice("");
     setSubmittedSearch(expression);
     setSelectedSavedQueryId(null);
+    setEditingSavedQueryId(null);
     setView("search");
     setSearchFocused(false);
     setSelectedPostIds(new Set());
@@ -487,6 +567,7 @@ function App() {
     setSearchDraft(tag);
     setSubmittedSearch(tag);
     setSelectedSavedQueryId(null);
+    setEditingSavedQueryId(null);
     setView("search");
     setSearchFocused(false);
     setSelectedPostIds(new Set());
@@ -496,7 +577,8 @@ function App() {
   function applyAdvancedQuery(expression: string) {
     setSearchDraft(expression);
     setSubmittedSearch(expression);
-    setSelectedSavedQueryId(null);
+    setSelectedSavedQueryId(editingSavedQueryId);
+    setEditingSavedQueryId(null);
     setView("search");
     setSearchFocused(false);
     setSelectedPostIds(new Set());
@@ -508,9 +590,23 @@ function App() {
     const expression = savedQueryExpression(saved);
     if (!expression) return;
     setSelectedSavedQueryId(saved.id);
+    setEditingSavedQueryId(null);
     setSearchDraft(expression);
     setSubmittedSearch(expression);
     setView("search");
+    setError("");
+    setNotice("");
+  }
+
+  function editSavedQuery(saved: SavedQuery) {
+    const expression = savedQueryExpression(saved);
+    if (!expression) return;
+    setSelectedSavedQueryId(saved.id);
+    setEditingSavedQueryId(saved.id);
+    setSearchDraft(expression);
+    setSubmittedSearch(expression);
+    setView("search");
+    setAdvancedSearchOpen(true);
     setError("");
     setNotice("");
   }
@@ -560,6 +656,15 @@ function App() {
       }
     } catch (reason) {
       setError(`Could not delete query: ${errorMessage(reason)}`);
+    }
+  }
+
+  async function handleMoveSavedQuery(saved: SavedQuery, direction: -1 | 1) {
+    try {
+      await moveSavedQuery(saved.id, direction);
+      await savedQueriesQuery.refetch();
+    } catch (reason) {
+      setError(`Could not reorder saved query: ${errorMessage(reason)}`);
     }
   }
 
@@ -691,7 +796,10 @@ function App() {
               ×
             </button>
           )}
-          <button className="search-advanced" type="button" onClick={() => setAdvancedSearchOpen(true)}>Filters</button>
+          <button className="search-advanced" type="button" onClick={() => {
+            setEditingSavedQueryId(null);
+            setAdvancedSearchOpen(true);
+          }}>Filters</button>
           {searchFocused && suggestionsQuery.data && suggestionsQuery.data.length > 0 && (
             <div className="suggestions" role="listbox">
               <p className="suggestion-heading">Suggested tags</p>
@@ -739,7 +847,12 @@ function App() {
           <nav className="view-tabs shell-surface" aria-label="Dreamland sections" role="tablist">
           <NavButton active={view === "latest"} label="Latest" icon="clock" onClick={() => changeView("latest")} />
           <NavButton active={view === "popular"} label="Popular" icon="trend" onClick={() => changeView("popular")} />
-          {savedQueriesQuery.data?.map((saved) => (
+          {savedQueriesQuery.data?.map((saved, index, savedQueries) => {
+            const previous = savedQueries[index - 1];
+            const next = savedQueries[index + 1];
+            const canMoveUp = Boolean(previous && previous.pinned === saved.pinned);
+            const canMoveDown = Boolean(next && next.pinned === saved.pinned);
+            return (
             <div className="saved-query-nav" key={saved.id}>
               <button
                 className={`nav-item${selectedSavedQueryId === saved.id ? " active" : ""}`}
@@ -756,13 +869,17 @@ function App() {
                 {saved.pinned && savedQueryIsRunnable(saved) && <small>Pinned</small>}
               </button>
               <div className="saved-query-actions">
+                <button className="icon-button" type="button" aria-label={`Edit ${saved.name}`} title="Edit query" disabled={!savedQueryIsRunnable(saved)} onClick={() => editSavedQuery(saved)}>✎</button>
+                <button className="icon-button" type="button" aria-label={`Move ${saved.name} earlier`} title="Move earlier" disabled={!canMoveUp} onClick={() => void handleMoveSavedQuery(saved, -1)}>↑</button>
+                <button className="icon-button" type="button" aria-label={`Move ${saved.name} later`} title="Move later" disabled={!canMoveDown} onClick={() => void handleMoveSavedQuery(saved, 1)}>↓</button>
                 <button className="icon-button" type="button" aria-label={`${saved.pinned ? "Unpin" : "Pin"} ${saved.name}`} onClick={() => void handleToggleSavedPin(saved)}>
                   {saved.pinned ? "•" : "○"}
                 </button>
                 <button className="icon-button" type="button" aria-label={`Delete ${saved.name}`} onClick={() => void handleDeleteSavedQuery(saved)}>×</button>
               </div>
             </div>
-          ))}
+            );
+          })}
           <NavButton active={view === "pools"} label="Pools" icon="book" onClick={() => changeView("pools")} />
           <NavButton active={view === "favorites"} label="Favorites" icon="heart" onClick={() => changeView("favorites")} />
           <NavButton active={view === "downloads"} label="Downloads" icon="download" onClick={() => changeView("downloads")} />
@@ -985,7 +1102,7 @@ function App() {
       {advancedSearchOpen && (
         <AdvancedQueryDialog
           contentPolicy={contentPolicy}
-          initialTags={submittedSearch || searchDraft}
+          initialExpression={submittedSearch || searchDraft}
           onClose={() => setAdvancedSearchOpen(false)}
           onApply={applyAdvancedQuery}
         />
@@ -1028,37 +1145,13 @@ function NavButton({ active, disabled, hint, icon, label, onClick }: NavButtonPr
 
 interface AdvancedQueryDialogProps {
   contentPolicy: ContentPolicy;
-  initialTags: string;
+  initialExpression: string;
   onClose: () => void;
   onApply: (expression: string) => void;
 }
 
-function AdvancedQueryDialog({ contentPolicy, initialTags, onClose, onApply }: AdvancedQueryDialogProps) {
-  const [form, setForm] = useState<AdvancedQueryForm>({
-    tags: initialTags,
-    order: "",
-    rating: "",
-    score: "",
-    scoreMin: "",
-    scoreMax: "",
-    idMin: "",
-    idMax: "",
-    voteMin: "",
-    voteMax: "",
-    mpixelsMin: "",
-    mpixelsMax: "",
-    widthMin: "",
-    widthMax: "",
-    heightMin: "",
-    heightMax: "",
-    dateFrom: "",
-    dateTo: "",
-    user: "",
-    source: "",
-    parent: "",
-    pool: "",
-    md5: "",
-  });
+function AdvancedQueryDialog({ contentPolicy, initialExpression, onClose, onApply }: AdvancedQueryDialogProps) {
+  const [form, setForm] = useState<AdvancedQueryForm>(() => parseAdvancedQuery(initialExpression));
   const [error, setError] = useState("");
 
   function update<K extends keyof AdvancedQueryForm>(key: K, value: AdvancedQueryForm[K]) {
@@ -1083,7 +1176,7 @@ function AdvancedQueryDialog({ contentPolicy, initialTags, onClose, onApply }: A
           <div><p className="eyebrow">MoeBooru query vocabulary</p><h2 id="query-title">Advanced search</h2></div>
           <button className="icon-button" type="button" aria-label="Close advanced search" onClick={onClose}><Icon name="close" /></button>
         </div>
-        <p className="helper-text">Build a reusable tag query with the same filters supported by the vendored MoeBooru client.</p>
+        <p className="helper-text">Build or edit a reusable tag query with the same filters supported by the vendored MoeBooru client. Unknown terms stay in the raw tag field.</p>
         {error && <div className="panel-error" role="alert"><p>{error}</p></div>}
         <div className="settings-section">
           <p className="section-label">Tags and ordering</p>
