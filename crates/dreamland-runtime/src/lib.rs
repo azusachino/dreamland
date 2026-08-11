@@ -9,8 +9,8 @@ const USER_AGENT: &str = concat!("Dreamland/", env!("CARGO_PKG_VERSION"));
 
 pub use config::{detect_proxy, AppConfig, ProxyDetection};
 pub use local_state::{
-    DownloadCancellation, DownloadManager, DownloadRecord, DownloadRequest, DownloadStatus,
-    LocalStateStore,
+    ArchiveRecord, ArchiveRequest, DownloadCancellation, DownloadManager, DownloadRecord,
+    DownloadRequest, DownloadStatus, LocalStateStore,
 };
 pub use sessions::{QuerySession, QuerySessionStore, SessionOperation};
 
@@ -57,6 +57,59 @@ pub async fn download_image(
         cache_dir,
         network,
         cancellation,
+        None,
+        None,
+    )
+    .await?
+    {
+        DownloadFileOutcome::ExistingTarget(path) => Ok(DownloadOutcome::ExistingTarget(path)),
+        DownloadFileOutcome::Cancelled => Ok(DownloadOutcome::Cancelled),
+        DownloadFileOutcome::Staged {
+            temporary_path,
+            final_path,
+        } => {
+            if cancellation.is_cancelled() {
+                let _ = tokio::fs::remove_file(&temporary_path).await;
+                return Ok(DownloadOutcome::Cancelled);
+            }
+            if tokio::fs::try_exists(&final_path).await? {
+                let _ = tokio::fs::remove_file(&temporary_path).await;
+                return Ok(DownloadOutcome::ExistingTarget(final_path));
+            }
+            tokio::fs::rename(&temporary_path, &final_path).await?;
+            Ok(DownloadOutcome::Completed(final_path))
+        }
+    }
+}
+
+pub async fn download_archive(
+    url: &str,
+    site_id: &str,
+    pool_id: &str,
+    pool_name: &str,
+    download_dir: &std::path::Path,
+    cache_dir: &std::path::Path,
+    network: &NetworkPolicy,
+    cookie_header: &str,
+    cancellation: &DownloadCancellation,
+) -> anyhow::Result<DownloadOutcome> {
+    validate_path_component(site_id, "site")?;
+    if pool_id.is_empty() || !pool_id.chars().all(|value| value.is_ascii_digit()) {
+        anyhow::bail!("pool id must be numeric");
+    }
+    let pools_dir = download_dir.join(site_id).join("pools");
+    tokio::fs::create_dir_all(&pools_dir).await?;
+    let filename = archive_filename(pool_id, pool_name)?;
+    match download_file(
+        url,
+        site_id,
+        pool_id,
+        &pools_dir,
+        cache_dir,
+        network,
+        cancellation,
+        Some(cookie_header),
+        Some(&filename),
     )
     .await?
     {
@@ -97,6 +150,8 @@ async fn download_file(
     cache_dir: &std::path::Path,
     network: &NetworkPolicy,
     cancellation: &DownloadCancellation,
+    cookie_header: Option<&str>,
+    filename: Option<&str>,
 ) -> anyhow::Result<DownloadFileOutcome> {
     validate_media_url(url)?;
     let client = build_client(network)?;
@@ -105,7 +160,11 @@ async fn download_file(
         if cancellation.is_cancelled() {
             return Ok(DownloadFileOutcome::Cancelled);
         }
-        match client.get(url).send().await {
+        let mut request = client.get(url);
+        if let Some(cookie_header) = cookie_header {
+            request = request.header(reqwest::header::COOKIE, cookie_header);
+        }
+        match request.send().await {
             Ok(response) if response.status().is_success() => {
                 if !matches!(response.url().scheme(), "http" | "https") {
                     anyhow::bail!("media redirect used an unsafe URL scheme");
@@ -149,7 +208,11 @@ async fn download_file(
         .unwrap_or("image/jpeg")
         .to_string();
     let extension = mime_to_extension(&content_type).unwrap_or("jpg");
-    let final_path = target_dir.join(image_filename(identifier, extension)?);
+    let final_path = target_dir.join(
+        filename
+            .map(str::to_owned)
+            .unwrap_or(image_filename(identifier, extension)?),
+    );
     if tokio::fs::try_exists(&final_path).await? {
         return Ok(DownloadFileOutcome::ExistingTarget(final_path));
     }
@@ -233,6 +296,26 @@ fn mime_to_extension(content_type: &str) -> Option<&str> {
 fn image_filename(identifier: &str, extension: &str) -> anyhow::Result<String> {
     validate_image_identifier(identifier)?;
     Ok(format!("{}.{}", identifier.trim(), extension))
+}
+
+fn archive_filename(pool_id: &str, pool_name: &str) -> anyhow::Result<String> {
+    if pool_id.is_empty() || !pool_id.chars().all(|value| value.is_ascii_digit()) {
+        anyhow::bail!("pool id must be numeric");
+    }
+    let mut slug = String::new();
+    for character in pool_name.trim().chars() {
+        if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+            slug.push(character.to_ascii_lowercase());
+        } else if !slug.ends_with('-') {
+            slug.push('-');
+        }
+        if slug.len() >= 50 {
+            break;
+        }
+    }
+    let slug = slug.trim_matches('-');
+    let suffix = if slug.is_empty() { "pool" } else { slug };
+    Ok(format!("pool-{pool_id}_{suffix}.zip"))
 }
 
 fn validate_media_url(value: &str) -> anyhow::Result<()> {
@@ -368,6 +451,35 @@ mod tests {
         server.join().unwrap();
         assert_eq!(outcome, DownloadOutcome::ExistingTarget(target.clone()));
         assert_eq!(tokio::fs::read(target).await.unwrap(), b"original");
+        let _ = tokio::fs::remove_dir_all(root).await;
+        let _ = tokio::fs::remove_dir_all(cache).await;
+    }
+
+    #[tokio::test]
+    async fn archive_download_uses_pool_layout_and_safe_name() {
+        let root = std::env::temp_dir().join(format!("dreamland-root-{}", uuid::Uuid::new_v4()));
+        let cache = std::env::temp_dir().join(format!("dreamland-cache-{}", uuid::Uuid::new_v4()));
+        let (url, server) = image_server();
+        let outcome = download_archive(
+            &url,
+            "yandere",
+            "42",
+            "Art Book / 2026",
+            &root,
+            &cache,
+            &NetworkPolicy {
+                proxy: ProxyMode::Direct,
+                ..NetworkPolicy::default()
+            },
+            "_session=transient",
+            &DownloadCancellation::default(),
+        )
+        .await
+        .unwrap();
+        server.join().unwrap();
+        let path = root.join("yandere/pools/pool-42_art-book-2026.zip");
+        assert_eq!(outcome, DownloadOutcome::Completed(path.clone()));
+        assert_eq!(tokio::fs::read(path).await.unwrap(), b"PNG!");
         let _ = tokio::fs::remove_dir_all(root).await;
         let _ = tokio::fs::remove_dir_all(cache).await;
     }

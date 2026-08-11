@@ -7,7 +7,9 @@ use dreamland_core::{
     ContentPolicy, MediaVariant, NetworkPolicy, PoolPage, Post, PostQueryRequest, QuerySessionId,
     SavedQuery, SiteId, SitePage, TagSuggestion, TagSuggestionRequest,
 };
-use dreamland_runtime::{AppConfig, DownloadRecord, DownloadRequest};
+use dreamland_runtime::{
+    AppConfig, ArchiveRecord, ArchiveRequest, DownloadRecord, DownloadRequest,
+};
 use dreamland_sites::SiteDescriptor;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -251,6 +253,35 @@ async fn query_pool_posts(
             .map(|post| (post.post.id.clone(), post.clone())),
     );
     Ok(page)
+}
+
+#[tauri::command]
+async fn enqueue_pool_zip(
+    state: State<'_, RuntimeState>,
+    pool_id: String,
+    pool_name: String,
+) -> Result<ArchiveRecord, String> {
+    let cookie = state
+        .auth_cookie
+        .lock()
+        .expect("auth cookie lock poisoned")
+        .clone()
+        .ok_or_else(|| "Yande login is required to download a pool ZIP".to_owned())?;
+    let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
+    let url = dreamland_sites::pool_zip_url(dreamland_sites::DEFAULT_SITE_ID, &pool_id)
+        .map_err(|error| error.to_string())?;
+    state
+        .downloads
+        .enqueue_archive(ArchiveRequest {
+            site: SiteId::new(dreamland_sites::DEFAULT_SITE_ID),
+            pool_id,
+            pool_name,
+            source_url: url,
+            download_root: config.download_path,
+            cookie_header: cookie,
+        })
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -530,6 +561,27 @@ async fn list_download_history(
 }
 
 #[tauri::command]
+async fn list_archives(
+    state: State<'_, RuntimeState>,
+    limit: u32,
+) -> Result<Vec<ArchiveRecord>, String> {
+    state
+        .downloads
+        .archives(limit.min(100))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn cancel_archive(state: State<'_, RuntimeState>, id: String) -> Result<(), String> {
+    state
+        .downloads
+        .cancel_archive(&id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn open_download(path: String) -> Result<(), String> {
     let path = PathBuf::from(path);
     if !path.is_absolute() {
@@ -567,6 +619,7 @@ pub fn run() {
         .setup(|app| {
             let downloads = app.state::<RuntimeState>().downloads.clone();
             tauri::async_runtime::spawn(downloads.worker());
+            tauri::async_runtime::spawn(downloads.archive_worker());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -579,6 +632,7 @@ pub fn run() {
             sign_out,
             list_pools,
             query_pool_posts,
+            enqueue_pool_zip,
             list_favorites,
             list_saved_queries,
             save_saved_query,
@@ -593,6 +647,8 @@ pub fn run() {
             retry_download,
             list_downloads,
             list_download_history,
+            list_archives,
+            cancel_archive,
             open_download
         ])
         .run(tauri::generate_context!())

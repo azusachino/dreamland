@@ -12,7 +12,7 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 
-use crate::{download_image, DownloadOutcome};
+use crate::{download_archive, download_image, DownloadOutcome};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum DownloadStatus {
@@ -49,6 +49,39 @@ pub struct DownloadRequest {
     pub source_url: String,
     pub download_root: PathBuf,
     pub metadata: Post,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ArchiveRecord {
+    pub id: String,
+    pub site: SiteId,
+    pub pool_id: String,
+    pub pool_name: String,
+    pub status: DownloadStatus,
+    pub target_path: Option<String>,
+    pub error: Option<String>,
+    pub attempts: u32,
+    pub bytes_downloaded: u64,
+    pub total_bytes: Option<u64>,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ArchiveRequest {
+    pub site: SiteId,
+    pub pool_id: String,
+    pub pool_name: String,
+    pub source_url: String,
+    pub download_root: PathBuf,
+    pub cookie_header: String,
+}
+
+#[derive(Debug)]
+pub(crate) struct StoredArchive {
+    pub record: ArchiveRecord,
+    pub source_url: String,
+    pub download_root: PathBuf,
 }
 
 #[derive(Clone, Default)]
@@ -170,6 +203,49 @@ impl LocalStateStore {
                 CREATE INDEX IF NOT EXISTS idx_saved_queries_order
                     ON saved_queries (pinned DESC, position ASC, updated_at_ms DESC);
                 PRAGMA user_version = 2;
+                ",
+            )?;
+        }
+        if version < 3 {
+            connection.execute_batch(
+                "
+                CREATE TABLE IF NOT EXISTS archive_queue (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    site_id TEXT NOT NULL,
+                    pool_id TEXT NOT NULL,
+                    pool_name TEXT NOT NULL,
+                    source_url TEXT NOT NULL,
+                    download_root TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    target_path TEXT,
+                    error TEXT,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    bytes_downloaded INTEGER NOT NULL DEFAULT 0,
+                    total_bytes INTEGER,
+                    created_at_ms INTEGER NOT NULL,
+                    updated_at_ms INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS archive_history (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    site_id TEXT NOT NULL,
+                    pool_id TEXT NOT NULL,
+                    pool_name TEXT NOT NULL,
+                    source_url TEXT NOT NULL,
+                    download_root TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    target_path TEXT,
+                    error TEXT,
+                    attempts INTEGER NOT NULL,
+                    bytes_downloaded INTEGER NOT NULL,
+                    total_bytes INTEGER,
+                    created_at_ms INTEGER NOT NULL,
+                    updated_at_ms INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_archive_queue_order
+                    ON archive_queue (created_at_ms, id);
+                CREATE INDEX IF NOT EXISTS idx_archive_history_updated
+                    ON archive_history (updated_at_ms DESC);
+                PRAGMA user_version = 3;
                 ",
             )?;
         }
@@ -477,6 +553,186 @@ impl LocalStateStore {
         Ok(())
     }
 
+    pub fn enqueue_archive(&self, request: ArchiveRequest) -> Result<ArchiveRecord> {
+        validate_archive_request(&request)?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = now_ms();
+        let connection = self.connection()?;
+        connection.execute(
+            "INSERT INTO archive_queue
+             (id, site_id, pool_id, pool_name, source_url, download_root, status,
+              attempts, bytes_downloaded, created_at_ms, updated_at_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'Queued', 0, 0, ?7, ?7)",
+            params![
+                id,
+                request.site.as_str(),
+                request.pool_id,
+                request.pool_name,
+                request.source_url,
+                request.download_root.to_string_lossy(),
+                now,
+            ],
+        )?;
+        Ok(ArchiveRecord {
+            id,
+            site: request.site,
+            pool_id: request.pool_id,
+            pool_name: request.pool_name,
+            status: DownloadStatus::Queued,
+            target_path: None,
+            error: None,
+            attempts: 0,
+            bytes_downloaded: 0,
+            total_bytes: None,
+            created_at_ms: now,
+            updated_at_ms: now,
+        })
+    }
+
+    pub(crate) fn claim_next_archive(&self) -> Result<Option<StoredArchive>> {
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        let mut statement = transaction.prepare(
+            "SELECT id, site_id, pool_id, pool_name, source_url, download_root,
+                    status, target_path, error, attempts, bytes_downloaded, total_bytes,
+                    created_at_ms, updated_at_ms
+             FROM archive_queue WHERE status = 'Queued'
+             ORDER BY created_at_ms ASC, id ASC LIMIT 1",
+        )?;
+        let mut archive = statement.query_row([], decode_stored_archive).optional()?;
+        drop(statement);
+        if let Some(archive) = &mut archive {
+            let now = now_ms();
+            transaction.execute(
+                "UPDATE archive_queue SET status = 'Running', attempts = attempts + 1,
+                 updated_at_ms = ?2 WHERE id = ?1",
+                params![archive.record.id, now],
+            )?;
+            archive.record.status = DownloadStatus::Running;
+            archive.record.attempts += 1;
+            archive.record.updated_at_ms = now;
+        }
+        transaction.commit()?;
+        Ok(archive)
+    }
+
+    pub fn archive_records(&self, limit: u32) -> Result<Vec<ArchiveRecord>> {
+        let connection = self.connection()?;
+        let mut records = Vec::new();
+        let mut queue = connection.prepare(
+            "SELECT id, site_id, pool_id, pool_name, source_url, download_root,
+                    status, target_path, error, attempts, bytes_downloaded, total_bytes,
+                    created_at_ms, updated_at_ms
+             FROM archive_queue ORDER BY created_at_ms ASC, id ASC LIMIT ?1",
+        )?;
+        records.extend(
+            queue
+                .query_map(params![limit], decode_stored_archive)
+                .context("decode archive queue")?
+                .map(|row| row.map(|archive| archive.record))
+                .collect::<rusqlite::Result<Vec<_>>>()?,
+        );
+        let remaining = limit.saturating_sub(records.len() as u32);
+        if remaining > 0 {
+            let mut history = connection.prepare(
+                "SELECT id, site_id, pool_id, pool_name, source_url, download_root,
+                        status, target_path, error, attempts, bytes_downloaded, total_bytes,
+                        created_at_ms, updated_at_ms
+                 FROM archive_history ORDER BY updated_at_ms DESC, id DESC LIMIT ?1",
+            )?;
+            records.extend(
+                history
+                    .query_map(params![remaining], decode_stored_archive)
+                    .context("decode archive history")?
+                    .map(|row| row.map(|archive| archive.record))
+                    .collect::<rusqlite::Result<Vec<_>>>()?,
+            );
+        }
+        Ok(records)
+    }
+
+    pub fn cancel_queued_archive(&self, id: &str) -> Result<ArchiveRecord> {
+        self.finish_archive(
+            id,
+            DownloadStatus::Cancelled,
+            None,
+            Some("Cancelled before download"),
+        )
+    }
+
+    pub fn finish_archive(
+        &self,
+        id: &str,
+        status: DownloadStatus,
+        target_path: Option<&Path>,
+        error: Option<&str>,
+    ) -> Result<ArchiveRecord> {
+        if !matches!(
+            status,
+            DownloadStatus::Completed
+                | DownloadStatus::Failed
+                | DownloadStatus::Cancelled
+                | DownloadStatus::ExistingTarget
+        ) {
+            bail!("archive item cannot finish as {status:?}");
+        }
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction()?;
+        let archive = transaction
+            .query_row(
+                "SELECT id, site_id, pool_id, pool_name, source_url, download_root,
+                        status, target_path, error, attempts, bytes_downloaded, total_bytes,
+                        created_at_ms, updated_at_ms
+                 FROM archive_queue WHERE id = ?1",
+                params![id],
+                decode_stored_archive,
+            )
+            .optional()?
+            .ok_or_else(|| anyhow::anyhow!("archive queue item not found: {id}"))?;
+        let now = now_ms();
+        let target_path = target_path.map(|path| path.to_string_lossy().into_owned());
+        let error = error.map(str::to_owned);
+        transaction.execute(
+            "INSERT INTO archive_history
+             (id, site_id, pool_id, pool_name, source_url, download_root, status,
+              target_path, error, attempts, bytes_downloaded, total_bytes,
+              created_at_ms, updated_at_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            params![
+                archive.record.id,
+                archive.record.site.as_str(),
+                archive.record.pool_id,
+                archive.record.pool_name,
+                archive.source_url,
+                archive.download_root.to_string_lossy(),
+                status_name(status),
+                target_path,
+                error,
+                archive.record.attempts,
+                archive.record.bytes_downloaded as i64,
+                archive.record.total_bytes.map(|value| value as i64),
+                archive.record.created_at_ms,
+                now,
+            ],
+        )?;
+        transaction.execute("DELETE FROM archive_queue WHERE id = ?1", params![id])?;
+        transaction.commit()?;
+        let mut record = archive.record;
+        record.status = status;
+        record.target_path = target_path;
+        record.error = error;
+        record.updated_at_ms = now;
+        Ok(record)
+    }
+
+    pub fn recover_running_archives(&self) -> Result<usize> {
+        let connection = self.connection()?;
+        Ok(connection.execute(
+            "UPDATE archive_queue SET status = 'Queued', updated_at_ms = ?1 WHERE status = 'Running'",
+            params![now_ms()],
+        )?)
+    }
+
     fn list_from(&self, query: &str, limit: u32, offset: u32) -> Result<Vec<DownloadRecord>> {
         let connection = self.connection()?;
         let mut statement = connection.prepare(query)?;
@@ -502,6 +758,7 @@ pub struct DownloadManager {
     cache_root: Arc<PathBuf>,
     network: Arc<RwLock<NetworkPolicy>>,
     active: Arc<Mutex<HashMap<String, DownloadCancellation>>>,
+    archive_cookies: Arc<Mutex<HashMap<String, String>>>,
     notify: Arc<Notify>,
 }
 
@@ -513,11 +770,13 @@ impl DownloadManager {
     ) -> Result<Self> {
         let store = LocalStateStore::open(state_path)?;
         store.recover_running()?;
+        store.recover_running_archives()?;
         Ok(Self {
             store,
             cache_root: Arc::new(cache_root.into()),
             network: Arc::new(RwLock::new(network)),
             active: Arc::new(Mutex::new(HashMap::new())),
+            archive_cookies: Arc::new(Mutex::new(HashMap::new())),
             notify: Arc::new(Notify::new()),
         })
     }
@@ -525,6 +784,11 @@ impl DownloadManager {
     pub fn worker(&self) -> impl std::future::Future<Output = ()> + Send + 'static {
         let manager = self.clone();
         async move { manager.run_worker().await }
+    }
+
+    pub fn archive_worker(&self) -> impl std::future::Future<Output = ()> + Send + 'static {
+        let manager = self.clone();
+        async move { manager.run_archive_worker().await }
     }
 
     pub fn set_network_policy(&self, network: NetworkPolicy) {
@@ -539,6 +803,45 @@ impl DownloadManager {
         let record = tokio::task::spawn_blocking(move || store.enqueue(request)).await??;
         self.notify.notify_one();
         Ok(record)
+    }
+
+    pub async fn enqueue_archive(&self, request: ArchiveRequest) -> Result<ArchiveRecord> {
+        let cookie = request.cookie_header.clone();
+        let store = self.store.clone();
+        let record = tokio::task::spawn_blocking(move || store.enqueue_archive(request)).await??;
+        self.archive_cookies
+            .lock()
+            .expect("archive cookie lock poisoned")
+            .insert(record.id.clone(), cookie);
+        self.notify.notify_one();
+        Ok(record)
+    }
+
+    pub async fn archives(&self, limit: u32) -> Result<Vec<ArchiveRecord>> {
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || store.archive_records(limit)).await?
+    }
+
+    pub async fn cancel_archive(&self, id: &str) -> Result<()> {
+        if let Some(cancellation) = self
+            .active
+            .lock()
+            .expect("download active lock poisoned")
+            .get(id)
+            .cloned()
+        {
+            cancellation.cancel();
+            return Ok(());
+        }
+        let store = self.store.clone();
+        let id = id.to_owned();
+        let store_id = id.clone();
+        tokio::task::spawn_blocking(move || store.cancel_queued_archive(&store_id)).await??;
+        self.archive_cookies
+            .lock()
+            .expect("archive cookie lock poisoned")
+            .remove(&id);
+        Ok(())
     }
 
     pub async fn cancel(&self, id: &str) -> Result<()> {
@@ -708,6 +1011,96 @@ impl DownloadManager {
             }
         }
     }
+
+    async fn run_archive_worker(self) {
+        loop {
+            let store = self.store.clone();
+            let archive =
+                match tokio::task::spawn_blocking(move || store.claim_next_archive()).await {
+                    Ok(Ok(archive)) => archive,
+                    Ok(Err(error)) => {
+                        eprintln!("archive queue claim failed: {error:#}");
+                        None
+                    }
+                    Err(error) => {
+                        eprintln!("archive queue worker join failed: {error}");
+                        None
+                    }
+                };
+            let Some(archive) = archive else {
+                self.notify.notified().await;
+                continue;
+            };
+            let cancellation = DownloadCancellation::default();
+            self.active
+                .lock()
+                .expect("download active lock poisoned")
+                .insert(archive.record.id.clone(), cancellation.clone());
+            let cookie = self
+                .archive_cookies
+                .lock()
+                .expect("archive cookie lock poisoned")
+                .get(&archive.record.id)
+                .cloned();
+            let network = self
+                .network
+                .read()
+                .expect("download network lock poisoned")
+                .clone();
+            let result = match cookie {
+                Some(cookie) => {
+                    download_archive(
+                        &archive.source_url,
+                        archive.record.site.as_str(),
+                        &archive.record.pool_id,
+                        &archive.record.pool_name,
+                        &archive.download_root,
+                        &self.cache_root,
+                        &network,
+                        &cookie,
+                        &cancellation,
+                    )
+                    .await
+                }
+                None => Err(anyhow::anyhow!(
+                    "Yande login session is unavailable; sign in again and retry"
+                )),
+            };
+            self.active
+                .lock()
+                .expect("download active lock poisoned")
+                .remove(&archive.record.id);
+            self.archive_cookies
+                .lock()
+                .expect("archive cookie lock poisoned")
+                .remove(&archive.record.id);
+            let (status, target, error) = match result {
+                Ok(DownloadOutcome::Completed(path)) => {
+                    (DownloadStatus::Completed, Some(path), None)
+                }
+                Ok(DownloadOutcome::ExistingTarget(path)) => (
+                    DownloadStatus::ExistingTarget,
+                    Some(path),
+                    Some("Target already exists".to_owned()),
+                ),
+                Ok(DownloadOutcome::Cancelled) => (
+                    DownloadStatus::Cancelled,
+                    None,
+                    Some("Cancelled during archive download".to_owned()),
+                ),
+                Err(error) => (DownloadStatus::Failed, None, Some(error.to_string())),
+            };
+            let store = self.store.clone();
+            let id = archive.record.id.clone();
+            if let Err(error) = tokio::task::spawn_blocking(move || {
+                store.finish_archive(&id, status, target.as_deref(), error.as_deref())
+            })
+            .await
+            {
+                eprintln!("archive queue finish failed: {error}");
+            }
+        }
+    }
 }
 
 fn validate_request(request: &DownloadRequest) -> Result<()> {
@@ -820,6 +1213,38 @@ fn decode_saved_query(row: &Row<'_>) -> rusqlite::Result<SavedQuery> {
     })
 }
 
+fn decode_stored_archive(row: &Row<'_>) -> rusqlite::Result<StoredArchive> {
+    let site = SiteId::new(row.get::<_, String>(1)?);
+    let record = ArchiveRecord {
+        id: row.get(0)?,
+        site,
+        pool_id: row.get(2)?,
+        pool_name: row.get(3)?,
+        status: parse_status(row.get::<_, String>(6)?).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(
+                6,
+                rusqlite::types::Type::Text,
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    error.to_string(),
+                )),
+            )
+        })?,
+        target_path: row.get(7)?,
+        error: row.get(8)?,
+        attempts: row.get::<_, i64>(9)? as u32,
+        bytes_downloaded: row.get::<_, i64>(10)? as u64,
+        total_bytes: row.get::<_, Option<i64>>(11)?.map(|value| value as u64),
+        created_at_ms: row.get(12)?,
+        updated_at_ms: row.get(13)?,
+    };
+    Ok(StoredArchive {
+        record,
+        source_url: row.get(4)?,
+        download_root: PathBuf::from(row.get::<_, String>(5)?),
+    })
+}
+
 fn variant_name(variant: MediaVariant) -> &'static str {
     match variant {
         MediaVariant::Preview => "Preview",
@@ -858,6 +1283,21 @@ fn parse_status(value: String) -> Result<DownloadStatus> {
         "ExistingTarget" => Ok(DownloadStatus::ExistingTarget),
         _ => bail!("unknown download status: {value}"),
     }
+}
+
+fn validate_archive_request(request: &ArchiveRequest) -> Result<()> {
+    let url = reqwest::Url::parse(&request.source_url).context("invalid archive URL")?;
+    if !matches!(url.scheme(), "http" | "https") {
+        bail!("archive URL must use http or https");
+    }
+    validate_component(request.site.as_str(), "site")?;
+    if request.pool_id.is_empty() || !request.pool_id.chars().all(|value| value.is_ascii_digit()) {
+        bail!("pool id must be numeric");
+    }
+    if request.pool_name.trim().is_empty() {
+        bail!("pool name cannot be empty");
+    }
+    Ok(())
 }
 
 fn now_ms() -> i64 {
@@ -1005,6 +1445,41 @@ mod tests {
         reopened.delete_saved_query(&yandere, &saved.id).unwrap();
         assert!(reopened.saved_queries(&yandere).unwrap().is_empty());
         assert_eq!(reopened.saved_queries(&pixiv).unwrap().len(), 1);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn archive_queue_round_trip_and_restart_recovery() {
+        let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
+        let store = LocalStateStore::open(&path).unwrap();
+        let request = ArchiveRequest {
+            site: SiteId::new("yandere"),
+            pool_id: "42".to_owned(),
+            pool_name: "Art Book".to_owned(),
+            source_url: "https://yande.re/pool/zip/42".to_owned(),
+            download_root: std::env::temp_dir(),
+            cookie_header: "_session=transient".to_owned(),
+        };
+        let queued = store.enqueue_archive(request).unwrap();
+        assert_eq!(store.archive_records(10).unwrap(), vec![queued.clone()]);
+        let claimed = store.claim_next_archive().unwrap().unwrap();
+        assert_eq!(claimed.record.status, DownloadStatus::Running);
+        assert_eq!(store.recover_running_archives().unwrap(), 1);
+        assert_eq!(
+            store.archive_records(10).unwrap()[0].status,
+            DownloadStatus::Queued
+        );
+        let claimed = store.claim_next_archive().unwrap().unwrap();
+        let finished = store
+            .finish_archive(
+                &claimed.record.id,
+                DownloadStatus::Completed,
+                Some(Path::new("/tmp/yandere/pools/pool-42_art-book.zip")),
+                None,
+            )
+            .unwrap();
+        assert_eq!(finished.status, DownloadStatus::Completed);
+        assert_eq!(store.archive_records(10).unwrap()[0], finished);
         std::fs::remove_file(path).unwrap();
     }
 

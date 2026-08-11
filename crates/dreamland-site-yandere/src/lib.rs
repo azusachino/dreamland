@@ -237,6 +237,16 @@ pub fn pool_posts_expression(pool_id: &str) -> Result<String> {
     Ok(format!("pool:{pool_id}"))
 }
 
+pub fn pool_zip_endpoint(base_url: &str, pool_id: &str) -> Result<String> {
+    if pool_id.is_empty() || !pool_id.chars().all(|value| value.is_ascii_digit()) {
+        bail!("Yande pool id must be numeric");
+    }
+    let mut url = reqwest::Url::parse(base_url).context("parse Yande API URL")?;
+    url.set_path(&format!("/pool/zip/{pool_id}"));
+    url.set_query(None);
+    Ok(url.to_string())
+}
+
 pub fn decode_pools(body: &[u8]) -> Result<Vec<Pool>> {
     let records = serde_json::from_slice::<Vec<PoolRecord>>(body).context("decode Yande pools")?;
     Ok(records
@@ -912,6 +922,15 @@ mod tests {
     fn pool_query_is_a_safe_exact_tag_expression() {
         assert_eq!(pool_posts_expression("42").unwrap(), "pool:42");
         assert!(pool_posts_expression("42 order:score").is_err());
+    }
+
+    #[test]
+    fn pool_zip_endpoint_is_site_owned_and_validated() {
+        assert_eq!(
+            pool_zip_endpoint("https://yande.re/post.json", "42").unwrap(),
+            "https://yande.re/pool/zip/42"
+        );
+        assert!(pool_zip_endpoint("https://yande.re/post.json", "42/x").is_err());
     }
 
     #[test]

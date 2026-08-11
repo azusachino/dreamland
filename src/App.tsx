@@ -3,14 +3,17 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import {
   authStatus,
   beginAuth,
+  cancelArchive,
   cancelQuery,
   continueQuery,
   detectProxy,
   enqueueDownload,
+  enqueuePoolZip,
   listPools,
   listFavorites,
   listDownloads,
   listDownloadHistory,
+  listArchives,
   listSavedQueries,
   cancelDownload,
   deleteSavedQuery,
@@ -25,6 +28,7 @@ import {
   signOut,
   suggestTags,
   type AppConfig,
+  type ArchiveRecord,
   type AuthStatus,
   type ContentPolicy,
   type DiscoverySource,
@@ -335,6 +339,12 @@ function App() {
     enabled: configQuery.isSuccess,
     refetchInterval: 1_500,
   });
+  const archivesQuery = useQuery({
+    queryKey: ["archives"],
+    queryFn: () => listArchives(50),
+    enabled: configQuery.isSuccess,
+    refetchInterval: 1_500,
+  });
   useEffect(() => {
     const records = downloadsQuery.data?.pages.flatMap((page) => page) ?? [];
     if (!records.length) return;
@@ -608,6 +618,17 @@ function App() {
     }
   }
 
+  async function handlePoolZip(pool: Pool) {
+    setError("");
+    try {
+      await enqueuePoolZip(pool.id, pool.name);
+      await archivesQuery.refetch();
+      showToast("Pool ZIP queued", `${pool.name} will be saved in Downloads.`);
+    } catch (reason) {
+      setError(`Pool ZIP failed: ${errorMessage(reason)}`);
+    }
+  }
+
   async function handleDownload(post: Post) {
     setDownloadingId(post.post.id);
     setError("");
@@ -869,6 +890,7 @@ function App() {
           ) : view === "downloads" ? (
             <DownloadPanel
               records={downloadRecords}
+              archives={archivesQuery.data ?? []}
               historyHasNext={Boolean(downloadsQuery.hasNextPage)}
               historyLoading={downloadsQuery.isFetchingNextPage}
               onCancel={async (id) => {
@@ -887,6 +909,10 @@ function App() {
                 }
               }}
               onLoadMore={() => void downloadsQuery.fetchNextPage()}
+              onCancelArchive={async (id) => {
+                await cancelArchive(id);
+                await archivesQuery.refetch();
+              }}
             />
           ) : view === "pools" ? (
             <PoolPanel
@@ -905,6 +931,7 @@ function App() {
               onLoadMorePosts={() => void poolPostsQuery.fetchNextPage()}
               onBack={() => setSelectedPool(null)}
               onBrowse={setSelectedPool}
+              onDownloadZip={(pool) => void handlePoolZip(pool)}
               onSelectPost={setSelectedPost}
               onDownload={handleDownload}
               onTag={chooseTag}
@@ -1340,17 +1367,21 @@ function DetailImage({ post }: { post: Post }) {
 
 interface DownloadPanelProps {
   records: DownloadRecord[];
+  archives: ArchiveRecord[];
   historyHasNext: boolean;
   historyLoading: boolean;
   onCancel: (id: string) => Promise<void>;
   onRetry: (id: string) => Promise<void>;
   onOpen: (path: string) => Promise<void>;
   onLoadMore: () => void;
+  onCancelArchive: (id: string) => Promise<void>;
 }
 
-function DownloadPanel({ records, historyHasNext, historyLoading, onCancel, onRetry, onOpen, onLoadMore }: DownloadPanelProps) {
+function DownloadPanel({ records, archives, historyHasNext, historyLoading, onCancel, onRetry, onOpen, onLoadMore, onCancelArchive }: DownloadPanelProps) {
   const active = records.filter((record) => isActiveDownload(record.status));
   const history = records.filter((record) => !isActiveDownload(record.status));
+  const activeArchives = archives.filter((record) => isActiveDownload(record.status));
+  const archiveHistory = archives.filter((record) => !isActiveDownload(record.status));
   const groups = new Map<string, DownloadRecord[]>();
   for (const record of history) {
     const date = new Date(record.created_at_ms);
@@ -1363,15 +1394,22 @@ function DownloadPanel({ records, historyHasNext, historyLoading, onCancel, onRe
       <div className="inspector-heading">
         <div><p className="eyebrow">Local state</p><h2>Downloads</h2></div>
       </div>
-      <p className="helper-text">{active.length ? `${active.length} item${active.length === 1 ? "" : "s"} in progress` : "Nothing is downloading"}</p>
-      {records.length === 0 ? (
+      <p className="helper-text">{active.length + activeArchives.length ? `${active.length + activeArchives.length} item${active.length + activeArchives.length === 1 ? "" : "s"} in progress` : "Nothing is downloading"}</p>
+      {records.length === 0 && archives.length === 0 ? (
         <div className="panel-empty">Your download history will appear here.</div>
       ) : (
         <>
-          {active.length > 0 && <section className="download-section">
+          {active.length + activeArchives.length > 0 && <section className="download-section">
             <h3 className="download-section-title">In progress</h3>
             <div className="download-list">
+              {activeArchives.map((record) => <ArchiveRow key={record.id} record={record} onCancel={onCancelArchive} onOpen={onOpen} />)}
               {active.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} onOpen={onOpen} />)}
+            </div>
+          </section>}
+          {archiveHistory.length > 0 && <section className="download-section">
+            <h3 className="download-section-title">Pool archives</h3>
+            <div className="download-list">
+              {archiveHistory.map((record) => <ArchiveRow key={record.id} record={record} onCancel={onCancelArchive} onOpen={onOpen} />)}
             </div>
           </section>}
           {historyGroups.length > 0 && <section className="download-section">
@@ -1425,6 +1463,32 @@ function DownloadRow({ record, onCancel, onRetry, onOpen }: DownloadRowProps) {
   );
 }
 
+interface ArchiveRowProps {
+  record: ArchiveRecord;
+  onCancel: (id: string) => Promise<void>;
+  onOpen: (path: string) => Promise<void>;
+}
+
+function ArchiveRow({ record, onCancel, onOpen }: ArchiveRowProps) {
+  const canCancel = record.status === "Queued" || record.status === "Running";
+  const canOpen = Boolean(record.target_path) && (record.status === "Completed" || record.status === "ExistingTarget");
+  return (
+    <article className="download-row archive-row">
+      <div className="download-row-heading">
+        <strong>{record.pool_name}</strong>
+        <span className={`download-status status-${record.status.toLowerCase()}`}>{downloadStatusLabel(record.status)}</span>
+      </div>
+      <p>Pool ZIP · {record.pool_id} · attempt {record.attempts || 1}</p>
+      {record.error && <p className="download-error">{record.error}</p>}
+      {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
+      {(canCancel || canOpen) && <div className="download-row-actions">
+        {canCancel && <button className="button button-text" type="button" onClick={() => void onCancel(record.id)}>Cancel</button>}
+        {canOpen && <button className="button button-outlined" type="button" onClick={() => void onOpen(record.target_path!)}>Open file</button>}
+      </div>}
+    </article>
+  );
+}
+
 interface PoolPanelProps {
   pools: Pool[];
   poolsLoading: boolean;
@@ -1441,19 +1505,23 @@ interface PoolPanelProps {
   onLoadMorePosts: () => void;
   onBack: () => void;
   onBrowse: (pool: Pool) => void;
+  onDownloadZip: (pool: Pool) => void;
   onSelectPost: (post: Post) => void;
   onDownload: (post: Post) => Promise<void>;
   onTag: (tag: string) => void;
   downloadingId: string | null;
 }
 
-function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool, posts, postsLoading, postsError, postsHasNext, onRetryPools, onRetryPosts, onLoadMorePools, onLoadMorePosts, onBack, onBrowse, onSelectPost, onDownload, onTag, downloadingId }: PoolPanelProps) {
+function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool, posts, postsLoading, postsError, postsHasNext, onRetryPools, onRetryPosts, onLoadMorePools, onLoadMorePosts, onBack, onBrowse, onDownloadZip, onSelectPost, onDownload, onTag, downloadingId }: PoolPanelProps) {
   if (selectedPool) {
     return (
       <section className="workspace-panel shell-surface" aria-label={`${selectedPool.name} pool`}>
         <div className="inspector-heading">
           <div><p className="eyebrow">Yande pool</p><h2>{selectedPool.name}</h2></div>
-          <button className="button button-outlined button-with-icon" type="button" onClick={onBack}><Icon name="back" /><span>All pools</span></button>
+          <div className="inspector-actions">
+            <button className="button button-outlined" type="button" onClick={() => onDownloadZip(selectedPool)}>Download ZIP</button>
+            <button className="button button-outlined button-with-icon" type="button" onClick={onBack}><Icon name="back" /><span>All pools</span></button>
+          </div>
         </div>
         <p className="helper-text">{selectedPool.post_count} ordered post{selectedPool.post_count === 1 ? "" : "s"} from Yande.</p>
         {postsError && <div className="panel-error" role="alert"><p>{postsError}</p><button className="button button-outlined" type="button" onClick={onRetryPosts}>Try again</button></div>}
@@ -1484,7 +1552,7 @@ function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool
       <div className="inspector-heading">
         <div><p className="eyebrow">Yande collections</p><h2>Pools</h2></div>
       </div>
-      <p className="helper-text">Public pools group ordered posts from the site. ZIP download will be enabled after authenticated archive handling is wired.</p>
+      <p className="helper-text">Public pools group ordered posts from the site. Open a pool to browse its ordered posts or request its authenticated ZIP archive.</p>
       {poolsLoading && pools.length === 0 && <p className="loading-line" role="status"><span /> Loading pools…</p>}
       {poolsError && <div className="panel-error" role="alert"><p>{poolsError}</p><button className="button button-outlined" type="button" onClick={onRetryPools}>Try again</button></div>}
       {!poolsLoading && !poolsError && pools.length === 0 && <div className="panel-empty">No public pools found.</div>}

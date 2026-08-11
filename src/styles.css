@@ -1012,6 +1012,14 @@ select:focus-visible {
   font-size: 1.45rem;
 }
 
+.inspector-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
 .detail-preview {
   aspect-ratio: 4 / 5;
   background: var(--surface-container);

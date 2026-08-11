@@ -69,6 +69,14 @@ pub async fn query_pool_posts(
     .await
 }
 
+pub fn pool_zip_url(site_id: &str, pool_id: &str) -> Result<String> {
+    if site_id != DEFAULT_SITE_ID {
+        bail!("site '{site_id}' has no active pool archive adapter");
+    }
+    let config = dreamland_site_yandere::default_config();
+    dreamland_site_yandere::pool_zip_endpoint(&config.api_url, pool_id)
+}
+
 pub async fn set_favorite(
     site_id: &str,
     post_id: &str,

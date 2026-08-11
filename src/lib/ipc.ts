@@ -119,6 +119,21 @@ export interface PoolPage {
   has_next: boolean;
 }
 
+export interface ArchiveRecord {
+  id: string;
+  site: string;
+  pool_id: string;
+  pool_name: string;
+  status: DownloadStatus;
+  target_path: string | null;
+  error: string | null;
+  attempts: number;
+  bytes_downloaded: number;
+  total_bytes: number | null;
+  created_at_ms: number;
+  updated_at_ms: number;
+}
+
 export interface AuthStatus {
   authenticated: boolean;
   username: string | null;
@@ -193,6 +208,10 @@ export function queryPoolPosts(poolId: string, page = 1, pageSize = 20): Promise
   return invoke<SitePage>("query_pool_posts", { poolId, page, pageSize });
 }
 
+export function enqueuePoolZip(poolId: string, poolName: string): Promise<ArchiveRecord> {
+  return invoke<ArchiveRecord>("enqueue_pool_zip", { poolId, poolName });
+}
+
 export function setFavorite(postId: string, favorite: boolean): Promise<void> {
   return invoke<void>("set_favorite", { postId, favorite });
 }
@@ -265,6 +284,14 @@ export function listDownloads(limit = 50): Promise<DownloadRecord[]> {
 
 export function listDownloadHistory(limit = 50, offset = 0): Promise<DownloadRecord[]> {
   return invoke<DownloadRecord[]>("list_download_history", { limit, offset });
+}
+
+export function listArchives(limit = 50): Promise<ArchiveRecord[]> {
+  return invoke<ArchiveRecord[]>("list_archives", { limit });
+}
+
+export function cancelArchive(id: string): Promise<void> {
+  return invoke<void>("cancel_archive", { id });
 }
 
 export function openDownload(path: string): Promise<void> {

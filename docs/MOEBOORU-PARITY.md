@@ -39,7 +39,7 @@ not required to make the MoeBooru exploration model complete.
 | Download queue, duplicate handling, history | [`Model.kt`](../vendor/moebooru/app/src/main/java/com/github/yueeng/moebooru/Model.kt:35), `MainActivity.kt` | Async SQLite queue, collision-safe path, history, open file | Covered with a stronger desktop-local policy |
 | Crop, wallpaper, avatar, Android share intents | [`PreviewActivity.kt`](../vendor/moebooru/app/src/main/java/com/github/yueeng/moebooru/PreviewActivity.kt:250), `CropActivity.kt` | No desktop equivalent | **Translate selectively:** native open/share; defer wallpaper/avatar/crop until requested |
 | Theme, cache, column, info, page, notification settings | [`preferences.xml`](../vendor/moebooru/app/src/main/res/xml/preferences.xml) | Content policy, path, proxy, retry settings | **Partial:** add theme/grid/preview/cache controls that improve desktop use |
-| Pool browsing | `Model.kt` pool query fields and Yande pool API | Yande pool list/posts/ZIP are implemented | Dreamland extension; retain independently of reference parity |
+| Pool browsing | `Model.kt` pool query fields and Yande pool API | Yande pool list/posts and an authenticated ZIP archive queue | Dreamland extension; live ZIP auth/content-type acceptance and archive-history pagination remain release-gate work |
 
 ## Implementation order
 
