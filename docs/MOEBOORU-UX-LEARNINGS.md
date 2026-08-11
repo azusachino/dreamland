@@ -73,7 +73,7 @@ scrollable feed path.
 
 - Tapping a card opens a preview/detail screen with swipe navigation.
 - Long-pressing a card exposes tag inspection, local download, and favorite.
-- A post can expose preview, sample/JPEG, and original media choices.
+- A post can expose preview, sample/JPEG, and original media choices; Dreamland's detail view now starts with the sample image and falls back safely.
 - The reference app's quality preference chooses between JPEG and original;
   its default is not automatically “best quality”. Dreamland may choose best
   quality as its product default, but that is a deliberate UX decision.

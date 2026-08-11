@@ -1085,6 +1085,21 @@ select:focus-visible {
   width: 100%;
 }
 
+.detail-navigation {
+  align-items: center;
+  color: var(--ink-muted);
+  display: flex;
+  font-size: 0.72rem;
+  justify-content: space-between;
+  margin-top: -0.35rem;
+}
+
+.detail-nav-button {
+  border: 1px solid var(--outline);
+  height: 2.2rem;
+  width: 2.2rem;
+}
+
 .detail-summary {
   align-items: center;
   color: var(--ink-muted);

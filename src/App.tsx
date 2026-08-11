@@ -51,7 +51,7 @@ import {
 type ViewMode = "latest" | "popular" | "search" | "downloads" | "pools" | "favorites";
 type PopularPeriod = "Day" | "Week" | "Month";
 type ToastTone = "success" | "info" | "error";
-type IconName = "clock" | "trend" | "download" | "book" | "heart" | "search" | "refresh" | "settings" | "close" | "back" | "check";
+type IconName = "clock" | "trend" | "download" | "book" | "heart" | "search" | "refresh" | "settings" | "close" | "back" | "forward" | "check";
 type QueryOrder = "" | "score" | "score_asc" | "id" | "id_desc" | "mpixels" | "mpixels_asc" | "landscape" | "portrait" | "vote" | "random";
 
 interface AdvancedQueryForm {
@@ -315,6 +315,7 @@ function Icon({ name }: { name: IconName }) {
     settings: "M19.43 12.98c.04-.32.07-.65.07-.98s-.02-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.37-.31-.6-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98L14.5 2.42C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.5.42L9.12 5.07c-.61.25-1.17.58-1.69.98l-2.49-1c-.23-.08-.48 0-.6.22l-2 3.46c-.12.22-.07.49.12.64l2.11 1.65c-.04.32-.08.65-.08.98s.03.66.08.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.37.31.6.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.38-2.65c.61-.25 1.17-.58 1.69-.98l2.49 1c.23.08.48 0 .6-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z",
     close: "M6 6l12 12M18 6 6 18",
     back: "M19 12H5m6 6-6-6 6-6",
+    forward: "M5 12h14m-6-6 6 6-6 6",
     check: "m5 12 4 4L19 6",
   };
   const material = name === "refresh" || name === "settings";
@@ -536,6 +537,15 @@ function App() {
   const pools = poolsQuery.data?.pages.flatMap((page) => page.pools).filter((pool) => pool.public) ?? [];
   const poolPosts = poolPostsQuery.data?.pages.flatMap((page) => page.posts) ?? [];
   const selectedPosts = images.filter((post) => selectedPostIds.has(post.post.id));
+  const previewPosts = useMemo(
+    () => view === "pools" ? poolPosts : view === "favorites" ? favoritePosts : images,
+    [favoritePosts, images, poolPosts, view],
+  );
+  const selectedPreviewIndex = selectedPost
+    ? previewPosts.findIndex((post) => post.post.site === selectedPost.post.site && post.post.id === selectedPost.post.id)
+    : -1;
+  const canGoPrevious = selectedPreviewIndex > 0;
+  const canGoNext = selectedPreviewIndex >= 0 && selectedPreviewIndex < previewPosts.length - 1;
   const loading = configQuery.isPending || sitesQuery.isPending || imagesQuery.isPending;
   const loadingMore = imagesQuery.isFetchingNextPage;
   const downloadRecords = useMemo(() => {
@@ -578,6 +588,26 @@ function App() {
     }
   }, [selectedSiteId, sitesQuery.data]);
 
+  useEffect(() => {
+    if (!selectedPost) return;
+    function handlePreviewKey(event: KeyboardEvent) {
+      const target = event.target;
+      if (target instanceof HTMLElement && ["INPUT", "SELECT", "TEXTAREA", "BUTTON"].includes(target.tagName)) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSelectedPost(null);
+      } else if (event.key === "ArrowLeft" && canGoPrevious) {
+        event.preventDefault();
+        setSelectedPost(previewPosts[selectedPreviewIndex - 1] ?? null);
+      } else if (event.key === "ArrowRight" && canGoNext) {
+        event.preventDefault();
+        setSelectedPost(previewPosts[selectedPreviewIndex + 1] ?? null);
+      }
+    }
+    window.addEventListener("keydown", handlePreviewKey);
+    return () => window.removeEventListener("keydown", handlePreviewKey);
+  }, [canGoNext, canGoPrevious, previewPosts, selectedPost, selectedPreviewIndex]);
+
   function selectSite(site: SiteDescriptor) {
     if (!site.capabilities.browse || site.id === activeSiteId) return;
     window.localStorage.setItem("dreamland.site", site.id);
@@ -591,6 +621,12 @@ function App() {
     setSelectedPost(null);
     setSelectedPostIds(new Set());
     setSelectionMode(false);
+  }
+
+  function selectAdjacentPost(offset: -1 | 1) {
+    const nextIndex = selectedPreviewIndex + offset;
+    const nextPost = previewPosts[nextIndex];
+    if (nextPost) setSelectedPost(nextPost);
   }
 
   function changeView(nextView: ViewMode) {
@@ -1194,6 +1230,12 @@ function App() {
             siteName={activeSite?.name ?? selectedPost.post.site}
             favoriteSupported={activeSite?.capabilities.remote_favorites === true}
             onClose={() => setSelectedPost(null)}
+            canGoPrevious={canGoPrevious}
+            canGoNext={canGoNext}
+            previewPosition={selectedPreviewIndex >= 0 ? selectedPreviewIndex + 1 : undefined}
+            previewTotal={previewPosts.length}
+            onPrevious={() => selectAdjacentPost(-1)}
+            onNext={() => selectAdjacentPost(1)}
             onDownload={handleDownload}
             favorited={favoritePostIds.has(selectedPost.post.id)}
             onFavorite={handleFavorite}
@@ -1503,13 +1545,19 @@ interface PostInspectorProps {
   favoriteSupported: boolean;
   favorited: boolean;
   onClose: () => void;
+  canGoPrevious: boolean;
+  canGoNext: boolean;
+  previewPosition?: number;
+  previewTotal: number;
+  onPrevious: () => void;
+  onNext: () => void;
   onDownload: (post: Post) => Promise<void>;
   onFavorite: (post: Post) => Promise<void>;
   onTag: (tag: string) => void;
   downloadVariant: MediaVariant;
 }
 
-function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, onClose, onDownload, onFavorite, onTag, downloadVariant }: PostInspectorProps) {
+function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onDownload, onFavorite, onTag, downloadVariant }: PostInspectorProps) {
   const originalUrl = post.full_url ?? post.sample_url ?? post.preview_url;
   return (
     <aside className="detail-panel shell-surface" aria-label="post details">
@@ -1522,6 +1570,11 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
       </div>
       <div className="detail-preview">
         <DetailImage key={post.post.id} post={post} />
+      </div>
+      <div className="detail-navigation" aria-label="post preview navigation">
+        <button className="icon-button detail-nav-button" type="button" aria-label="previous post" title="previous post" disabled={!canGoPrevious} onClick={onPrevious}><Icon name="back" /></button>
+        <span>{previewPosition && previewTotal ? `${previewPosition} of ${previewTotal}` : "single post"}</span>
+        <button className="icon-button detail-nav-button" type="button" aria-label="next post" title="next post" disabled={!canGoNext} onClick={onNext}><Icon name="forward" /></button>
       </div>
       <div className="detail-summary">
         <span>{siteName} post #{post.post.id}</span>
@@ -1564,7 +1617,7 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
 }
 
 function DetailImage({ post }: { post: Post }) {
-  const sources = [post.preview_url, post.sample_url, post.full_url].filter(
+  const sources = [post.sample_url, post.preview_url, post.full_url].filter(
     (url, index, all): url is string => Boolean(url) && all.indexOf(url) === index,
   );
   const [sourceIndex, setSourceIndex] = useState(0);
