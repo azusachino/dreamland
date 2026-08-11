@@ -681,6 +681,7 @@ function App() {
     setEditingSavedQueryId(null);
     setView("search");
     setSearchFocused(false);
+    setSelectedPost(null);
     setSelectedPostIds(new Set());
     setSelectionMode(false);
   }
@@ -1614,6 +1615,12 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
         {originalUrl && <a href={originalUrl} target="_blank" rel="noreferrer">open original</a>}
         {post.source && <a href={post.source} target="_blank" rel="noreferrer">open source</a>}
       </div>
+      {(post.parent_id || post.has_children) && (
+        <div className="detail-related-actions" aria-label="related posts">
+          {post.parent_id && <button className="button button-outlined detail-post-link" type="button" onClick={() => onTag(`id:${post.parent_id}`)}>find parent #{post.parent_id}</button>}
+          {post.has_children && <button className="button button-outlined detail-post-link" type="button" onClick={() => onTag(`parent:${post.post.id}`)}>find child posts</button>}
+        </div>
+      )}
       {detailLoading && <p className="detail-helper" role="status">refreshing post details…</p>}
       {detailError && <p className="detail-helper" role="alert">couldn’t refresh the post; showing the feed snapshot. {detailError}</p>}
       <div className="inspector-section">

@@ -18,6 +18,7 @@ that Cloudflare bot protection has been solved.
 | K-09 | Pool browsing accepts a title query and resets page-number pagination for a new search; the UI exposes `search pools` and `clear` | Pass; live `Kona_Garage` query returned one match on page 1 and none on page 2; shared transport test and typecheck pass |
 | K-10 | Post detail exposes a site-owned `open <site> post` action that validates numeric IDs and opens `/post/show/<id>` in a dedicated browser window | Pass; adapter and registry URL tests pass; `.com` HTML access remains subject to bot protection |
 | K-11 | Post detail author identity is an exact `user:<name>` search action, kept distinct from artwork tag chips | Pass; live Konachan `otaku_emmy` and Yande `moonian` queries returned matching posts; TypeScript and full gate pass |
+| K-12 | Post detail parent/child state exposes exact `id:<parent-id>` and `parent:<post-id>` searches, returning to the result view | Pass; live Konachan `id:407153` and `parent:407153` queries returned the observed parent/child relationship; TypeScript and full gate pass |
 
 ## Not advertised yet
 

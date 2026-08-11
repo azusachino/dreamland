@@ -1151,6 +1151,12 @@ select:focus-visible {
   padding: 0;
 }
 
+.detail-related-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .detail-helper {
   color: var(--ink-subtle);
   font-size: 0.7rem;
