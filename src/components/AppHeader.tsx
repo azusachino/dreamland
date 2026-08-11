@@ -19,6 +19,10 @@ interface AppHeaderProps {
   onOpenSite: () => void;
   title: string;
   loading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  onBack: () => void;
+  onForward: () => void;
   onRefresh: () => void;
   onSettings: () => void;
   searchDraft: string;
@@ -34,7 +38,7 @@ interface AppHeaderProps {
   onChooseTag: (tag: string) => void;
 }
 
-export function AppHeader({ activeSite, activeSiteId, sites, siteMenuAnchor, onSiteMenuOpen, onSiteMenuClose, onSelectSite, onOpenSite, title, loading, onRefresh, onSettings, searchDraft, searchInput, searchFocused, onSearchFocus, onSearchBlur, onSearchChange, onSearchSubmit, onClearSearch, onOpenAdvancedSearch, suggestions, onChooseTag }: AppHeaderProps) {
+export function AppHeader({ activeSite, activeSiteId, sites, siteMenuAnchor, onSiteMenuOpen, onSiteMenuClose, onSelectSite, onOpenSite, title, loading, canGoBack, canGoForward, onBack, onForward, onRefresh, onSettings, searchDraft, searchInput, searchFocused, onSearchFocus, onSearchBlur, onSearchChange, onSearchSubmit, onClearSearch, onOpenAdvancedSearch, suggestions, onChooseTag }: AppHeaderProps) {
   return (
     <header className="app-header shell-surface">
       <div className="header-identity">
@@ -87,6 +91,12 @@ export function AppHeader({ activeSite, activeSiteId, sites, siteMenuAnchor, onS
         )}
       </form>
       <div className="header-actions">
+        <IconButton aria-label="back" title="back" disabled={!canGoBack} onClick={onBack}>
+          <Icon name="back" />
+        </IconButton>
+        <IconButton aria-label="forward" title="forward" disabled={!canGoForward} onClick={onForward}>
+          <Icon name="forward" />
+        </IconButton>
         <div className="site-picker">
           <Button
             className="site-menu-trigger"

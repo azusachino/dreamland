@@ -373,6 +373,15 @@ function App() {
   const searchInput = useRef<HTMLInputElement>(null);
   const downloadStatuses = useRef(new Map<string, DownloadStatus>());
   const activeQuerySession = useRef<string | null>(null);
+  const historyIndex = typeof window.history.state?.idx === "number" ? window.history.state.idx : 0;
+  const maxHistoryIndex = useRef(historyIndex);
+
+  useEffect(() => {
+    maxHistoryIndex.current = Math.max(maxHistoryIndex.current, historyIndex);
+  }, [historyIndex, location.key]);
+
+  const canGoBack = historyIndex > 0;
+  const canGoForward = historyIndex < maxHistoryIndex.current;
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -685,6 +694,24 @@ function App() {
     window.addEventListener("keydown", handlePreviewKey);
     return () => window.removeEventListener("keydown", handlePreviewKey);
   }, [activeContentPolicy, canGoNext, canGoPrevious, previewPosts, selectedPost, selectedPreviewIndex]);
+
+  useEffect(() => {
+    function handleHistoryKey(event: KeyboardEvent) {
+      const target = event.target;
+      if (target instanceof HTMLElement && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
+      const back = (event.altKey && event.key === "ArrowLeft") || (event.metaKey && event.key === "[");
+      const forward = (event.altKey && event.key === "ArrowRight") || (event.metaKey && event.key === "]");
+      if (back && canGoBack) {
+        event.preventDefault();
+        navigate(-1);
+      } else if (forward && canGoForward) {
+        event.preventDefault();
+        navigate(1);
+      }
+    }
+    window.addEventListener("keydown", handleHistoryKey);
+    return () => window.removeEventListener("keydown", handleHistoryKey);
+  }, [canGoBack, canGoForward, navigate]);
 
   useEffect(() => {
     if (!selectedPost) return;
@@ -1057,6 +1084,10 @@ function App() {
         }}
         title={title}
         loading={loading}
+        canGoBack={canGoBack}
+        canGoForward={canGoForward}
+        onBack={() => navigate(-1)}
+        onForward={() => navigate(1)}
         onRefresh={() => {
           if (isBrowseView) void imagesQuery.refetch();
           else if (view === "favorites") void favoritesQuery.refetch();
