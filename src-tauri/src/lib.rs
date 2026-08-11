@@ -535,13 +535,14 @@ async fn execute_query(
         .sessions
         .begin_operation(&session.id)
         .ok_or_else(|| "query session was cancelled before dispatch".to_string())?;
-    execute_session_query(state, session, operation).await
+    execute_session_query(state, session, operation, true).await
 }
 
 async fn execute_session_query(
     state: &RuntimeState,
     session: dreamland_runtime::QuerySession,
     operation: dreamland_runtime::SessionOperation,
+    replace_cache: bool,
 ) -> Result<SitePage, String> {
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
     let result =
@@ -559,7 +560,9 @@ async fn execute_session_query(
     }
     page.session = Some(session.id);
     let mut posts = state.posts.lock().expect("post cache lock poisoned");
-    posts.clear();
+    if replace_cache {
+        posts.clear();
+    }
     posts.extend(page.posts.iter().map(|post| {
         (
             post_cache_key(post.post.site.as_str(), &post.post.id),
@@ -674,7 +677,7 @@ async fn continue_query(
         .sessions
         .begin_next_page(&session)
         .ok_or_else(|| "query session has no next page".to_string())?;
-    execute_session_query(&state, session_state, operation).await
+    execute_session_query(&state, session_state, operation, false).await
 }
 
 #[tauri::command]
