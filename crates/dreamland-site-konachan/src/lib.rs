@@ -13,6 +13,7 @@ const DEFAULT_CONFIG_TOML: &str = include_str!("../config/default.toml");
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct SiteDefaults {
     pub api_url: String,
+    pub safe_api_url: String,
     pub browser_url: String,
 }
 
@@ -63,15 +64,31 @@ pub async fn query_posts(
     request: &PostQueryRequest,
     network: &NetworkPolicy,
 ) -> Result<SitePage> {
-    dreamland_moe::query_posts(api_url, request, network, SITE_ID, "konachan")
-        .await
-        .map_err(map_transport_error)
-        .map(|mut page| {
-            for post in &mut page.posts {
-                post.post.site = SiteId::new(SITE_ID);
-            }
-            page
-        })
+    let result = dreamland_moe::query_posts(api_url, request, network, SITE_ID, "konachan").await;
+    let page = match result {
+        Ok(page) => page,
+        Err(error)
+            if request.query.content_policy == ContentPolicy::SafeOnly
+                && is_bot_protection_error(&error)
+                && api_url != default_config().safe_api_url =>
+        {
+            dreamland_moe::query_posts(
+                &default_config().safe_api_url,
+                request,
+                network,
+                SITE_ID,
+                "konachan",
+            )
+            .await
+            .map_err(map_transport_error)?
+        }
+        Err(error) => return Err(map_transport_error(error)),
+    };
+    let mut page = page;
+    for post in &mut page.posts {
+        post.post.site = SiteId::new(SITE_ID);
+    }
+    Ok(page)
 }
 
 pub async fn lookup_post(
@@ -108,9 +125,15 @@ pub async fn fetch_tag_suggestions(
     request: &TagSuggestionRequest,
     network: &NetworkPolicy,
 ) -> Result<Vec<TagSuggestion>> {
-    dreamland_moe::fetch_tag_suggestions(endpoint, request, network, "konachan")
+    let fallback = tag_endpoint(&default_config().safe_api_url)?;
+    let params = [
+        ("name", request.query.clone()),
+        ("limit", request.limit.to_string()),
+    ];
+    let body = fetch_bytes_with_fallback(endpoint, &fallback, &params, network)
         .await
-        .map_err(map_transport_error)
+        .map_err(map_transport_error)?;
+    dreamland_moe::decode_tag_suggestions(&body)
 }
 
 pub fn tag_endpoint(base_url: &str) -> Result<String> {
@@ -126,9 +149,21 @@ pub async fn fetch_related_tags(
     request: &dreamland_core::RelatedTagRequest,
     network: &NetworkPolicy,
 ) -> Result<Vec<dreamland_core::RelatedTag>> {
-    dreamland_moe::fetch_related_tags(endpoint, request, network, SITE_ID)
+    let fallback = related_tag_endpoint(&default_config().safe_api_url)?;
+    let tags = request
+        .tags
+        .iter()
+        .map(|tag| tag.trim())
+        .filter(|tag| !tag.is_empty())
+        .collect::<Vec<_>>();
+    if tags.is_empty() {
+        anyhow::bail!("related tag request must include a tag");
+    }
+    let params = [("tags", tags.join(" "))];
+    let body = fetch_bytes_with_fallback(endpoint, &fallback, &params, network)
         .await
-        .map_err(map_transport_error)
+        .map_err(map_transport_error)?;
+    dreamland_moe::decode_related_tags(&body, request)
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -210,10 +245,11 @@ pub async fn fetch_pools(
         bail!("Konachan pool pagination must be greater than zero");
     }
     let endpoint = pool_endpoint(api_url)?;
+    let fallback = pool_endpoint(&default_config().safe_api_url)?;
     let page_size = page_size.min(MAX_POOL_PAGE_SIZE);
     let params = dreamland_moe::pool_query_params(query, page, page_size);
     let pools = decode_pools(
-        &dreamland_moe::fetch_bytes(&endpoint, &params, network, "konachan")
+        &fetch_bytes_with_fallback(&endpoint, &fallback, &params, network)
             .await
             .map_err(map_transport_error)?,
     )?;
@@ -242,9 +278,10 @@ pub async fn query_pool_posts(
         bail!("Konachan pool pagination must be greater than zero");
     }
     let endpoint = pool_posts_endpoint(api_url)?;
+    let fallback = pool_posts_endpoint(&default_config().safe_api_url)?;
     let params = [("id", pool_id.to_owned()), ("page", page.to_string())];
     let mut posts = decode_pool_posts(
-        &dreamland_moe::fetch_bytes(&endpoint, &params, network, "konachan")
+        &fetch_bytes_with_policy_fallback(&endpoint, &fallback, &params, content_policy, network)
             .await
             .map_err(map_transport_error)?,
     )?;
@@ -257,6 +294,40 @@ pub async fn query_pool_posts(
         page_size,
         session: None,
     })
+}
+
+async fn fetch_bytes_with_fallback(
+    endpoint: &str,
+    fallback_endpoint: &str,
+    params: &[(&'static str, String)],
+    network: &NetworkPolicy,
+) -> Result<Vec<u8>> {
+    match dreamland_moe::fetch_bytes(endpoint, params, network, "konachan").await {
+        Ok(body) => Ok(body),
+        Err(error) if endpoint != fallback_endpoint && is_bot_protection_error(&error) => {
+            dreamland_moe::fetch_bytes(fallback_endpoint, params, network, "konachan").await
+        }
+        Err(error) => Err(error),
+    }
+}
+
+async fn fetch_bytes_with_policy_fallback(
+    endpoint: &str,
+    fallback_endpoint: &str,
+    params: &[(&'static str, String)],
+    content_policy: ContentPolicy,
+    network: &NetworkPolicy,
+) -> Result<Vec<u8>> {
+    if content_policy == ContentPolicy::SafeOnly {
+        fetch_bytes_with_fallback(endpoint, fallback_endpoint, params, network).await
+    } else {
+        dreamland_moe::fetch_bytes(endpoint, params, network, "konachan").await
+    }
+}
+
+fn is_bot_protection_error(error: &anyhow::Error) -> bool {
+    let message = error.to_string();
+    message.contains("HTTP 403") || message.contains("HTTP 503")
 }
 
 fn map_transport_error(error: anyhow::Error) -> anyhow::Error {
@@ -342,6 +413,7 @@ mod tests {
         let config = default_config();
 
         assert_eq!(config.api_url, "https://konachan.com/post.json");
+        assert_eq!(config.safe_api_url, "https://konachan.net/post.json");
         assert_eq!(config.browser_url, "https://konachan.com/post");
         assert_eq!(
             browser_post_url(&config.browser_url, "407162").unwrap(),
@@ -370,7 +442,22 @@ mod tests {
             related_tag_endpoint(&config.api_url).unwrap(),
             "https://konachan.com/tag/related.json"
         );
+        assert_eq!(
+            pool_endpoint(&config.safe_api_url).unwrap(),
+            "https://konachan.net/pool.json"
+        );
         assert!(validate_pool_id("not-a-number").is_err());
+    }
+
+    #[test]
+    fn only_bot_protection_errors_are_fallback_candidates() {
+        assert!(is_bot_protection_error(&anyhow::anyhow!(
+            "HTTP 403 Forbidden"
+        )));
+        assert!(is_bot_protection_error(&anyhow::anyhow!(
+            "HTTP 503 Service Unavailable"
+        )));
+        assert!(!is_bot_protection_error(&anyhow::anyhow!("decode failed")));
     }
 
     #[test]

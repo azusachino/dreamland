@@ -55,7 +55,7 @@ import {
 type ViewMode = "latest" | "popular" | "search" | "downloads" | "pools" | "favorites";
 type PopularPeriod = "Day" | "Week" | "Month";
 type ToastTone = "success" | "info" | "error";
-type IconName = "clock" | "trend" | "download" | "book" | "heart" | "search" | "refresh" | "settings" | "close" | "back" | "forward" | "check";
+type IconName = "clock" | "trend" | "download" | "book" | "heart" | "search" | "refresh" | "settings" | "close" | "back" | "forward" | "check" | "chevron";
 type QueryOrder = "" | "score" | "score_asc" | "id" | "id_desc" | "mpixels" | "mpixels_asc" | "landscape" | "portrait" | "vote" | "random";
 
 interface AdvancedQueryForm {
@@ -321,6 +321,7 @@ function Icon({ name }: { name: IconName }) {
     back: "M19 12H5m6 6-6-6 6-6",
     forward: "M5 12h14m-6-6 6 6-6 6",
     check: "m5 12 4 4L19 6",
+    chevron: "m6 9 6 6 6-6",
   };
   const material = name === "refresh" || name === "settings";
   return <svg className="icon" viewBox="0 0 24 24" fill={material ? "currentColor" : "none"} stroke={material ? "none" : "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name]} /></svg>;
@@ -337,6 +338,7 @@ function App() {
   const [searchDraft, setSearchDraft] = useState("");
   const [submittedSearch, setSubmittedSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
+  const [siteMenuOpen, setSiteMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
   const [selectedPool, setSelectedPool] = useState<Pool | null>(null);
@@ -354,6 +356,7 @@ function App() {
   const [toast, setToast] = useState<ToastState | null>(null);
   const toastId = useRef(0);
   const searchInput = useRef<HTMLInputElement>(null);
+  const sitePicker = useRef<HTMLDivElement>(null);
   const downloadStatuses = useRef(new Map<string, DownloadStatus>());
   const activeQuerySession = useRef<string | null>(null);
 
@@ -621,10 +624,22 @@ function App() {
     return () => window.removeEventListener("keydown", handlePreviewKey);
   }, [activeContentPolicy, canGoNext, canGoPrevious, previewPosts, selectedPost, selectedPreviewIndex]);
 
+  useEffect(() => {
+    if (!siteMenuOpen) return;
+    function closeSiteMenu(event: PointerEvent) {
+      if (event.target instanceof Node && !sitePicker.current?.contains(event.target)) {
+        setSiteMenuOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", closeSiteMenu);
+    return () => document.removeEventListener("pointerdown", closeSiteMenu);
+  }, [siteMenuOpen]);
+
   function selectSite(site: SiteDescriptor) {
     if (!site.capabilities.browse || site.id === activeSiteId) return;
     window.localStorage.setItem("dreamland.site", site.id);
     setSelectedSiteId(site.id);
+    setSiteMenuOpen(false);
     setError("");
     setNotice("");
     setView("latest");
@@ -929,24 +944,36 @@ function App() {
               <h1>Dreamland</h1>
             </div>
           </div>
-          <div className="site-picker">
+          <div className="site-picker" ref={sitePicker}>
             <span>browse site</span>
             <div className="site-picker-controls">
-              <div className="site-switcher" role="group" aria-label="choose image board site">
+              <div className="site-menu">
+                <button
+                  className="site-menu-trigger"
+                  type="button"
+                  aria-label="choose image board site"
+                  aria-expanded={siteMenuOpen}
+                  onClick={() => setSiteMenuOpen((current) => !current)}
+                >
+                  <span>{activeSite?.name ?? "choose site"}</span>
+                  <Icon name="chevron" />
+                </button>
+                {siteMenuOpen && <div className="site-menu-popover" role="menu">
                 {(sitesQuery.data ?? []).map((site) => (
                   <button
                     key={site.id}
-                    className={`site-option${site.id === activeSiteId ? " active" : ""}`}
+                    className={`site-menu-option${site.id === activeSiteId ? " active" : ""}`}
                     type="button"
-                    aria-pressed={site.id === activeSiteId}
+                    role="menuitem"
                     disabled={!site.capabilities.browse}
                     onClick={() => selectSite(site)}
                     title={site.capabilities.browse ? `browse ${site.name}` : `${site.name} coming later`}
                   >
-                    {site.name}
-                    {!site.capabilities.browse && <small>later</small>}
+                    <span>{site.name}</span>
+                    <small>{site.capabilities.browse ? "ready" : "later"}</small>
                   </button>
                 ))}
+                </div>}
               </div>
               <button className="button button-text site-open" type="button" onClick={() => void handleOpenSite()} disabled={!activeSite}>
                 open site

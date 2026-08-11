@@ -64,12 +64,12 @@ through /post/vote.json. The current popular endpoints return fixed-size result
 windows and do not honor ordinary page/limit navigation, but their date
 parameters select different day/week/month windows.
 
-Konachan is the second real Moebooru adapter. Its API and browser origin are
-`https://konachan.com`; the adapter accepts the full `ContentPolicy` range.
-Direct API requests can be challenged by bot protection, so the site-owned
-browser route remains the recovery path. A challenge is an availability
-failure, not a reason to silently replace Konachan with the unrelated
-safe-only `.net` mirror.
+Konachan is the second real Moebooru adapter. Its primary API and browser
+origin are `https://konachan.com`; the adapter accepts the full
+`ContentPolicy` range. If the primary API is challenged by bot protection,
+safe-only requests may retry against the separate G-rated
+`https://konachan.net` mirror. Non-safe requests never use that fallback and
+surface the `.com` browser recovery route instead.
 
 ## Boundaries
 
