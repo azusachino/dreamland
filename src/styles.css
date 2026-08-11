@@ -777,6 +777,41 @@ select:focus-visible {
   grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
 }
 
+.skeleton-card {
+  cursor: default;
+}
+
+.skeleton-card:hover {
+  box-shadow: none;
+  transform: none;
+}
+
+.skeleton-media {
+  height: 100%;
+  transform: none;
+  width: 100%;
+}
+
+.skeleton-card .tag-list {
+  min-height: 2rem;
+}
+
+.skeleton-rows {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.skeleton-row {
+  display: block;
+  width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .MuiSkeleton-root {
+    animation: none;
+  }
+}
+
 .card {
   background: var(--surface-raised);
   border: 1px solid var(--outline);

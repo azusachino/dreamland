@@ -1,5 +1,19 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import AccessTimeRounded from "@mui/icons-material/AccessTimeRounded";
+import ArrowBackRounded from "@mui/icons-material/ArrowBackRounded";
+import ArrowForwardRounded from "@mui/icons-material/ArrowForwardRounded";
+import CheckRounded from "@mui/icons-material/CheckRounded";
+import CloseRounded from "@mui/icons-material/CloseRounded";
+import DownloadRounded from "@mui/icons-material/DownloadRounded";
+import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
+import FavoriteBorderRounded from "@mui/icons-material/FavoriteBorderRounded";
+import MenuBookRounded from "@mui/icons-material/MenuBookRounded";
+import RefreshRounded from "@mui/icons-material/RefreshRounded";
+import SearchRounded from "@mui/icons-material/SearchRounded";
+import SettingsRounded from "@mui/icons-material/SettingsRounded";
+import TrendingUpRounded from "@mui/icons-material/TrendingUpRounded";
+import { Alert, Button, Chip, CssBaseline, IconButton, Skeleton, ThemeProvider, Tooltip } from "@mui/material";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   authStatus,
@@ -53,6 +67,7 @@ import {
   type SavedQuery,
   type SiteDescriptor,
 } from "./lib/ipc";
+import { createDreamlandTheme } from "./theme";
 
 type ViewMode = "latest" | "popular" | "search" | "downloads" | "pools" | "favorites";
 type PopularPeriod = "Day" | "Week" | "Month";
@@ -316,23 +331,23 @@ function isActiveDownload(status: DownloadStatus): boolean {
 }
 
 function Icon({ name }: { name: IconName }) {
-  const paths: Record<IconName, string> = {
-    clock: "M12 6v6l4 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
-    trend: "m4 16 5-5 4 3 7-8M15 6h5v5",
-    download: "M12 3v12m0 0 5-5m-5 5-5-5M4 21h16",
-    book: "M4 5.5A2.5 2.5 0 0 1 6.5 3H11v17H6.5A2.5 2.5 0 0 0 4 22V5.5Zm16 0A2.5 2.5 0 0 0 17.5 3H13v17h4.5A2.5 2.5 0 0 1 20 22V5.5Z",
-    heart: "m12 20-7-7a4.5 4.5 0 0 1 6.4-6.3L12 8.3l.6-1.6A4.5 4.5 0 0 1 19 13z",
-    search: "m21 21-4.4-4.4m2.4-5.1a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z",
-    refresh: "M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35Z",
-    settings: "M19.43 12.98c.04-.32.07-.65.07-.98s-.02-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.37-.31-.6-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98L14.5 2.42C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.5.42L9.12 5.07c-.61.25-1.17.58-1.69.98l-2.49-1c-.23-.08-.48 0-.6.22l-2 3.46c-.12.22-.07.49.12.64l2.11 1.65c-.04.32-.08.65-.08.98s.03.66.08.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.37.31.6.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.38-2.65c.61-.25 1.17-.58 1.69-.98l2.49 1c.23.08.48 0 .6-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z",
-    close: "M6 6l12 12M18 6 6 18",
-    back: "M19 12H5m6 6-6-6 6-6",
-    forward: "M5 12h14m-6-6 6 6-6 6",
-    check: "m5 12 4 4L19 6",
-    chevron: "m6 9 6 6 6-6",
-  };
-  const material = name === "refresh" || name === "settings";
-  return <svg className="icon" viewBox="0 0 24 24" fill={material ? "currentColor" : "none"} stroke={material ? "none" : "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name]} /></svg>;
+  const icons = {
+    clock: AccessTimeRounded,
+    trend: TrendingUpRounded,
+    download: DownloadRounded,
+    book: MenuBookRounded,
+    heart: FavoriteBorderRounded,
+    search: SearchRounded,
+    refresh: RefreshRounded,
+    settings: SettingsRounded,
+    close: CloseRounded,
+    back: ArrowBackRounded,
+    forward: ArrowForwardRounded,
+    check: CheckRounded,
+    chevron: ExpandMoreRounded,
+  } as const;
+  const Component = icons[name];
+  return <Component className="icon" aria-hidden="true" />;
 }
 
 function App() {
@@ -957,8 +972,16 @@ function App() {
     }
   }
 
+  const muiTheme = useMemo(() => createDreamlandTheme(
+    themeMode === "dark" || (themeMode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)
+      ? "dark"
+      : "light",
+  ), [themeMode]);
+
   return (
-    <div className="app">
+    <ThemeProvider theme={muiTheme}>
+      <CssBaseline />
+      <div className="app">
       <header className="app-header shell-surface">
         <div className="header-identity">
           <div className="brand-lockup">
@@ -1216,7 +1239,7 @@ function App() {
           {notice && <p className="message message-success" role="status">{notice}</p>}
           {isBrowseView ? (
             <>
-          {loading && <div className="loading-line" role="status"><span /> finding something good…</div>}
+          {loading && images.length === 0 && <GallerySkeleton count={Math.min(pageSize, 12)} />}
               {queryError ? (
                 <ErrorState
                   message={queryError}
@@ -1259,6 +1282,7 @@ function App() {
             <DownloadPanel
               records={downloadRecords}
               archives={archivesQuery.data ?? []}
+              loading={downloadsQuery.isPending || archivesQuery.isPending}
               historyHasNext={Boolean(downloadsQuery.hasNextPage)}
               historyLoading={downloadsQuery.isFetchingNextPage}
               onCancel={async (id) => {
@@ -1386,7 +1410,8 @@ function App() {
         />
       )}
       {toast && <Toast state={toast} onClose={() => setToast(null)} />}
-    </div>
+      </div>
+    </ThemeProvider>
   );
 }
 
@@ -1594,7 +1619,7 @@ function LoadMore({ autoLoad = true, hasNext, loading, onLoadMore }: LoadMorePro
   if (!hasNext && !loading) return <div className="load-more-end">you’ve reached the end.</div>;
   return (
     <div className="load-more" ref={sentinel}>
-      {loading ? <><span /> loading more…</> : <button className="button button-outlined" type="button" onClick={requestMore}>load more</button>}
+      {loading ? <Skeleton variant="rounded" width={148} height={44} animation="wave" /> : <button className="button button-outlined" type="button" onClick={requestMore}>load more</button>}
     </div>
   );
 }
@@ -1658,6 +1683,45 @@ function ImageCard({ post, selectionMode, selected, downloading, onDownload, onS
         </div>
       </div>
     </article>
+  );
+}
+
+function PostCardSkeleton() {
+  return (
+    <article className="card skeleton-card" aria-hidden="true">
+      <div className="preview">
+        <Skeleton className="skeleton-media" variant="rectangular" animation="wave" />
+      </div>
+      <div className="card-details">
+        <div className="tag-list">
+          <Skeleton variant="rounded" width="38%" height={28} animation="wave" />
+          <Skeleton variant="rounded" width="30%" height={28} animation="wave" />
+          <Skeleton variant="rounded" width="24%" height={28} animation="wave" />
+        </div>
+        <div className="card-footer">
+          <Skeleton variant="text" width="42%" height={24} animation="wave" />
+          <Skeleton variant="rounded" width={92} height={40} animation="wave" />
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function GallerySkeleton({ count = 12 }: { count?: number }) {
+  return (
+    <div className="gallery-grid" aria-label="loading posts" role="status">
+      {Array.from({ length: count }, (_, index) => <PostCardSkeleton key={index} />)}
+    </div>
+  );
+}
+
+function RowSkeleton({ count = 5 }: { count?: number }) {
+  return (
+    <div className="skeleton-rows" aria-label="loading content" role="status">
+      {Array.from({ length: count }, (_, index) => (
+        <Skeleton key={index} className="skeleton-row" variant="rounded" height={72} animation="wave" />
+      ))}
+    </div>
   );
 }
 
@@ -1834,6 +1898,7 @@ function DetailImage({ post }: { post: Post }) {
 interface DownloadPanelProps {
   records: DownloadRecord[];
   archives: ArchiveRecord[];
+  loading: boolean;
   historyHasNext: boolean;
   historyLoading: boolean;
   onCancel: (id: string) => Promise<void>;
@@ -1843,7 +1908,7 @@ interface DownloadPanelProps {
   onCancelArchive: (id: string) => Promise<void>;
 }
 
-function DownloadPanel({ records, archives, historyHasNext, historyLoading, onCancel, onRetry, onOpen, onLoadMore, onCancelArchive }: DownloadPanelProps) {
+function DownloadPanel({ records, archives, loading, historyHasNext, historyLoading, onCancel, onRetry, onOpen, onLoadMore, onCancelArchive }: DownloadPanelProps) {
   const active = records.filter((record) => isActiveDownload(record.status));
   const history = records.filter((record) => !isActiveDownload(record.status));
   const activeArchives = archives.filter((record) => isActiveDownload(record.status));
@@ -1861,7 +1926,9 @@ function DownloadPanel({ records, archives, historyHasNext, historyLoading, onCa
         <div><p className="eyebrow">local state</p><h2>downloads</h2></div>
       </div>
       <p className="helper-text">{active.length + activeArchives.length ? `${active.length + activeArchives.length} item${active.length + activeArchives.length === 1 ? "" : "s"} in progress` : "nothing is downloading"}</p>
-      {records.length === 0 && archives.length === 0 ? (
+      {loading && records.length === 0 && archives.length === 0 ? (
+        <RowSkeleton count={6} />
+      ) : records.length === 0 && archives.length === 0 ? (
         <div className="panel-empty">your download history will appear here.</div>
       ) : (
         <>
@@ -1997,7 +2064,7 @@ function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool
         </div>
         <p className="helper-text">{selectedPool.post_count} ordered post{selectedPool.post_count === 1 ? "" : "s"} from {siteName}.</p>
         {postsError && <div className="panel-error" role="alert"><p>{postsError}</p><button className="button button-outlined" type="button" onClick={onRetryPosts}>try again</button></div>}
-        {postsLoading && posts.length === 0 && <p className="loading-line" role="status"><span /> loading pool posts…</p>}
+        {postsLoading && posts.length === 0 && <GallerySkeleton count={8} />}
         {!postsLoading && !postsError && posts.length === 0 && <div className="panel-empty">this pool has no visible posts.</div>}
         <div className="gallery-grid">
           {posts.map((post) => (
@@ -2030,7 +2097,7 @@ function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool
         {poolSearch && <button className="button button-text" type="button" onClick={onClearPoolSearch}>clear</button>}
       </form>
       <p className="helper-text">public pools group ordered posts from {siteName}. open a pool to browse its ordered posts{collectionDownloads ? " or request its authenticated zip archive" : ""}.</p>
-      {poolsLoading && pools.length === 0 && <p className="loading-line" role="status"><span /> loading pools…</p>}
+      {poolsLoading && pools.length === 0 && <RowSkeleton />}
       {poolsError && <div className="panel-error" role="alert"><p>{poolsError}</p><button className="button button-outlined" type="button" onClick={onRetryPools}>try again</button></div>}
       {!poolsLoading && !poolsError && pools.length === 0 && <div className="panel-empty">no public pools found.</div>}
       <div className="collection-list">
@@ -2073,7 +2140,7 @@ function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favor
         <>
           <p className="account-connected"><span className="connection-dot" /> {auth.username ? `${auth.username} connected` : "yandere account connected"}</p>
           {favoritesError && <div className="panel-error" role="alert"><p>{favoritesError}</p><button className="button button-outlined" type="button" onClick={onRetry}>try again</button></div>}
-          {favoritesLoading && favorites.length === 0 && <p className="helper-text">loading favorites…</p>}
+          {favoritesLoading && favorites.length === 0 && <GallerySkeleton count={8} />}
           {!favoritesLoading && favorites.length === 0 && <div className="panel-empty">no favorites found.</div>}
           <div className="gallery-grid">
             {favorites.map((post) => (
