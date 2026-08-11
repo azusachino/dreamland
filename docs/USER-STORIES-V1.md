@@ -45,6 +45,20 @@ v1 stories.
 | US-Y-13 | As a user, I configure the runtime safely. | I can set download directory, quality, concurrency, cache, logging, and site non-secret options; validation happens before apply/persist. | `load_config`, `validate_site_config`, `save_config`; G-01 |
 | US-Y-14 | As a user, I follow an author tag from a post and return to my previous exploration. | Opening a post adds a detail entry; selecting its author tag adds a search entry; Back returns search → detail → the originating feed with its site, popular period/date, loaded results, selected position, and scroll context. Forward retraces the same path. | React navigation history + TanStack Query cache; no new site API |
 
+### Daily workflow stories
+
+These are cross-feature habits the app must preserve on every route; they are
+not additional site capabilities.
+
+| ID | User story | Acceptance |
+| --- | --- | --- |
+| D-01 | As a user, I refresh or retry the screen I am using. | Refresh keeps the current route, site, search expression, popular period/date, pool selection, and content policy; loading replaces stale content with a calm skeleton and retry returns to the same route. |
+| D-02 | As a user, I open a pool, inspect posts, and return to the pool list. | Pool list → pool detail → Back preserves the pool search and list position; pool-post pagination is independent from pool-list pagination and does not create history entries. |
+| D-03 | As a user, I download while continuing to browse. | Enqueue never changes the current route; one top-right notification reports queued/completed/existing/failed state, with no duplicate inline banner; Downloads remains the durable history and opens completed files through the runtime. |
+| D-04 | As a user, I change sites during exploration. | The route changes to the selected site’s equivalent view only when that capability exists; unsupported tabs disappear, old site results/detail state are cleared, and Back never returns to a stale site response. |
+| D-05 | As a user, I use keyboard and window navigation. | Escape closes detail as Back; Left/Right changes the detail carousel without adding history entries; platform Back/Forward and their keyboard equivalents retrace route entries. |
+| D-06 | As a user, I reopen Dreamland after leaving it. | The app restores the last safe route and site from local preferences; route intent is replayed when remote data is cold, while exact scroll and loaded-page state remain session-local. |
+
 ## Failure and boundary coverage
 
 “Evil” cases are hostile or untrusted inputs; edge cases are unusual but
@@ -67,6 +81,9 @@ following behavior.
 | Worker crash or app restart | Durable SQLite state makes queued/running work recoverable; temporary cache files are reconciled by the runtime, not exposed as library files. | US-Y-07/12, G-08 |
 | User changes config/auth while a query/download runs | Existing operation keeps its bound context or is cancelled explicitly; stale capabilities and continuation tokens cannot be reused. | US-Y-02/09/13, G-01/G-10 |
 | Detail-to-tag navigation loses its source feed | Keep a replayable feed/search intent and live feed snapshot in the navigation entry; never depend on an expired continuation token to reconstruct Back. | US-Y-03/04/06/14 |
+| Refresh/retry is issued while a route is loading | Keep the route and request fingerprint stable; cancel the obsolete operation and suppress late results instead of resetting to latest. | D-01, G-01/G-10 |
+| A site lacks the current view capability | Remove or disable only that route action, clear site-bound data, and show a stable unsupported state; never render another site’s posts under the new site name. | D-04, G-01 |
+| App restarts with an old route or expired cursor | Restore only validated route intent and start a new query session; never persist or reuse a remote continuation cursor as navigation state. | D-06, G-02/G-10 |
 
 ## Deliberate non-stories
 
