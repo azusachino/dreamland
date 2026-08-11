@@ -20,6 +20,13 @@
   --danger: #ffb4ab;
   --glass-fallback: rgb(25 32 36 / 94%);
   --glass-surface: rgb(34 43 48 / 80%);
+  --detail-overlay: rgb(7 11 13 / 84%);
+  --detail-stage: #080d0f;
+  --detail-stage-ink: #ffffff;
+  --detail-stage-muted: rgb(255 255 255 / 78%);
+  --detail-stage-scrim: rgb(0 0 0 / 58%);
+  --detail-control-bg: rgb(0 0 0 / 42%);
+  --detail-control-border: rgb(255 255 255 / 32%);
   --radius-sm: 0.7rem;
   --radius-md: 1rem;
   --radius-lg: 1.45rem;
@@ -47,6 +54,13 @@
     --danger: #ba1a1a;
     --glass-fallback: rgb(255 255 255 / 94%);
     --glass-surface: rgb(255 255 255 / 80%);
+    --detail-overlay: rgb(29 40 45 / 32%);
+    --detail-stage: #e9efee;
+    --detail-stage-ink: #1d282d;
+    --detail-stage-muted: #5a6970;
+    --detail-stage-scrim: rgb(245 247 246 / 86%);
+    --detail-control-bg: rgb(255 255 255 / 76%);
+    --detail-control-border: #8b9a9d;
     --shadow: 0 1.2rem 3rem rgb(31 52 58 / 14%);
   }
 }
@@ -70,6 +84,13 @@
   --danger: #ba1a1a;
   --glass-fallback: rgb(255 255 255 / 94%);
   --glass-surface: rgb(255 255 255 / 80%);
+  --detail-overlay: rgb(29 40 45 / 32%);
+  --detail-stage: #e9efee;
+  --detail-stage-ink: #1d282d;
+  --detail-stage-muted: #5a6970;
+  --detail-stage-scrim: rgb(245 247 246 / 86%);
+  --detail-control-bg: rgb(255 255 255 / 76%);
+  --detail-control-border: #8b9a9d;
   --shadow: 0 1.2rem 3rem rgb(31 52 58 / 14%);
 }
 
@@ -870,7 +891,7 @@ select:focus-visible {
 
 .detail-overlay {
   align-items: center;
-  background: rgb(7 11 13 / 84%);
+  background: var(--detail-overlay);
   -webkit-backdrop-filter: blur(0.75rem);
   backdrop-filter: blur(0.75rem);
   display: flex;
@@ -1146,7 +1167,7 @@ select:focus-visible {
 }
 
 .detail-stage {
-  background: #080d0f;
+  background: var(--detail-stage);
   height: min(72vh, 52rem);
   min-height: 22rem;
   overflow: hidden;
@@ -1155,8 +1176,8 @@ select:focus-visible {
 
 .detail-stage-heading {
   align-items: flex-start;
-  background: linear-gradient(rgb(0 0 0 / 58%), transparent);
-  color: #fff;
+  background: linear-gradient(var(--detail-stage-scrim), transparent);
+  color: var(--detail-stage-ink);
   display: flex;
   justify-content: space-between;
   left: 0;
@@ -1169,18 +1190,18 @@ select:focus-visible {
 }
 
 .detail-stage-heading .eyebrow {
-  color: rgb(255 255 255 / 76%);
+  color: var(--detail-stage-muted);
 }
 
 .detail-stage-heading .icon-button {
-  background: rgb(0 0 0 / 42%);
-  border-color: rgb(255 255 255 / 32%);
-  color: #fff;
+  background: var(--detail-control-bg);
+  border-color: var(--detail-control-border);
+  color: var(--detail-stage-ink);
 }
 
 .detail-preview {
   align-items: center;
-  background: #080d0f;
+  background: var(--detail-stage);
   display: flex;
   inset: 0;
   overflow: hidden;
@@ -1214,7 +1235,7 @@ select:focus-visible {
 .detail-image-loading,
 .detail-image-state {
   align-items: center;
-  color: rgb(255 255 255 / 78%);
+  color: var(--detail-stage-muted);
   display: flex;
   flex-direction: column;
   font-size: 0.78rem;
@@ -1239,7 +1260,7 @@ select:focus-visible {
 
 .detail-navigation {
   align-items: center;
-  color: #fff;
+  color: var(--detail-stage-ink);
   display: flex;
   font-size: 0.72rem;
   justify-content: space-between;
@@ -1247,15 +1268,15 @@ select:focus-visible {
   margin: 0;
   position: absolute;
   right: 1rem;
-  text-shadow: 0 0.1rem 0.5rem rgb(0 0 0 / 55%);
+  text-shadow: 0 0.1rem 0.5rem var(--detail-stage-scrim);
   bottom: 1rem;
   z-index: 2;
 }
 
 .detail-nav-button {
-  background: rgb(0 0 0 / 42%);
-  border-color: rgb(255 255 255 / 32%);
-  color: #fff;
+  background: var(--detail-control-bg);
+  border-color: var(--detail-control-border);
+  color: var(--detail-stage-ink);
   height: 2.2rem;
   width: 2.2rem;
 }

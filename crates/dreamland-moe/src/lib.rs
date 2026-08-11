@@ -681,8 +681,26 @@ pub async fn set_favorite(
     endpoint.set_path("/post/vote.json");
     endpoint.set_query(None);
     let client = build_client_with_cookie(network, Some(cookie_header))?;
+    let mut home_endpoint = endpoint.clone();
+    home_endpoint.set_path("/user/home");
+    let csrf_body = client
+        .get(home_endpoint)
+        .header(reqwest::header::ACCEPT, "text/html")
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?;
+    let csrf_token = csrf_token_from_html(&csrf_body)
+        .ok_or_else(|| anyhow::anyhow!("Moebooru page did not contain a CSRF token"))?;
+    let mut referer = endpoint.clone();
+    referer.set_path(&format!("/post/show/{post_id}"));
     let response = client
         .post(endpoint)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .header("X-CSRF-Token", csrf_token)
+        .header("X-Requested-With", "XMLHttpRequest")
+        .header(reqwest::header::REFERER, referer.as_str())
         .form(&[("id", post_id), ("score", if favorite { "3" } else { "2" })])
         .send()
         .await?;
@@ -691,6 +709,36 @@ pub async fn set_favorite(
     } else {
         bail!("{}", map_http_status(response.status(), site_name).message)
     }
+}
+
+fn csrf_token_from_html(body: &[u8]) -> Option<String> {
+    let html = std::str::from_utf8(body).ok()?;
+    html.split('<')
+        .filter_map(|fragment| fragment.split_once('>'))
+        .find_map(|(tag, _)| {
+            if !tag.trim_start().starts_with("meta") {
+                return None;
+            }
+            (html_attribute(tag, "name").as_deref() == Some("csrf-token"))
+                .then(|| html_attribute(tag, "content"))
+                .flatten()
+        })
+}
+
+fn html_attribute(tag: &str, name: &str) -> Option<String> {
+    let rest = tag;
+    while let Some(start) = rest.find(name) {
+        let after_name = &rest[start + name.len()..];
+        let after_equals = after_name.trim_start().strip_prefix('=')?.trim_start();
+        let quote = after_equals.chars().next()?;
+        if quote != '\'' && quote != '"' {
+            return None;
+        }
+        let value = &after_equals[quote.len_utf8()..];
+        let end = value.find(quote)?;
+        return Some(value[..end].to_owned());
+    }
+    None
 }
 
 pub async fn fetch_images(url: &str, page: usize, site_id: &str) -> Result<Vec<Post>> {
@@ -801,6 +849,16 @@ mod tests {
         assert_eq!(
             pool_query_params("  ", 1, 20),
             vec![("page", "1".to_owned()), ("limit", "20".to_owned())]
+        );
+    }
+
+    #[test]
+    fn extracts_csrf_token_from_yande_meta_tag() {
+        assert_eq!(
+            csrf_token_from_html(
+                br#"<meta name="csrf-param" content="authenticity_token"><meta name="csrf-token" content="token-123">"#
+            ),
+            Some("token-123".to_owned())
         );
     }
 }

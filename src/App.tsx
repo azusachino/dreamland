@@ -1021,7 +1021,7 @@ function App() {
       });
       showToast(favorite ? "added to favorites" : "removed from favorites", `post #${post.post.id} updated on yandere.`);
     } catch (reason) {
-      setError(`favorite failed: ${errorMessage(reason)}`);
+      showToast("favorite update failed", errorMessage(reason), "error");
     }
   }
 
