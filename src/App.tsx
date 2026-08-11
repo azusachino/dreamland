@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Accordion,
   AccordionDetails,
@@ -77,8 +78,9 @@ import { Icon } from "./components/Icon";
 import { AppLayout } from "./components/AppLayout";
 import { MainNavigation } from "./components/MainNavigation";
 import { AdvancedQueryDialog as PopupAdvancedQueryDialog, ErrorState as PopupErrorState, SettingsDialog as PopupSettingsDialog, Toast as PopupToast } from "./components/Popups";
+import { pathForView, viewFromPath } from "./navigation";
 
-type ViewMode = "latest" | "popular" | "search" | "downloads" | "pools" | "favorites";
+import type { ViewMode } from "./view-model";
 type PopularPeriod = "Day" | "Week" | "Month";
 type ToastTone = "success" | "info" | "error";
 type ThemeMode = "system" | "light" | "dark";
@@ -340,7 +342,9 @@ function isActiveDownload(status: DownloadStatus): boolean {
 
 function App() {
   const queryClient = useQueryClient();
-  const [view, setView] = useState<ViewMode>("latest");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [view, setView] = useState<ViewMode>(() => viewFromPath(location.pathname));
   const [selectedSiteId, setSelectedSiteId] = useState(() => window.localStorage.getItem("dreamland.site") ?? "yandere");
   const [themeMode, setThemeMode] = useState<ThemeMode>(readThemeMode);
   const [popularPeriod, setPopularPeriod] = useState<PopularPeriod>("Week");
@@ -369,6 +373,11 @@ function App() {
   const searchInput = useRef<HTMLInputElement>(null);
   const downloadStatuses = useRef(new Map<string, DownloadStatus>());
   const activeQuerySession = useRef<string | null>(null);
+
+  useEffect(() => {
+    const nextView = viewFromPath(location.pathname);
+    setView((current) => current === nextView ? current : nextView);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (themeMode === "system") document.documentElement.removeAttribute("data-theme");
@@ -684,6 +693,9 @@ function App() {
 
   function changeView(nextView: ViewMode) {
     setError("");
+    if (location.pathname !== pathForView(nextView)) {
+      navigate(pathForView(nextView));
+    }
     setView(nextView);
     setSelectedSavedQueryId(null);
     setEditingSavedQueryId(null);
