@@ -56,7 +56,7 @@ export function LoadMore({ autoLoad = true, hasNext, loading, onLoadMore, resetK
       document.removeEventListener("scroll", tryLoad, true);
       window.removeEventListener("resize", tryLoad);
     };
-  }, [autoLoad, hasNext, loading, requestMore]);
+  }, [autoLoad, hasNext, loading, requestMore, resetKey]);
 
   if (!hasNext && !loading) return <div className="load-more-end">you’ve reached the end.</div>;
   return (
