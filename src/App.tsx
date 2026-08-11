@@ -1282,7 +1282,9 @@ function PostInspector({ post, downloading, favorited, onClose, onDownload, onFa
       </div>
       <div className="detail-summary">
         <span>Yande.re post #{post.post.id}</span>
+        {post.author && <span>Author: {post.author}</span>}
         {originalUrl && <a href={originalUrl} target="_blank" rel="noreferrer">Open original</a>}
+        {post.source && <a href={post.source} target="_blank" rel="noreferrer">Open source</a>}
       </div>
       <div className="inspector-section">
         <span className="section-label">Tags</span>
@@ -1293,12 +1295,17 @@ function PostInspector({ post, downloading, favorited, onClose, onDownload, onFa
       <dl className="metadata">
         <div><dt>Site</dt><dd>Yande.re</dd></div>
         <div><dt>Post ID</dt><dd>{post.post.id}</dd></div>
+        <div><dt>Author</dt><dd>{post.author ?? "—"}{post.creator_id ? ` · #${post.creator_id}` : ""}</dd></div>
         <div><dt>Rating</dt><dd>{post.rating}</dd></div>
         <div><dt>Size</dt><dd>{post.width ?? "?"}×{post.height ?? "?"}</dd></div>
         <div><dt>Score</dt><dd>{post.score ?? "—"}</dd></div>
         <div><dt>File size</dt><dd>{post.file_size ? `${Math.round(post.file_size / 1024)} KB` : "—"}</dd></div>
+        <div><dt>MD5</dt><dd className="metadata-value">{post.md5 ?? "—"}</dd></div>
+        <div><dt>Parent</dt><dd>{post.parent_id ? `#${post.parent_id}` : "None"}</dd></div>
+        <div><dt>Children</dt><dd>{post.has_children ? "Yes" : "No"}</dd></div>
+        <div><dt>Created</dt><dd>{post.created_at ? new Date(post.created_at).toLocaleString() : "—"}</dd></div>
       </dl>
-      <p className="detail-helper">Tags and metadata come from the feed result. Yande does not expose a separate post-lookup operation in this release.</p>
+      <p className="detail-helper">Tags and metadata come from the feed result; Yande does not expose a separate post-lookup operation in this release.</p>
       <button className="button button-outlined button-wide" type="button" onClick={() => void onFavorite(post)}>
         {favorited ? "Remove from Yande favorites" : "Add to Yande favorites"}
       </button>

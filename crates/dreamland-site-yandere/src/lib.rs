@@ -62,6 +62,14 @@ struct ImagePost {
     id: u64,
     #[serde(default)]
     tags: String,
+    author: Option<String>,
+    creator_id: Option<u64>,
+    md5: Option<String>,
+    source: Option<String>,
+    parent_id: Option<u64>,
+    #[serde(default)]
+    has_children: bool,
+    created_at: Option<String>,
     width: Option<u32>,
     height: Option<u32>,
     file_url: Option<String>,
@@ -122,6 +130,13 @@ impl From<ImagePost> for Post {
                 id: image.id.to_string(),
             },
             tags: image.tags.split_whitespace().map(str::to_owned).collect(),
+            author: image.author,
+            creator_id: image.creator_id,
+            md5: image.md5,
+            source: image.source,
+            parent_id: image.parent_id.map(|id| id.to_string()),
+            has_children: image.has_children,
+            created_at: image.created_at,
             width: image.width,
             height: image.height,
             rating: match image.rating.as_deref() {
@@ -741,6 +756,12 @@ mod tests {
     const IMAGE_JSON: &str = r#"{
         "id": 123456,
         "tags": "test tag1 tag2",
+        "author": "board_user",
+        "creator_id": 452674,
+        "source": "https://www.pixiv.net/artworks/148271180",
+        "parent_id": 123455,
+        "has_children": true,
+        "created_at": "2026-08-11T01:02:03.000Z",
         "width": 1920,
         "height": 1080,
         "file_url": "https://example.com/image.jpg",
@@ -773,6 +794,15 @@ mod tests {
         assert_eq!(post.post.site.as_str(), SITE_ID);
         assert_eq!(post.post.id, "123456");
         assert_eq!(post.tags, vec!["test", "tag1", "tag2"]);
+        assert_eq!(post.author.as_deref(), Some("board_user"));
+        assert_eq!(post.creator_id, Some(452674));
+        assert_eq!(
+            post.source.as_deref(),
+            Some("https://www.pixiv.net/artworks/148271180")
+        );
+        assert_eq!(post.parent_id.as_deref(), Some("123455"));
+        assert!(post.has_children);
+        assert_eq!(post.created_at.as_deref(), Some("2026-08-11T01:02:03.000Z"));
         assert_eq!(post.rating, Rating::Safe);
         assert_eq!(
             variant_url(&post, MediaVariant::Full),

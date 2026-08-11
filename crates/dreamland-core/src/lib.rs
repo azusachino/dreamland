@@ -239,6 +239,13 @@ pub struct SiteDescriptor {
 pub struct Post {
     pub post: PostRef,
     pub tags: Vec<String>,
+    pub author: Option<String>,
+    pub creator_id: Option<u64>,
+    pub md5: Option<String>,
+    pub source: Option<String>,
+    pub parent_id: Option<String>,
+    pub has_children: bool,
+    pub created_at: Option<String>,
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub rating: Rating,

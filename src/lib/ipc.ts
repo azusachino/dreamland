@@ -47,6 +47,13 @@ export interface ProxyDetection {
 export interface Post {
   post: PostRef;
   tags: string[];
+  author: string | null;
+  creator_id: number | null;
+  md5: string | null;
+  source: string | null;
+  parent_id: string | null;
+  has_children: boolean;
+  created_at: string | null;
   width: number | null;
   height: number | null;
   rating: Rating;
