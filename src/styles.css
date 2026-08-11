@@ -425,6 +425,13 @@ select:focus-visible {
   gap: 0.65rem;
 }
 
+.popular-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .heading-actions {
   min-height: 2.5rem;
 }
@@ -447,6 +454,15 @@ select:focus-visible {
 .period-picker select {
   color: var(--ink);
   height: 2.5rem;
+}
+
+.period-date input {
+  background: var(--surface-container);
+  border: 1px solid var(--outline);
+  border-radius: 0.65rem;
+  color: var(--ink);
+  min-height: 2.5rem;
+  padding: 0.55rem 0.7rem;
 }
 
 .content-policy {

@@ -55,6 +55,20 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function shiftPopularAnchor(anchor: string, period: PopularPeriod, direction: -1 | 1): string {
+  const date = new Date(`${anchor}T00:00:00Z`);
+  if (period === "Month") {
+    const day = date.getUTCDate();
+    date.setUTCDate(1);
+    date.setUTCMonth(date.getUTCMonth() + direction);
+    const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+    date.setUTCDate(Math.min(day, lastDay));
+  } else {
+    date.setUTCDate(date.getUTCDate() + direction * (period === "Week" ? 7 : 1));
+  }
+  return date.toISOString().slice(0, 10);
+}
+
 function contentPolicyLabel(policy: ContentPolicy): string {
   switch (policy) {
     case "SafeOnly": return "Safe only";
@@ -90,6 +104,7 @@ function App() {
   const queryClient = useQueryClient();
   const [view, setView] = useState<ViewMode>("latest");
   const [popularPeriod, setPopularPeriod] = useState<PopularPeriod>("Week");
+  const [popularAnchorDate, setPopularAnchorDate] = useState(today);
   const [searchDraft, setSearchDraft] = useState("");
   const [submittedSearch, setSubmittedSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
@@ -133,7 +148,7 @@ function App() {
       source = {
         Feed: {
           kind: {
-            Popular: { period: popularPeriod, anchor_date: today() },
+            Popular: { period: popularPeriod, anchor_date: popularAnchorDate },
           },
         },
       };
@@ -145,7 +160,7 @@ function App() {
       query: { source, content_policy: contentPolicy },
       pagination: { First: { page_size: pageSize } },
     };
-  }, [contentPolicy, pageSize, popularPeriod, submittedSearch, view]);
+  }, [contentPolicy, pageSize, popularAnchorDate, popularPeriod, submittedSearch, view]);
   const imagesQuery = useInfiniteQuery({
     queryKey: ["posts", request],
     initialPageParam: null as string | null,
@@ -506,16 +521,46 @@ function App() {
                 {selectionMode ? "Cancel selection" : "Select posts"}
               </button>
               {view === "popular" && (
-                <label className="period-picker">
-                  <span>Period</span>
-                  <select value={popularPeriod} onChange={(event) => {
-                    setPopularPeriod(event.target.value as PopularPeriod);
-                  }}>
-                    <option value="Day">Day</option>
-                    <option value="Week">Week</option>
-                    <option value="Month">Month</option>
-                  </select>
+                <div className="popular-controls" aria-label="Popular period and date">
+                  <label className="period-picker">
+                    <span>Period</span>
+                    <select value={popularPeriod} onChange={(event) => {
+                      setPopularPeriod(event.target.value as PopularPeriod);
+                    }}>
+                      <option value="Day">Day</option>
+                      <option value="Week">Week</option>
+                      <option value="Month">Month</option>
+                    </select>
                   </label>
+                  <button
+                    className="button button-outlined"
+                    type="button"
+                    aria-label={`Earlier popular ${popularPeriod.toLowerCase()}`}
+                    onClick={() => setPopularAnchorDate(shiftPopularAnchor(popularAnchorDate, popularPeriod, -1))}
+                  >
+                    Earlier
+                  </button>
+                  <label className="period-picker period-date">
+                    <span>Date</span>
+                    <input
+                      type="date"
+                      value={popularAnchorDate}
+                      max={today()}
+                      onChange={(event) => {
+                        if (event.target.value) setPopularAnchorDate(event.target.value);
+                      }}
+                    />
+                  </label>
+                  <button
+                    className="button button-outlined"
+                    type="button"
+                    aria-label={`Later popular ${popularPeriod.toLowerCase()}`}
+                    disabled={shiftPopularAnchor(popularAnchorDate, popularPeriod, 1) > today()}
+                    onClick={() => setPopularAnchorDate(shiftPopularAnchor(popularAnchorDate, popularPeriod, 1))}
+                  >
+                    Later
+                  </button>
+                </div>
               )}
               <span className="content-policy">{contentPolicyLabel(contentPolicy)}</span>
               </>}
