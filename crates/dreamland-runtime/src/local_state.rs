@@ -1120,7 +1120,7 @@ impl DownloadManager {
                     .await
                 }
                 None => Err(anyhow::anyhow!(
-                    "Yande login session is unavailable; sign in again and retry"
+                    "yandere login session is unavailable; sign in again and retry"
                 )),
             };
             self.active
