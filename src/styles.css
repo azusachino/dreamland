@@ -1218,17 +1218,18 @@ select:focus-visible {
   background: var(--surface-container);
   border-radius: var(--radius-md);
   display: flex;
-  height: min(68dvh, 48rem);
+  flex: 0 0 auto;
+  height: 68vh;
+  max-height: 48rem;
+  min-height: 18rem;
   overflow: hidden;
 }
 
 .detail-preview img {
   display: block;
-  height: auto;
-  max-height: 100%;
-  max-width: 100%;
+  height: 100%;
   object-fit: contain;
-  width: auto;
+  width: 100%;
 }
 
 .detail-navigation {
@@ -1268,11 +1269,15 @@ select:focus-visible {
   padding: 0.45rem 0.7rem;
 }
 
-.detail-author-link {
-  font-size: 0.72rem;
-  height: auto;
-  min-height: 0;
-  padding: 0;
+.detail-explore {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.detail-author-chip {
+  background: var(--secondary);
+  color: var(--primary-ink);
+  font-weight: 750;
 }
 
 .detail-related-actions {
@@ -1291,6 +1296,44 @@ select:focus-visible {
   font-size: 0.7rem;
   line-height: 1.45;
   margin: 0;
+}
+
+.detail-more-data {
+  border-top: 1px solid var(--outline);
+  padding-top: 0.75rem;
+}
+
+.detail-more-data summary {
+  align-items: center;
+  color: var(--ink-muted);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.78rem;
+  font-weight: 750;
+  justify-content: space-between;
+  list-style: none;
+  padding: 0.25rem 0;
+}
+
+.detail-more-data summary::-webkit-details-marker {
+  display: none;
+}
+
+.detail-more-data summary::after {
+  color: var(--primary);
+  content: "+";
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.detail-more-data[open] summary::after {
+  content: "−";
+}
+
+.detail-more-data-content {
+  display: grid;
+  gap: 1rem;
+  padding-top: 1rem;
 }
 
 .inspector-section,
@@ -1475,7 +1518,9 @@ select:focus-visible {
   }
 
   .detail-preview {
-    height: min(64dvh, 40rem);
+    height: 64vh;
+    max-height: 40rem;
+    min-height: 16rem;
   }
 }
 
