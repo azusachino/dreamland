@@ -463,17 +463,23 @@ function App() {
     staleTime: 30_000,
   });
   const poolsQuery = useInfiniteQuery({
-    queryKey: ["pools"],
+    queryKey: ["pools", activeSiteId],
     initialPageParam: 1,
-    queryFn: ({ pageParam }) => listPools(pageParam, 30),
+    queryFn: ({ pageParam }) => listPools(activeSiteId, pageParam, 30),
     getNextPageParam: (lastPage, pages) => lastPage.has_next ? pages.length + 1 : undefined,
     enabled: view === "pools" && selectedPool === null && activeSite?.capabilities.collections === true,
   });
   const poolPostsQuery = useInfiniteQuery({
-    queryKey: ["pool-posts", selectedPool?.id, contentPolicy],
+    queryKey: ["pool-posts", selectedPool?.site, selectedPool?.id, contentPolicy],
     initialPageParam: 1,
-    queryFn: ({ pageParam }) => queryPoolPosts(selectedPool!.id, pageParam, pageSize),
-    getNextPageParam: (lastPage, pages) => lastPage.posts.length >= lastPage.page_size ? pages.length + 1 : undefined,
+    queryFn: ({ pageParam }) => queryPoolPosts(activeSiteId, selectedPool!.id, pageParam, pageSize),
+    getNextPageParam: (lastPage, pages) => {
+      if (lastPage.total !== null) {
+        const loaded = pages.reduce((count, page) => count + page.posts.length, 0);
+        return loaded < lastPage.total ? pages.length + 1 : undefined;
+      }
+      return lastPage.posts.length >= lastPage.page_size ? pages.length + 1 : undefined;
+    },
     enabled: view === "pools" && selectedPool !== null && configQuery.isSuccess && activeSite?.capabilities.collections === true,
   });
   const favoritesQuery = useInfiniteQuery({
@@ -1145,6 +1151,8 @@ function App() {
               onDownload={handleDownload}
               onTag={chooseTag}
               downloadingId={downloadingId}
+              siteName={activeSite?.name ?? "site"}
+              collectionDownloads={activeSite?.capabilities.collection_downloads === true}
             />
           ) : (
             <AccountPanel
@@ -1673,7 +1681,7 @@ function ArchiveRow({ record, onCancel, onOpen }: ArchiveRowProps) {
         <strong>{record.pool_name}</strong>
         <span className={`download-status status-${record.status.toLowerCase()}`}>{downloadStatusLabel(record.status)}</span>
       </div>
-      <p>Pool ZIP · {record.pool_id} · attempt {record.attempts || 1}</p>
+      <p>pool zip · {record.pool_id} · attempt {record.attempts || 1}</p>
       {record.error && <p className="download-error">{record.error}</p>}
       {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
       {(canCancel || canOpen) && <div className="download-row-actions">
@@ -1705,20 +1713,22 @@ interface PoolPanelProps {
   onDownload: (post: Post) => Promise<void>;
   onTag: (tag: string) => void;
   downloadingId: string | null;
+  siteName: string;
+  collectionDownloads: boolean;
 }
 
-function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool, posts, postsLoading, postsError, postsHasNext, onRetryPools, onRetryPosts, onLoadMorePools, onLoadMorePosts, onBack, onBrowse, onDownloadZip, onSelectPost, onDownload, onTag, downloadingId }: PoolPanelProps) {
+function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool, posts, postsLoading, postsError, postsHasNext, onRetryPools, onRetryPosts, onLoadMorePools, onLoadMorePosts, onBack, onBrowse, onDownloadZip, onSelectPost, onDownload, onTag, downloadingId, siteName, collectionDownloads }: PoolPanelProps) {
   if (selectedPool) {
     return (
       <section className="workspace-panel shell-surface" aria-label={`${selectedPool.name} pool`}>
         <div className="inspector-heading">
-          <div><p className="eyebrow">yandere pool</p><h2>{selectedPool.name}</h2></div>
+          <div><p className="eyebrow">{siteName} pool</p><h2>{selectedPool.name}</h2></div>
           <div className="inspector-actions">
-            <button className="button button-outlined" type="button" onClick={() => onDownloadZip(selectedPool)}>download zip</button>
+            {collectionDownloads && <button className="button button-outlined" type="button" onClick={() => onDownloadZip(selectedPool)}>download zip</button>}
             <button className="button button-outlined button-with-icon" type="button" onClick={onBack}><Icon name="back" /><span>all pools</span></button>
           </div>
         </div>
-        <p className="helper-text">{selectedPool.post_count} ordered post{selectedPool.post_count === 1 ? "" : "s"} from yandere.</p>
+        <p className="helper-text">{selectedPool.post_count} ordered post{selectedPool.post_count === 1 ? "" : "s"} from {siteName}.</p>
         {postsError && <div className="panel-error" role="alert"><p>{postsError}</p><button className="button button-outlined" type="button" onClick={onRetryPosts}>try again</button></div>}
         {postsLoading && posts.length === 0 && <p className="loading-line" role="status"><span /> loading pool posts…</p>}
         {!postsLoading && !postsError && posts.length === 0 && <div className="panel-empty">this pool has no visible posts.</div>}
@@ -1745,9 +1755,9 @@ function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool
   return (
     <section className="workspace-panel shell-surface" aria-label="pools">
       <div className="inspector-heading">
-        <div><p className="eyebrow">yandere collections</p><h2>pools</h2></div>
+        <div><p className="eyebrow">{siteName} collections</p><h2>pools</h2></div>
       </div>
-      <p className="helper-text">public pools group ordered posts from the site. open a pool to browse its ordered posts or request its authenticated zip archive.</p>
+      <p className="helper-text">public pools group ordered posts from {siteName}. open a pool to browse its ordered posts{collectionDownloads ? " or request its authenticated zip archive" : ""}.</p>
       {poolsLoading && pools.length === 0 && <p className="loading-line" role="status"><span /> loading pools…</p>}
       {poolsError && <div className="panel-error" role="alert"><p>{poolsError}</p><button className="button button-outlined" type="button" onClick={onRetryPools}>try again</button></div>}
       {!poolsLoading && !poolsError && pools.length === 0 && <div className="panel-empty">no public pools found.</div>}

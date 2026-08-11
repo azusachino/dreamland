@@ -332,7 +332,7 @@ pub async fn query_posts_with_cookie(
         &get_bytes(&client, &endpoint, &params, network, site_name).await?,
         site_id,
     )?;
-    posts.retain(|post| matches_content_policy(post, request.query.content_policy));
+    retain_content_policy(&mut posts, request.query.content_policy);
     let returned_size = u16::try_from(posts.len()).unwrap_or(u16::MAX);
     Ok(SitePage {
         posts,
@@ -435,6 +435,10 @@ fn matches_content_policy(post: &Post, policy: ContentPolicy) -> bool {
     }
 }
 
+pub fn retain_content_policy(posts: &mut Vec<Post>, policy: ContentPolicy) {
+    posts.retain(|post| matches_content_policy(post, policy));
+}
+
 fn build_client(network: &NetworkPolicy) -> Result<reqwest::Client> {
     build_client_with_cookie(network, None)
 }
@@ -510,6 +514,16 @@ async fn get_bytes(
         tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
         retry += 1;
     }
+}
+
+pub async fn fetch_bytes(
+    endpoint: &str,
+    params: &[(&str, String)],
+    network: &NetworkPolicy,
+    site_name: &str,
+) -> Result<Vec<u8>> {
+    let client = build_client(network)?;
+    get_bytes(&client, endpoint, params, network, site_name).await
 }
 
 fn map_tag_category(category: Option<u8>) -> Option<TagCategory> {

@@ -1,6 +1,6 @@
 # Konachan adapter release gate
 
-Status: safe browse integration implemented, 2026-08-11. This is not a claim
+Status: safe browse and public pool integration implemented, 2026-08-11. This is not a claim
 that Cloudflare bot protection has been solved.
 
 ## Implemented
@@ -13,12 +13,13 @@ that Cloudflare bot protection has been solved.
 | K-04 | Page-numbered search, safe-policy rejection, and tag-suggestion routing are covered by adapter/site-registry tests | Pass |
 | K-05 | Direct `.com` API request was observed returning Cloudflare `403`; the adapter reports bot-protection guidance instead of retrying it as a generic server error | Observed limitation |
 | K-06 | The app exposes `konachan` in the site selector and provides an explicit `open site` action for the site-owned `https://konachan.com/post` browser route; feed errors offer the same recovery | Pass; static/runtime command coverage, live visual acceptance pending |
+| K-07 | Public pool metadata uses `/pool.json`; ordered safe-visible posts use `/pool/show.json?id=…`; the app exposes browsing but not pool ZIP downloads | Pass; live response shape and adapter fixtures verified |
 
 ## Not advertised yet
 
 - explicit/questionable content through the `.com` host;
 - browser-session auth and remote favorites;
-- pools and pool ZIP archives;
+- pool ZIP archives;
 - authorized live acceptance from a clean browser profile.
 
 The official Konachan API documentation describes `/post.json` with `tags`,

@@ -52,11 +52,17 @@ pub async fn list_pools(
     page_size: u16,
     network: &NetworkPolicy,
 ) -> Result<PoolPage> {
-    if site_id != DEFAULT_SITE_ID {
-        bail!("site '{site_id}' has no active pool adapter");
+    match site_id {
+        dreamland_site_yandere::SITE_ID => {
+            let config = dreamland_site_yandere::default_config();
+            dreamland_site_yandere::fetch_pools(&config.api_url, page, page_size, network).await
+        }
+        dreamland_site_konachan::SITE_ID => {
+            let config = dreamland_site_konachan::default_config();
+            dreamland_site_konachan::fetch_pools(&config.api_url, page, page_size, network).await
+        }
+        _ => bail!("site '{site_id}' has no active pool adapter"),
     }
-    let config = dreamland_site_yandere::default_config();
-    dreamland_site_yandere::fetch_pools(&config.api_url, page, page_size, network).await
 }
 
 pub async fn query_pool_posts(
@@ -67,19 +73,33 @@ pub async fn query_pool_posts(
     page_size: u16,
     network: &NetworkPolicy,
 ) -> Result<SitePage> {
-    if site_id != DEFAULT_SITE_ID {
-        bail!("site '{site_id}' has no active pool adapter");
+    match site_id {
+        dreamland_site_yandere::SITE_ID => {
+            let config = dreamland_site_yandere::default_config();
+            dreamland_site_yandere::query_pool_posts(
+                &config.api_url,
+                pool_id,
+                content_policy,
+                page,
+                page_size,
+                network,
+            )
+            .await
+        }
+        dreamland_site_konachan::SITE_ID => {
+            let config = dreamland_site_konachan::default_config();
+            dreamland_site_konachan::query_pool_posts(
+                &config.api_url,
+                pool_id,
+                content_policy,
+                page,
+                page_size,
+                network,
+            )
+            .await
+        }
+        _ => bail!("site '{site_id}' has no active pool adapter"),
     }
-    let config = dreamland_site_yandere::default_config();
-    dreamland_site_yandere::query_pool_posts(
-        &config.api_url,
-        pool_id,
-        content_policy,
-        page,
-        page_size,
-        network,
-    )
-    .await
 }
 
 pub fn pool_zip_url(site_id: &str, pool_id: &str) -> Result<String> {
@@ -201,6 +221,8 @@ mod tests {
         assert_eq!(sites.len(), 2);
         assert_eq!(sites[0].id.as_str(), "yandere");
         assert_eq!(sites[1].id.as_str(), "konachan");
+        assert!(sites[1].capabilities.collections);
+        assert!(!sites[1].capabilities.collection_downloads);
     }
 
     #[test]

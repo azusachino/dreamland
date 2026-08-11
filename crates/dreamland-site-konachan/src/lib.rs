@@ -1,11 +1,12 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use dreamland_core::{
-    ContentPolicy, MediaVariant, NetworkPolicy, Post, PostQueryRequest, SiteCapabilities,
-    SiteDescriptor, SiteId, SitePage, TagSuggestion, TagSuggestionRequest,
+    ContentPolicy, MediaVariant, NetworkPolicy, Pool, PoolPage, Post, PostQueryRequest,
+    SiteCapabilities, SiteDescriptor, SiteId, SitePage, TagSuggestion, TagSuggestionRequest,
 };
 use serde::Deserialize;
 
 pub const SITE_ID: &str = "konachan";
+const MAX_POOL_PAGE_SIZE: u16 = 20;
 
 const DEFAULT_CONFIG_TOML: &str = include_str!("../config/default.toml");
 
@@ -38,7 +39,7 @@ pub fn descriptor() -> SiteDescriptor {
             authentication: false,
             remote_favorites: false,
             favorite_list: false,
-            collections: false,
+            collections: true,
             collection_downloads: false,
         },
     }
@@ -85,6 +86,111 @@ pub async fn fetch_tag_suggestions(
 
 pub fn tag_endpoint(base_url: &str) -> Result<String> {
     dreamland_moe::tag_endpoint(base_url)
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+struct PoolRecord {
+    id: u64,
+    name: String,
+    #[serde(default)]
+    is_public: bool,
+    #[serde(default)]
+    post_count: u32,
+}
+
+pub fn pool_endpoint(base_url: &str) -> Result<String> {
+    let mut url = reqwest::Url::parse(base_url).context("parse Konachan API URL")?;
+    url.set_path("/pool.json");
+    url.set_query(None);
+    Ok(url.to_string())
+}
+
+pub fn pool_posts_endpoint(base_url: &str) -> Result<String> {
+    let mut url = reqwest::Url::parse(base_url).context("parse Konachan API URL")?;
+    url.set_path("/pool/show.json");
+    url.set_query(None);
+    Ok(url.to_string())
+}
+
+fn validate_pool_id(pool_id: &str) -> Result<()> {
+    if pool_id.is_empty() || !pool_id.chars().all(|value| value.is_ascii_digit()) {
+        bail!("Konachan pool id must be numeric");
+    }
+    Ok(())
+}
+
+pub fn decode_pools(body: &[u8]) -> Result<Vec<Pool>> {
+    let records =
+        serde_json::from_slice::<Vec<PoolRecord>>(body).context("decode Konachan pools")?;
+    Ok(records
+        .into_iter()
+        .map(|pool| Pool {
+            site: SiteId::new(SITE_ID),
+            id: pool.id.to_string(),
+            name: pool.name,
+            post_count: pool.post_count,
+            public: pool.is_public,
+        })
+        .collect())
+}
+
+pub async fn fetch_pools(
+    api_url: &str,
+    page: u32,
+    page_size: u16,
+    network: &NetworkPolicy,
+) -> Result<PoolPage> {
+    if page == 0 || page_size == 0 {
+        bail!("Konachan pool pagination must be greater than zero");
+    }
+    let endpoint = pool_endpoint(api_url)?;
+    let page_size = page_size.min(MAX_POOL_PAGE_SIZE);
+    let params = [("page", page.to_string()), ("limit", page_size.to_string())];
+    let pools = decode_pools(
+        &dreamland_moe::fetch_bytes(&endpoint, &params, network, "konachan")
+            .await
+            .map_err(map_transport_error)?,
+    )?;
+    Ok(PoolPage {
+        has_next: pools.len() == usize::from(page_size),
+        pools,
+        page,
+        page_size,
+    })
+}
+
+pub fn decode_pool_posts(body: &[u8]) -> Result<Vec<Post>> {
+    dreamland_moe::decode_posts(body, SITE_ID)
+}
+
+pub async fn query_pool_posts(
+    api_url: &str,
+    pool_id: &str,
+    content_policy: ContentPolicy,
+    page: u32,
+    page_size: u16,
+    network: &NetworkPolicy,
+) -> Result<SitePage> {
+    validate_pool_id(pool_id)?;
+    if page == 0 || page_size == 0 {
+        bail!("Konachan pool pagination must be greater than zero");
+    }
+    let endpoint = pool_posts_endpoint(api_url)?;
+    let params = [("id", pool_id.to_owned()), ("page", page.to_string())];
+    let mut posts = decode_pool_posts(
+        &dreamland_moe::fetch_bytes(&endpoint, &params, network, "konachan")
+            .await
+            .map_err(map_transport_error)?,
+    )?;
+    dreamland_moe::retain_content_policy(&mut posts, content_policy);
+    let total = u64::try_from(posts.len()).unwrap_or(u64::MAX);
+    Ok(SitePage {
+        posts,
+        continuation: dreamland_core::Continuation::None,
+        total: Some(total),
+        page_size,
+        session: None,
+    })
 }
 
 fn ensure_supported_policy(policy: ContentPolicy) -> Result<()> {
@@ -134,6 +240,8 @@ mod tests {
     fn descriptor_is_browse_capable_but_safe_only_is_explicit() {
         assert_eq!(SITE_ID, "konachan");
         assert!(descriptor().capabilities.browse);
+        assert!(descriptor().capabilities.collections);
+        assert!(!descriptor().capabilities.collection_downloads);
         assert!(default_config().safe_only);
         assert!(ensure_supported_policy(ContentPolicy::AllowExplicit).is_err());
     }
@@ -155,5 +263,40 @@ mod tests {
 
         assert_eq!(config.api_url, "https://konachan.net/post.json");
         assert_eq!(config.browser_url, "https://konachan.com/post");
+    }
+
+    #[test]
+    fn pool_endpoints_are_owned_by_the_safe_api_origin() {
+        let config = default_config();
+
+        assert_eq!(
+            pool_endpoint(&config.api_url).unwrap(),
+            "https://konachan.net/pool.json"
+        );
+        assert_eq!(
+            pool_posts_endpoint(&config.api_url).unwrap(),
+            "https://konachan.net/pool/show.json"
+        );
+        assert!(validate_pool_id("not-a-number").is_err());
+    }
+
+    #[test]
+    fn decodes_public_pool_metadata_and_ordered_posts() {
+        let pools = decode_pools(
+            br#"[{"id":556,"name":"Reverse_Yogic_Sleep_Pose","is_public":true,"post_count":10}]"#,
+        )
+        .unwrap();
+        assert_eq!(pools[0].site.as_str(), SITE_ID);
+        assert_eq!(pools[0].id, "556");
+        assert!(pools[0].public);
+        assert_eq!(pools[0].post_count, 10);
+
+        let posts = decode_pool_posts(
+            format!(r#"{{"id":556,"post_count":1,"posts":[{KONACHAN_POST}]}}"#).as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(posts.len(), 1);
+        assert_eq!(posts[0].post.site.as_str(), SITE_ID);
+        assert_eq!(posts[0].post.id, "407162");
     }
 }

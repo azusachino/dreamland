@@ -1526,9 +1526,10 @@ the operation_id and preserves retryable separately from the safe message.
 | PostQueryCapability | Anonymous tag search and latest browse through the safe `.net` Moebooru JSON API. |
 | Pagination | Page-numbered `post.json` requests with the requested limit. |
 | TagSuggestionCapability | The same Moebooru tag JSON shape, normalized at the adapter boundary. |
+| RemoteCollectionCapability | Public pool metadata from `/pool.json` and ordered safe-visible posts from `/pool/show.json?id=…`; the API may return the complete visible pool in one response. |
 | Content policy | Safe only for the initial release; explicit-host access is not advertised because `.com` API requests are bot-protection sensitive. |
 | Media | Preview, sample, full URL, dimensions, rating, score, author, source, checksum, and normalized timestamps where present. |
-| Auth/favorites/pools | Not advertised in this slice; these need separate `.com`/`.net` session and endpoint verification. |
+| Auth/favorites/pool ZIP | Not advertised in this slice; browser-session auth and remote favorites remain unverified, and Konachan does not expose a ZIP download capability. |
 
 ## Verification contract
 

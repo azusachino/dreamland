@@ -250,30 +250,27 @@ fn sign_out(app: AppHandle, state: State<'_, RuntimeState>) -> Result<(), String
 #[tauri::command]
 async fn list_pools(
     _state: State<'_, RuntimeState>,
+    site_id: String,
     page: u32,
     page_size: u16,
 ) -> Result<PoolPage, String> {
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
-    dreamland_sites::list_pools(
-        dreamland_sites::DEFAULT_SITE_ID,
-        page,
-        page_size,
-        &config.network,
-    )
-    .await
-    .map_err(|error| error.to_string())
+    dreamland_sites::list_pools(&site_id, page, page_size, &config.network)
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 async fn query_pool_posts(
     state: State<'_, RuntimeState>,
+    site_id: String,
     pool_id: String,
     page: u32,
     page_size: u16,
 ) -> Result<SitePage, String> {
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
     let page = dreamland_sites::query_pool_posts(
-        dreamland_sites::DEFAULT_SITE_ID,
+        &site_id,
         &pool_id,
         config.content_policy,
         page,

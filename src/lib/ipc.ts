@@ -226,12 +226,12 @@ export function listSites(): Promise<SiteDescriptor[]> {
   return invoke<SiteDescriptor[]>("list_sites");
 }
 
-export function listPools(page = 1, pageSize = 20): Promise<PoolPage> {
-  return invoke<PoolPage>("list_pools", { page, pageSize });
+export function listPools(siteId: string, page = 1, pageSize = 20): Promise<PoolPage> {
+  return invoke<PoolPage>("list_pools", { siteId, page, pageSize });
 }
 
-export function queryPoolPosts(poolId: string, page = 1, pageSize = 20): Promise<SitePage> {
-  return invoke<SitePage>("query_pool_posts", { poolId, page, pageSize });
+export function queryPoolPosts(siteId: string, poolId: string, page = 1, pageSize = 20): Promise<SitePage> {
+  return invoke<SitePage>("query_pool_posts", { siteId, poolId, page, pageSize });
 }
 
 export function enqueuePoolZip(poolId: string, poolName: string): Promise<ArchiveRecord> {
