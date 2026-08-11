@@ -1,6 +1,9 @@
-use anyhow::Result;
+use anyhow::{bail, Context, Result};
 use dreamland_core::{
-    MediaVariant, Post, PostRef, Rating, SiteCapabilities, SiteDescriptor, SiteId,
+    ContentPolicy, Continuation, DiscoverySource, FeedKind, MediaVariant, NetworkPolicy,
+    PaginationRequest, PopularPeriod, Post, PostQueryRequest, PostRef, ProxyMode, Rating,
+    SiteCapabilities, SiteDescriptor, SiteError, SiteErrorCode, SiteId, SitePage, TagCategory,
+    TagSuggestion, TagSuggestionRequest,
 };
 use serde::{Deserialize, Serialize};
 
@@ -27,12 +30,9 @@ pub fn descriptor() -> SiteDescriptor {
         name: "Yande.re".to_owned(),
         capabilities: SiteCapabilities {
             browse: true,
-            // Only paginated browse is implemented today. The rest stay
-            // false until an adapter function actually backs them --
-            // advertising them earlier already misled the API v1 draft.
-            post_search: false,
-            tag_search: false,
-            tag_query: false,
+            post_search: true,
+            tag_search: true,
+            tag_query: true,
             post_lookup: false,
             page_numbers: true,
             cursors: false,
@@ -44,11 +44,11 @@ pub fn descriptor() -> SiteDescriptor {
 /// Resolve the download URL for a variant of an already-fetched post. Kept
 /// alongside the wire type so the mapping from "variant name" to "site URL
 /// field" lives in one place, owned by the adapter that knows the shape.
-pub fn variant_url(post: &Post, variant: MediaVariant) -> &str {
+pub fn variant_url(post: &Post, variant: MediaVariant) -> Option<&str> {
     match variant {
-        MediaVariant::Preview => &post.preview_url,
-        MediaVariant::Sample => &post.sample_url,
-        MediaVariant::Full => &post.full_url,
+        MediaVariant::Preview => post.preview_url.as_deref(),
+        MediaVariant::Sample => post.sample_url.as_deref(),
+        MediaVariant::Full => post.full_url.as_deref(),
     }
 }
 
@@ -58,15 +58,42 @@ pub fn variant_url(post: &Post, variant: MediaVariant) -> &str {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct ImagePost {
     id: u64,
+    #[serde(default)]
     tags: String,
-    width: u32,
-    height: u32,
-    file_url: String,
-    sample_url: String,
-    preview_url: String,
-    rating: String,
+    width: Option<u32>,
+    height: Option<u32>,
+    file_url: Option<String>,
+    sample_url: Option<String>,
+    preview_url: Option<String>,
+    rating: Option<String>,
     score: Option<i32>,
     file_size: Option<u64>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(untagged)]
+enum PostResponse {
+    Legacy(Vec<ImagePost>),
+    VersionTwo { posts: Vec<ImagePost> },
+}
+
+impl PostResponse {
+    fn into_posts(self) -> Vec<Post> {
+        match self {
+            Self::Legacy(images) | Self::VersionTwo { posts: images } => {
+                images.into_iter().map(Post::from).collect()
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+struct TagRecord {
+    name: String,
+    count: Option<u64>,
+    #[serde(rename = "type")]
+    category: Option<u8>,
+    ambiguous: Option<bool>,
 }
 
 impl From<ImagePost> for Post {
@@ -79,10 +106,10 @@ impl From<ImagePost> for Post {
             tags: image.tags.split_whitespace().map(str::to_owned).collect(),
             width: image.width,
             height: image.height,
-            rating: match image.rating.as_str() {
-                "s" => Rating::Safe,
-                "q" => Rating::Questionable,
-                "e" => Rating::Explicit,
+            rating: match image.rating.as_deref() {
+                Some("s") => Rating::Safe,
+                Some("q") => Rating::Questionable,
+                Some("e") => Rating::Explicit,
                 _ => Rating::Unknown,
             },
             score: image.score,
@@ -94,43 +121,357 @@ impl From<ImagePost> for Post {
     }
 }
 
-pub async fn fetch_images(url: &str, page: usize) -> Result<Vec<Post>> {
-    let response = reqwest::Client::new()
-        .get(url)
-        .query(&[("page", page)])
-        .send()
-        .await?
-        .error_for_status()?;
+/// Decode both Yande post response envelopes observed in the live API.
+pub fn decode_posts(body: &[u8]) -> Result<Vec<Post>> {
+    serde_json::from_slice::<PostResponse>(body)
+        .context("decode Yande post response")
+        .map(PostResponse::into_posts)
+}
 
-    let images: Vec<ImagePost> = response.json().await?;
-    Ok(images.into_iter().map(Post::from).collect())
+/// Keep the site's tag expression intact while adding the runtime's content
+/// policy. In particular, spaces and leading `-` terms are meaningful Yande
+/// syntax and must not be normalized into a different query.
+pub fn tag_expression(expression: &str, policy: ContentPolicy) -> Result<String> {
+    if expression.trim().is_empty() {
+        bail!("Yande tag expression must not be empty");
+    }
+    if expression.chars().any(char::is_control) {
+        bail!("Yande tag expression contains a control character");
+    }
+
+    let policy_tag = match policy {
+        ContentPolicy::SafeOnly => Some("rating:s"),
+        ContentPolicy::AllowQuestionable => Some("-rating:e"),
+        ContentPolicy::AllowExplicit | ContentPolicy::ExplicitOnly => None,
+    };
+    let mut result = expression.to_owned();
+    if let Some(policy_tag) = policy_tag {
+        if !result.split_whitespace().any(|term| term == policy_tag) {
+            if !result.ends_with(char::is_whitespace) {
+                result.push(' ');
+            }
+            result.push_str(policy_tag);
+        }
+    }
+    if policy == ContentPolicy::ExplicitOnly
+        && !result.split_whitespace().any(|term| term == "rating:e")
+    {
+        if !result.ends_with(char::is_whitespace) {
+            result.push(' ');
+        }
+        result.push_str("rating:e");
+    }
+    Ok(result)
+}
+
+pub fn tag_query_params(
+    expression: &str,
+    policy: ContentPolicy,
+    page: u32,
+    page_size: u16,
+) -> Result<Vec<(&'static str, String)>> {
+    if page == 0 {
+        bail!("Yande page numbers start at 1");
+    }
+    if page_size == 0 {
+        bail!("Yande page size must be greater than zero");
+    }
+    Ok(vec![
+        ("tags", tag_expression(expression, policy)?),
+        ("page", page.to_string()),
+        ("limit", page_size.to_string()),
+    ])
+}
+
+pub fn popular_path(period: PopularPeriod) -> &'static str {
+    match period {
+        PopularPeriod::Day => "/post/popular_by_day.json",
+        PopularPeriod::Week => "/post/popular_by_week.json",
+        PopularPeriod::Month => "/post/popular_by_month.json",
+    }
+}
+
+pub fn popular_endpoint(base_url: &str, period: PopularPeriod) -> Result<String> {
+    let mut url = reqwest::Url::parse(base_url).context("parse Yande API URL")?;
+    url.set_path(popular_path(period));
+    url.set_query(None);
+    Ok(url.to_string())
+}
+
+pub fn tag_endpoint(base_url: &str) -> Result<String> {
+    let mut url = reqwest::Url::parse(base_url).context("parse Yande API URL")?;
+    url.set_path("/tag.json");
+    url.set_query(None);
+    Ok(url.to_string())
+}
+
+pub fn popular_query_params(anchor_date: &str) -> Result<Vec<(&'static str, String)>> {
+    let mut parts = anchor_date.split('-');
+    let year = parts.next().unwrap_or_default();
+    let month = parts.next().unwrap_or_default();
+    let day = parts.next().unwrap_or_default();
+    let valid_month = month
+        .parse::<u8>()
+        .is_ok_and(|value| (1..=12).contains(&value));
+    let valid_day = day
+        .parse::<u8>()
+        .is_ok_and(|value| (1..=31).contains(&value));
+    if parts.next().is_some()
+        || year.len() != 4
+        || month.len() != 2
+        || day.len() != 2
+        || !year.chars().all(|value| value.is_ascii_digit())
+        || !month.chars().all(|value| value.is_ascii_digit())
+        || !day.chars().all(|value| value.is_ascii_digit())
+        || !valid_month
+        || !valid_day
+    {
+        bail!("popular anchor date must use YYYY-MM-DD");
+    }
+    Ok(vec![
+        ("day", day.to_owned()),
+        ("month", month.to_owned()),
+        ("year", year.to_owned()),
+    ])
+}
+
+pub fn map_http_status(status: reqwest::StatusCode) -> SiteError {
+    let (code, retryable) = match status {
+        reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN => {
+            (SiteErrorCode::AuthRequired, false)
+        }
+        reqwest::StatusCode::TOO_MANY_REQUESTS => (SiteErrorCode::RateLimited, true),
+        status if status.is_client_error() => (SiteErrorCode::InvalidRequest, false),
+        _ => (SiteErrorCode::NetworkFailed, true),
+    };
+    SiteError {
+        code,
+        message: format!("Yande request failed with HTTP {status}"),
+        retryable,
+    }
+}
+
+pub async fn query_posts(
+    api_url: &str,
+    request: &PostQueryRequest,
+    network: &NetworkPolicy,
+) -> Result<SitePage> {
+    let (endpoint, params, page_size, fixed_window) = request_parts(api_url, request)?;
+    let client = build_client(network)?;
+    let mut posts = decode_posts(&get_bytes(&client, &endpoint, &params, network).await?)?;
+    posts.retain(|post| matches_content_policy(post, request.query.content_policy));
+    let returned_size = u16::try_from(posts.len()).unwrap_or(u16::MAX);
+    Ok(SitePage {
+        posts,
+        continuation: Continuation::None,
+        total: None,
+        page_size: if fixed_window {
+            returned_size
+        } else {
+            page_size
+        },
+        session: None,
+    })
+}
+
+fn build_client(network: &NetworkPolicy) -> Result<reqwest::Client> {
+    let mut builder = reqwest::Client::builder();
+    match &network.proxy {
+        ProxyMode::Auto => {}
+        ProxyMode::Direct => builder = builder.no_proxy(),
+        ProxyMode::Manual { url } => builder = builder.proxy(reqwest::Proxy::all(url)?),
+    }
+    Ok(builder.build()?)
+}
+
+async fn get_bytes(
+    client: &reqwest::Client,
+    endpoint: &str,
+    params: &[(&str, String)],
+    network: &NetworkPolicy,
+) -> Result<Vec<u8>> {
+    let mut retry = 0;
+    loop {
+        let response = client.get(endpoint).query(params).send().await?;
+        if response.status().is_success() {
+            return Ok(response.bytes().await?.to_vec());
+        }
+
+        let status = response.status();
+        if retry >= network.max_retries || !matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504) {
+            let error = map_http_status(status);
+            bail!("{}", error.message);
+        }
+        let delay_ms = retry_after_ms(&response)
+            .unwrap_or_else(|| {
+                network
+                    .retry_delay_ms
+                    .saturating_mul(1_u64 << retry.min(16))
+            })
+            .min(network.max_retry_delay_ms);
+        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+        retry += 1;
+    }
+}
+
+fn retry_after_ms(response: &reqwest::Response) -> Option<u64> {
+    response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .parse::<u64>()
+        .ok()
+        .map(|seconds| seconds.saturating_mul(1_000))
+}
+
+fn request_parts(
+    api_url: &str,
+    request: &PostQueryRequest,
+) -> Result<(String, Vec<(&'static str, String)>, u16, bool)> {
+    let (page, page_size) = match request.pagination {
+        PaginationRequest::First { page_size } => (1, page_size),
+        PaginationRequest::Page { number, page_size } => (number, page_size),
+        PaginationRequest::FixedWindow => (1, 0),
+    };
+    let mut params = Vec::new();
+    let (endpoint, fixed_window) = match &request.query.source {
+        DiscoverySource::Browse
+        | DiscoverySource::Feed {
+            kind: FeedKind::Latest,
+        } => {
+            if matches!(request.pagination, PaginationRequest::FixedWindow) {
+                bail!("latest Yande posts require page pagination");
+            }
+            params.push(("page", page.to_string()));
+            params.push(("limit", page_size.to_string()));
+            (api_url.to_owned(), false)
+        }
+        DiscoverySource::Search { .. } => {
+            if matches!(request.pagination, PaginationRequest::FixedWindow) {
+                bail!("Yande tag search requires page pagination");
+            }
+            (api_url.to_owned(), false)
+        }
+        DiscoverySource::Feed {
+            kind:
+                FeedKind::Popular {
+                    period,
+                    anchor_date,
+                },
+        } => {
+            if !matches!(request.pagination, PaginationRequest::FixedWindow) {
+                bail!("Yande popular feeds use fixed-window pagination");
+            }
+            params.extend(popular_query_params(anchor_date)?);
+            (popular_endpoint(api_url, *period)?, true)
+        }
+    };
+
+    if let DiscoverySource::Search { expression } = &request.query.source {
+        params.extend(tag_query_params(
+            expression,
+            request.query.content_policy,
+            page,
+            page_size,
+        )?);
+    } else if !fixed_window {
+        if let Some(policy_tag) = content_policy_tag(request.query.content_policy) {
+            params.push(("tags", policy_tag.to_owned()));
+        }
+    }
+    Ok((endpoint, params, page_size, fixed_window))
+}
+
+fn content_policy_tag(policy: ContentPolicy) -> Option<&'static str> {
+    match policy {
+        ContentPolicy::SafeOnly => Some("rating:s"),
+        ContentPolicy::AllowQuestionable => Some("-rating:e"),
+        ContentPolicy::AllowExplicit | ContentPolicy::ExplicitOnly => None,
+    }
+}
+
+fn matches_content_policy(post: &Post, policy: ContentPolicy) -> bool {
+    match policy {
+        ContentPolicy::SafeOnly => post.rating == Rating::Safe,
+        ContentPolicy::AllowQuestionable => {
+            matches!(post.rating, Rating::Safe | Rating::Questionable)
+        }
+        ContentPolicy::AllowExplicit => true,
+        ContentPolicy::ExplicitOnly => post.rating == Rating::Explicit,
+    }
+}
+
+fn map_tag_category(category: Option<u8>) -> Option<TagCategory> {
+    category.map(|value| match value {
+        0 => TagCategory::General,
+        1 => TagCategory::Artist,
+        3 => TagCategory::Copyright,
+        4 => TagCategory::Character,
+        5 => TagCategory::Metadata,
+        value => TagCategory::Unknown(value),
+    })
+}
+
+pub fn decode_tag_suggestions(body: &[u8]) -> Result<Vec<TagSuggestion>> {
+    let records =
+        serde_json::from_slice::<Vec<TagRecord>>(body).context("decode Yande tag response")?;
+    Ok(records
+        .into_iter()
+        .map(|record| TagSuggestion {
+            name: record.name,
+            category: map_tag_category(record.category),
+            post_count: record.count,
+            ambiguous: record.ambiguous,
+            aliases: Vec::new(),
+        })
+        .collect())
+}
+
+pub async fn fetch_tag_suggestions(
+    url: &str,
+    request: &TagSuggestionRequest,
+    network: &NetworkPolicy,
+) -> Result<Vec<TagSuggestion>> {
+    let params = [
+        ("name", request.query.clone()),
+        ("limit", request.limit.to_string()),
+    ];
+    let client = build_client(network)?;
+    decode_tag_suggestions(&get_bytes(&client, url, &params, network).await?)
+}
+
+pub async fn fetch_images(url: &str, page: usize) -> Result<Vec<Post>> {
+    let network = NetworkPolicy::default();
+    let client = build_client(&network)?;
+    let params = [("page", page.to_string())];
+    decode_posts(&get_bytes(&client, url, &params, &network).await?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    const IMAGE_JSON: &str = r#"{
+        "id": 123456,
+        "tags": "test tag1 tag2",
+        "width": 1920,
+        "height": 1080,
+        "file_url": "https://example.com/image.jpg",
+        "sample_url": "https://example.com/sample.jpg",
+        "preview_url": "https://example.com/preview.jpg",
+        "rating": "s",
+        "score": 42,
+        "md5": "abcdef123456",
+        "file_size": 1048576
+    }"#;
+
     #[test]
     fn image_post_deserializes() {
-        let image: ImagePost = serde_json::from_str(
-            r#"{
-                "id": 123456,
-                "tags": "test tag1 tag2",
-                "width": 1920,
-                "height": 1080,
-                "file_url": "https://example.com/image.jpg",
-                "sample_url": "https://example.com/sample.jpg",
-                "preview_url": "https://example.com/preview.jpg",
-                "rating": "s",
-                "score": 42,
-                "md5": "abcdef123456",
-                "file_size": 1048576
-            }"#,
-        )
-        .unwrap();
+        let image: ImagePost = serde_json::from_str(IMAGE_JSON).unwrap();
 
         assert_eq!(image.id, 123456);
-        assert_eq!(image.rating, "s");
+        assert_eq!(image.rating.as_deref(), Some("s"));
     }
 
     #[test]
@@ -140,26 +481,167 @@ mod tests {
 
     #[test]
     fn maps_wire_shape_to_neutral_post() {
-        let image = ImagePost {
-            id: 123456,
-            tags: "tag1 tag2".to_owned(),
-            width: 1920,
-            height: 1080,
-            file_url: "https://example.com/image.jpg".to_owned(),
-            sample_url: "https://example.com/sample.jpg".to_owned(),
-            preview_url: "https://example.com/preview.jpg".to_owned(),
-            rating: "q".to_owned(),
-            score: Some(42),
-            file_size: Some(1_048_576),
-        };
-
+        let image: ImagePost = serde_json::from_str(IMAGE_JSON).unwrap();
         let post = Post::from(image);
 
         assert_eq!(post.post.site.as_str(), SITE_ID);
         assert_eq!(post.post.id, "123456");
-        assert_eq!(post.tags, vec!["tag1".to_owned(), "tag2".to_owned()]);
-        assert_eq!(post.rating, Rating::Questionable);
-        assert_eq!(variant_url(&post, MediaVariant::Full), post.full_url);
+        assert_eq!(post.tags, vec!["test", "tag1", "tag2"]);
+        assert_eq!(post.rating, Rating::Safe);
+        assert_eq!(
+            variant_url(&post, MediaVariant::Full),
+            post.full_url.as_deref()
+        );
+    }
+
+    #[test]
+    fn decodes_legacy_array_and_version_two_envelope() {
+        let legacy = decode_posts(format!("[{IMAGE_JSON}]").as_bytes()).unwrap();
+        let version_two =
+            decode_posts(format!(r#"{{"posts":[{IMAGE_JSON}]}}"#).as_bytes()).unwrap();
+
+        assert_eq!(legacy, version_two);
+        assert_eq!(legacy.len(), 1);
+    }
+
+    #[test]
+    fn missing_metadata_is_not_fabricated() {
+        let posts = decode_posts(br#"[{"id":7,"tags":"artist -tag","rating":"x"}]"#).unwrap();
+
+        assert_eq!(posts[0].width, None);
+        assert_eq!(posts[0].full_url, None);
+        assert_eq!(posts[0].rating, Rating::Unknown);
+        assert_eq!(posts[0].tags, vec!["artist", "-tag"]);
+    }
+
+    #[test]
+    fn malformed_post_payload_is_a_decode_error() {
+        assert!(decode_posts(br#"{"unexpected":true}"#).is_err());
+    }
+
+    #[test]
+    fn tag_query_preserves_negative_terms_and_adds_safe_filter() {
+        assert_eq!(
+            tag_expression("artist_name -sketch", ContentPolicy::SafeOnly).unwrap(),
+            "artist_name -sketch rating:s"
+        );
+        assert_eq!(
+            tag_query_params(
+                "artist_name -sketch",
+                ContentPolicy::AllowQuestionable,
+                2,
+                40
+            )
+            .unwrap(),
+            vec![
+                ("tags", "artist_name -sketch -rating:e".to_owned()),
+                ("page", "2".to_owned()),
+                ("limit", "40".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn tag_query_rejects_empty_or_invalid_page() {
+        assert!(tag_expression(" ", ContentPolicy::SafeOnly).is_err());
+        assert!(tag_query_params("tag", ContentPolicy::SafeOnly, 0, 40).is_err());
+        assert!(tag_query_params("tag", ContentPolicy::SafeOnly, 1, 0).is_err());
+    }
+
+    #[test]
+    fn popular_modes_map_to_fixed_endpoints_and_date_parts() {
+        assert_eq!(
+            popular_endpoint("https://yande.re/post.json", PopularPeriod::Week).unwrap(),
+            "https://yande.re/post/popular_by_week.json"
+        );
+        assert_eq!(
+            popular_query_params("2026-08-10").unwrap(),
+            vec![
+                ("day", "10".to_owned()),
+                ("month", "08".to_owned()),
+                ("year", "2026".to_owned()),
+            ]
+        );
+        assert!(popular_query_params("2026-8-10").is_err());
+    }
+
+    #[test]
+    fn tag_suggestions_map_category_metadata() {
+        let suggestions = decode_tag_suggestions(
+            br#"[{"name":"artist_name","count":12,"type":1,"ambiguous":false}]"#,
+        )
+        .unwrap();
+
+        assert_eq!(suggestions[0].name, "artist_name");
+        assert_eq!(suggestions[0].category, Some(TagCategory::Artist));
+        assert_eq!(suggestions[0].post_count, Some(12));
+        assert_eq!(suggestions[0].ambiguous, Some(false));
+        assert!(suggestions[0].aliases.is_empty());
+    }
+
+    #[test]
+    fn query_mapping_keeps_search_and_popular_pagination_distinct() {
+        let search = PostQueryRequest {
+            query: dreamland_core::ReplayableQuery {
+                source: DiscoverySource::Search {
+                    expression: "artist_name -sketch".to_owned(),
+                },
+                content_policy: ContentPolicy::SafeOnly,
+            },
+            pagination: PaginationRequest::Page {
+                number: 2,
+                page_size: 40,
+            },
+        };
+        let (_, search_params, _, _) =
+            request_parts("https://yande.re/post.json", &search).unwrap();
+        assert_eq!(
+            search_params,
+            vec![
+                ("tags", "artist_name -sketch rating:s".to_owned()),
+                ("page", "2".to_owned()),
+                ("limit", "40".to_owned()),
+            ]
+        );
+
+        let popular = PostQueryRequest {
+            query: dreamland_core::ReplayableQuery {
+                source: DiscoverySource::Feed {
+                    kind: FeedKind::Popular {
+                        period: PopularPeriod::Month,
+                        anchor_date: "2026-08-10".to_owned(),
+                    },
+                },
+                content_policy: ContentPolicy::SafeOnly,
+            },
+            pagination: PaginationRequest::FixedWindow,
+        };
+        let (endpoint, params, _, fixed_window) =
+            request_parts("https://yande.re/post.json", &popular).unwrap();
+        assert_eq!(endpoint, "https://yande.re/post/popular_by_month.json");
+        assert_eq!(params.len(), 3);
+        assert!(fixed_window);
+        assert!(request_parts(
+            "https://yande.re/post.json",
+            &PostQueryRequest {
+                pagination: PaginationRequest::Page {
+                    number: 2,
+                    page_size: 40,
+                },
+                ..popular
+            }
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn http_statuses_map_to_stable_site_errors() {
+        assert_eq!(
+            map_http_status(reqwest::StatusCode::TOO_MANY_REQUESTS).code,
+            SiteErrorCode::RateLimited
+        );
+        assert!(!map_http_status(reqwest::StatusCode::UNAUTHORIZED).retryable);
+        assert!(map_http_status(reqwest::StatusCode::SERVICE_UNAVAILABLE).retryable);
     }
 
     #[test]

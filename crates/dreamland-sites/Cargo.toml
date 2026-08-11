@@ -6,6 +6,7 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 dreamland-core = { path = "../dreamland-core" }
 dreamland-site-pixiv = { path = "../dreamland-site-pixiv" }
 dreamland-site-yandere = { path = "../dreamland-site-yandere" }

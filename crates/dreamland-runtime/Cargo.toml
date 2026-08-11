@@ -8,6 +8,7 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 dirs.workspace = true
+dreamland-core = { path = "../dreamland-core" }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true

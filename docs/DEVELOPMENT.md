@@ -37,8 +37,10 @@ React + TypeScript (src/) ── typed Tauri IPC ── commands (src-tauri/src/
                                                    └── core crate
 ```
 
-The frontend calls `load_config`, `save_config`, `load_images`, and
-`download_image`. Native filesystem and network access stays in Rust.
+The frontend calls `load_config`, `save_config`, `query_posts`,
+`continue_query`, `cancel_query`, `suggest_tags`, and `download_image`. Native
+filesystem and network access stays in Rust. Network settings are applied on
+the next operation without restarting the app.
 
 Architecture rationale is recorded in [DECISIONS.md](DECISIONS.md) and
 [adr/](adr/). The API boundary is still governed by [API-V1.md](API-V1.md).
@@ -49,8 +51,10 @@ Architecture rationale is recorded in [DECISIONS.md](DECISIONS.md) and
   prerequisites before running the desktop build.
 - **Windows setup:** use a native Windows environment or CI runner with the
   pinned Rust and Bun versions and the native Tauri build prerequisites.
-- **Network errors:** check the configured API URL and connectivity.
+- **Network errors:** check the configured API URL, use Settings → Detect
+  proxy, and choose Direct or Manual proxy if Auto is wrong. GET requests
+  retry bounded 429/temporary responses and honor numeric `Retry-After` hints.
 - **Permission errors:** ensure the configured download directory is writable.
 - **Configuration reset:** remove `config.json` from the platform configuration
-  directory. The current implementation still uses JSON; TOML configuration
-  is planned.
+  directory. The current implementation uses the legacy JSON location; TOML
+  migration remains planned.

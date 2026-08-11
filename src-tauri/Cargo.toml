@@ -19,7 +19,7 @@ tauri-build.workspace = true
 
 [dependencies]
 dreamland-core = { path = "../crates/dreamland-core" }
-dreamland-site-yandere = { path = "../crates/dreamland-site-yandere" }
 dreamland-sites = { path = "../crates/dreamland-sites" }
 dreamland-runtime = { path = "../crates/dreamland-runtime" }
+serde.workspace = true
 tauri.workspace = true

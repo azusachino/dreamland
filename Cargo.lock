@@ -707,8 +707,8 @@ version = "0.1.0"
 dependencies = [
  "dreamland-core",
  "dreamland-runtime",
- "dreamland-site-yandere",
  "dreamland-sites",
+ "serde",
  "tauri",
  "tauri-build",
 ]
@@ -726,6 +726,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "dirs 5.0.1",
+ "dreamland-core",
  "reqwest 0.11.27",
  "serde",
  "serde_json",
@@ -756,6 +757,7 @@ dependencies = [
  "reqwest 0.11.27",
  "serde",
  "serde_json",
+ "tokio",
  "toml 0.8.2",
 ]
 
@@ -763,6 +765,7 @@ dependencies = [
 name = "dreamland-sites"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "dreamland-core",
  "dreamland-site-pixiv",
  "dreamland-site-twitter",
