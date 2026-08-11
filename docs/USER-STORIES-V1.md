@@ -32,7 +32,7 @@ v1 stories.
 | --- | --- | --- | --- |
 | US-Y-01 | As a user, I open Dreamland and see Yande posts immediately. | The default site is `yandere`; the initial view is a post feed with loading, empty, error, and safe-content states. | `list_sites`, `query_posts`; Y-01, Y-08 |
 | US-Y-02 | As a user, I switch sites without losing the exploration model. | The selector lists only registered/enabled sites, refreshes effective capabilities, and never exposes site response JSON. | `list_sites`, `get_site_capabilities`; G-01 |
-| US-Y-03 | As a user, I browse Yande popularity. | `PopularPeriod` day/week/month plus an explicit anchor date is visible; the UI does not show a false next-page control for fixed windows. | `Feed(Popular { period, anchor_date })`; Y-04, G-04 |
+| US-Y-03 | As a user, I browse Yande popularity. | `PopularPeriod` day/week/month plus an explicit anchor date is visible; infinite scroll continues within the selected date window. | `Feed(Popular { period, anchor_date })`; Y-04, G-04 |
 | US-Y-04 | As a user, I search by tags even when I do not know exact spelling. | Suggestions appear after the site accepts the query, show tag category/count metadata, preserve spaces and leading `-`, and selecting a suggestion produces a replayable expression. | `suggest_tags`, `query_posts`; Y-02, Y-03 |
 | US-Y-05 | As a user, I save and replay a useful search. | A saved query has a name, complete site/query identity, pin state, and order; replay does not depend on an expired continuation token. | `save_query`, `list_saved_queries`, `delete_saved_query`; local SQLite |
 | US-Y-06 | As a user, I inspect a post before downloading. | Detail shows the stable reference, complete typed tags, posting account, rating, dimensions, checksum, source, available media variants, and child/detail state. | `lookup_post`, `hydrate_post`; Y-08 |
@@ -56,7 +56,7 @@ following behavior.
 | Malformed, legacy, or v2 Yande post response | Decode through the site adapter, normalize only valid fields, and return a safe decode error when the envelope is invalid. | US-Y-01/04/06, G-02 |
 | Empty suggestions, empty page, or no matching tags | Show an explicit empty state; do not treat it as a transport failure or fabricate tags. | US-Y-04, G-02/G-03 |
 | Rate limit, timeout, cancellation, or stale response | Map to stable retryable/cancelled errors; discard late results from an older query/session. | US-Y-03/04, G-01/G-02/G-10 |
-| Popular endpoint receives `page`/`limit` | Preserve the fixed-window contract and avoid false pagination. | US-Y-03, G-04 |
+| Popular query receives `page`/`limit` | Preserve the selected date window while continuing the score-ranked `post.json` query; stop when a page is shorter than the requested size. | US-Y-03, G-04 |
 | Anonymous favorite mutation/list/ZIP | Return `auth_required` or `auth_expired`; do not retry with guessed routes. | US-Y-09/10/11, G-05/G-06/G-07/G-09 |
 | Favorite read mechanism remains unverified | Keep US-Y-10 blocked in the release gate; the UI may render a capability placeholder but no endpoint is hardcoded. | Y-07, G-07 |
 | Site returns a URL with an unsafe scheme or redirect | Runtime validates the resolved media/archive URL and rejects non-allowed schemes or untrusted redirects. | US-Y-07/11, G-08/G-09 |

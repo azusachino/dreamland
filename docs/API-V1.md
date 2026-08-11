@@ -1493,8 +1493,8 @@ the operation_id and preserves retryable separately from the safe message.
 
 | Capability | Yande behavior |
 | --- | --- |
-| PostQueryCapability | Search and `Feed(Popular { period, anchor_date })`; tag search uses /post.json and popular uses /post/popular_by_*.json. |
-| Pagination | Tag search is page/limit; popular modes are date-selected fixed windows with no continuation in current evidence. |
+| PostQueryCapability | Search and `Feed(Popular { period, anchor_date })`; both use `/post.json`, while popular adds a date expression and `order:score`. |
+| Pagination | Tag search and popular modes use page/limit; popular continuation stays inside the selected day/week/month window. |
 | TagSuggestionCapability | Live Yande `/tag.json` with name/count/type/ambiguity metadata; the pinned MoeLoaderP adapter's `/tag.xml` behavior is source evidence, not the v1 endpoint contract. |
 | PostLookupCapability | ID-filtered post query, subject to verified response behavior. |
 | RemoteFavoriteCapability | Authenticated POST /post/vote.json; Yande maps favorite add/remove to score 3/2. |
@@ -1512,7 +1512,8 @@ Before API v1 approval, plan tests for:
 2. Yande legacy-array and v2 post envelopes;
 3. tag encoding, suggestions, safe policy, empty pages, malformed responses,
    and rate-limit mapping;
-4. all popular endpoints, fixed-window continuation, and no misleading page UI;
+4. popular day/week/month expression mapping, Monday-first week boundaries,
+   page-2 continuation, short-page termination, and infinite-scroll UI;
 5. missing metadata, rating/checksum mapping, scoped identity, and variants;
 6. auth transitions without secret serialization;
 7. favorite score 3/2 mapping, auth_required, idempotency, and race safety;

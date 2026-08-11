@@ -143,16 +143,14 @@ function App() {
 
     return {
       query: { source, content_policy: contentPolicy },
-      pagination: view === "popular"
-        ? "FixedWindow"
-        : { First: { page_size: pageSize } },
+      pagination: { First: { page_size: pageSize } },
     };
   }, [contentPolicy, pageSize, popularPeriod, submittedSearch, view]);
   const imagesQuery = useInfiniteQuery({
     queryKey: ["posts", request],
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) => pageParam ? continueQuery(pageParam) : queryPosts(request),
-    getNextPageParam: (lastPage) => view !== "popular" && lastPage.session && lastPage.posts.length >= lastPage.page_size
+    getNextPageParam: (lastPage) => lastPage.session && lastPage.posts.length >= lastPage.page_size
       ? lastPage.session
       : undefined,
     enabled: configQuery.isSuccess && (view === "latest" || view === "popular" || view === "search"),
@@ -279,7 +277,7 @@ function App() {
   const subtitle = view === "search"
     ? `Matching “${submittedSearch}”`
     : view === "popular"
-      ? `Most popular this ${popularPeriod.toLowerCase()} · Yande fixed window`
+      ? `Most popular this ${popularPeriod.toLowerCase()} · score-ranked`
       : view === "downloads"
         ? "Local download history and active work"
         : view === "pools"

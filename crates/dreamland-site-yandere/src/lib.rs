@@ -201,21 +201,6 @@ pub fn tag_query_params(
     ])
 }
 
-pub fn popular_path(period: PopularPeriod) -> &'static str {
-    match period {
-        PopularPeriod::Day => "/post/popular_by_day.json",
-        PopularPeriod::Week => "/post/popular_by_week.json",
-        PopularPeriod::Month => "/post/popular_by_month.json",
-    }
-}
-
-pub fn popular_endpoint(base_url: &str, period: PopularPeriod) -> Result<String> {
-    let mut url = reqwest::Url::parse(base_url).context("parse Yande API URL")?;
-    url.set_path(popular_path(period));
-    url.set_query(None);
-    Ok(url.to_string())
-}
-
 pub fn tag_endpoint(base_url: &str) -> Result<String> {
     let mut url = reqwest::Url::parse(base_url).context("parse Yande API URL")?;
     url.set_path("/tag.json");
@@ -326,17 +311,23 @@ pub async fn query_pool_posts(
     query_posts(api_url, &request, network).await
 }
 
-pub fn popular_query_params(anchor_date: &str) -> Result<Vec<(&'static str, String)>> {
-    let mut parts = anchor_date.split('-');
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CalendarDate {
+    year: i32,
+    month: u32,
+    day: u32,
+}
+
+fn parse_calendar_date(value: &str) -> Result<CalendarDate> {
+    let mut parts = value.split('-');
     let year = parts.next().unwrap_or_default();
     let month = parts.next().unwrap_or_default();
     let day = parts.next().unwrap_or_default();
-    let valid_month = month
-        .parse::<u8>()
-        .is_ok_and(|value| (1..=12).contains(&value));
-    let valid_day = day
-        .parse::<u8>()
-        .is_ok_and(|value| (1..=31).contains(&value));
+    let date = CalendarDate {
+        year: year.parse().unwrap_or_default(),
+        month: month.parse().unwrap_or_default(),
+        day: day.parse().unwrap_or_default(),
+    };
     if parts.next().is_some()
         || year.len() != 4
         || month.len() != 2
@@ -344,16 +335,105 @@ pub fn popular_query_params(anchor_date: &str) -> Result<Vec<(&'static str, Stri
         || !year.chars().all(|value| value.is_ascii_digit())
         || !month.chars().all(|value| value.is_ascii_digit())
         || !day.chars().all(|value| value.is_ascii_digit())
-        || !valid_month
-        || !valid_day
+        || !(1..=12).contains(&date.month)
+        || !(1..=days_in_month(date.year, date.month)).contains(&date.day)
     {
         bail!("popular anchor date must use YYYY-MM-DD");
     }
-    Ok(vec![
-        ("day", day.to_owned()),
-        ("month", month.to_owned()),
-        ("year", year.to_owned()),
-    ])
+    Ok(date)
+}
+
+fn is_leap_year(year: i32) -> bool {
+    year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+}
+
+fn days_in_month(year: i32, month: u32) -> u32 {
+    match month {
+        2 if is_leap_year(year) => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
+fn add_days(mut date: CalendarDate, days: i32) -> CalendarDate {
+    let step = if days < 0 { -1 } else { 1 };
+    for _ in 0..days.unsigned_abs() {
+        if step > 0 {
+            if date.day == days_in_month(date.year, date.month) {
+                date.day = 1;
+                if date.month == 12 {
+                    date.month = 1;
+                    date.year += 1;
+                } else {
+                    date.month += 1;
+                }
+            } else {
+                date.day += 1;
+            }
+        } else if date.day == 1 {
+            if date.month == 1 {
+                date.month = 12;
+                date.year -= 1;
+            } else {
+                date.month -= 1;
+            }
+            date.day = days_in_month(date.year, date.month);
+        } else {
+            date.day -= 1;
+        }
+    }
+    date
+}
+
+fn monday_first_weekday(date: CalendarDate) -> u32 {
+    let (year, month) = if date.month < 3 {
+        (date.year - 1, date.month + 12)
+    } else {
+        (date.year, date.month)
+    };
+    let century_year = year % 100;
+    let century = year / 100;
+    let saturday_first = (date.day as i32
+        + (13 * (month as i32 + 1)) / 5
+        + century_year
+        + century_year / 4
+        + century / 4
+        + 5 * century)
+        % 7;
+    ((saturday_first + 5) % 7) as u32
+}
+
+fn format_calendar_date(date: CalendarDate) -> String {
+    format!("{:04}-{:02}-{:02}", date.year, date.month, date.day)
+}
+
+pub fn popular_tag_expression(period: PopularPeriod, anchor_date: &str) -> Result<String> {
+    let anchor = parse_calendar_date(anchor_date)?;
+    let (start, end) = match period {
+        PopularPeriod::Day => (anchor, anchor),
+        PopularPeriod::Week => {
+            let start = add_days(anchor, -(monday_first_weekday(anchor) as i32));
+            (start, add_days(start, 6))
+        }
+        PopularPeriod::Month => {
+            let start = CalendarDate { day: 1, ..anchor };
+            (
+                start,
+                add_days(start, days_in_month(start.year, start.month) as i32 - 1),
+            )
+        }
+    };
+    let range = if start == end {
+        format_calendar_date(start)
+    } else {
+        format!(
+            "{}..{}",
+            format_calendar_date(start),
+            format_calendar_date(end)
+        )
+    };
+    Ok(format!("date:{range} order:score"))
 }
 
 pub fn map_http_status(status: reqwest::StatusCode) -> SiteError {
@@ -555,11 +635,16 @@ fn request_parts(
                     anchor_date,
                 },
         } => {
-            if !matches!(request.pagination, PaginationRequest::FixedWindow) {
-                bail!("Yande popular feeds use fixed-window pagination");
+            if matches!(request.pagination, PaginationRequest::FixedWindow) {
+                bail!("Yande popular feeds use page pagination");
             }
-            params.extend(popular_query_params(anchor_date)?);
-            (popular_endpoint(api_url, *period)?, true)
+            params.extend(tag_query_params(
+                &popular_tag_expression(*period, anchor_date)?,
+                request.query.content_policy,
+                page,
+                page_size,
+            )?);
+            (api_url.to_owned(), false)
         }
     };
 
@@ -570,7 +655,13 @@ fn request_parts(
             page,
             page_size,
         )?);
-    } else if !fixed_window {
+    } else if matches!(
+        request.query.source,
+        DiscoverySource::Browse
+            | DiscoverySource::Feed {
+                kind: FeedKind::Latest,
+            }
+    ) {
         if let Some(policy_tag) = content_policy_tag(request.query.content_policy) {
             params.push(("tags", policy_tag.to_owned()));
         }
@@ -744,20 +835,20 @@ mod tests {
     }
 
     #[test]
-    fn popular_modes_map_to_fixed_endpoints_and_date_parts() {
+    fn popular_modes_map_to_paged_tag_expressions() {
         assert_eq!(
-            popular_endpoint("https://yande.re/post.json", PopularPeriod::Week).unwrap(),
-            "https://yande.re/post/popular_by_week.json"
+            popular_tag_expression(PopularPeriod::Day, "2026-08-10").unwrap(),
+            "date:2026-08-10 order:score"
         );
         assert_eq!(
-            popular_query_params("2026-08-10").unwrap(),
-            vec![
-                ("day", "10".to_owned()),
-                ("month", "08".to_owned()),
-                ("year", "2026".to_owned()),
-            ]
+            popular_tag_expression(PopularPeriod::Week, "2026-08-10").unwrap(),
+            "date:2026-08-10..2026-08-16 order:score"
         );
-        assert!(popular_query_params("2026-8-10").is_err());
+        assert_eq!(
+            popular_tag_expression(PopularPeriod::Month, "2026-08-10").unwrap(),
+            "date:2026-08-01..2026-08-31 order:score"
+        );
+        assert!(popular_tag_expression(PopularPeriod::Day, "2026-02-29").is_err());
     }
 
     #[test]
@@ -828,20 +919,30 @@ mod tests {
                 },
                 content_policy: ContentPolicy::SafeOnly,
             },
-            pagination: PaginationRequest::FixedWindow,
+            pagination: PaginationRequest::Page {
+                number: 2,
+                page_size: 40,
+            },
         };
         let (endpoint, params, _, fixed_window) =
             request_parts("https://yande.re/post.json", &popular).unwrap();
-        assert_eq!(endpoint, "https://yande.re/post/popular_by_month.json");
-        assert_eq!(params.len(), 3);
-        assert!(fixed_window);
+        assert_eq!(endpoint, "https://yande.re/post.json");
+        assert_eq!(
+            params,
+            vec![
+                (
+                    "tags",
+                    "date:2026-08-01..2026-08-31 order:score rating:s".to_owned()
+                ),
+                ("page", "2".to_owned()),
+                ("limit", "40".to_owned()),
+            ]
+        );
+        assert!(!fixed_window);
         assert!(request_parts(
             "https://yande.re/post.json",
             &PostQueryRequest {
-                pagination: PaginationRequest::Page {
-                    number: 2,
-                    page_size: 40,
-                },
+                pagination: PaginationRequest::FixedWindow,
                 ..popular
             }
         )

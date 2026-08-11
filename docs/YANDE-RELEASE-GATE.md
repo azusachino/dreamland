@@ -27,7 +27,7 @@ state.
 | Y-01 | Yande site registration | Site descriptor, stable `yandere` identity, safe default, and config entry are available through the runtime. |
 | Y-02 | Tag search | Site tag expression is encoded and queried through the paged post API; page size, safe filtering, empty results, and both response envelopes are handled. Per [MOEBOORU-UX-LEARNINGS.md](MOEBOORU-UX-LEARNINGS.md), this includes round-tripping negative-tag (`-tag`) prefixes and space-tokenized multi-term queries -- not yet in G-02's fixture list below. |
 | Y-03 | Tag suggestions | Live Yande `/tag.json` autocomplete returns name/count/type/ambiguity metadata and handles empty/error responses; pinned MoeLoaderP `/tag.xml` behavior remains separate source evidence. |
-| Y-04 | Popular by day/week/month | `PopularPeriod` plus an explicit anchor date maps to the three `popular_by_*` endpoints; each response is a fixed result window, not page-number pagination. |
+| Y-04 | Popular by day/week/month | `PopularPeriod` plus an explicit anchor date maps to a score-ranked `/post.json` query: day uses one date, week uses the Monday-Sunday window, and month uses the calendar-month window. The selected window is page-number paged for infinite scroll. |
 | Y-05 | Browser-session login | The user can open/import Yande login state; the runtime detects the `user_id` cookie, reports auth state, and never exposes raw cookies or credentials to React/TOML. |
 | Y-06 | Add/remove remote favorite | Authenticated `RemoteFavoriteCapability` maps Yande favorite add to score 3 and remove to score 2; unauthenticated calls return `auth_required`. |
 | Y-07 | Remote favorite page | An authenticated user can open a dedicated favorite page through `RemoteFavoriteListCapability`, load the user’s remote favorites, paginate when the verified site mechanism supports it, and see loading/empty/error/auth-required states. The exact Yande list mechanism is a release blocker until verified. |
@@ -39,8 +39,8 @@ state.
 - Favorite state is reflected on cards after add/remove and after refresh.
 - Re-authentication and expired-session recovery return the user to the
   interrupted favorite operation without duplicating it.
-- Popular pages label the selected date/window and do not show a misleading
-  next-page control.
+- Popular pages label the selected date/window and continue loading while the
+  selected score-ranked query returns full pages.
 - Favorite-page refresh and add/remove are race-safe: a stale response cannot
   overwrite a newer auth or favorite state.
 
@@ -51,8 +51,9 @@ state.
 - upload, delete, moderation, notes, and translations;
 - batch-download workflow and site-wide collection abstractions beyond the
   first required favorite page;
-- treating popularity windows as generic pagination until Yande exposes a
-  stable continuation contract.
+- assuming Yande's raw `/post/popular_by_*` endpoints provide pagination; those
+  fixed 40-item endpoints are not the path used by Dreamland's scrollable
+  popular feed.
 
 ## Favorite-page decision gate
 
@@ -92,7 +93,7 @@ evidence. “Build passes” alone is not a release decision.
 | G-01 | Site contract | Fake site tests descriptor, capability negotiation, safe defaults, operation IDs, cancellation, and unsupported-capability errors. | Pending API approval |
 | G-02 | Tag search | Fixture tests for legacy array and v2 envelope, tag encoding, page/limit, safe mode, empty page, malformed response, and rate-limit/error mapping. | Pending |
 | G-03 | Tag suggestions | Fixture tests for tag name/count/category mapping, empty response, cancellation, and remote error. | Pending |
-| G-04 | Popular modes | Fixtures assert endpoint mapping, date-window parameters, 40-item fixed-window handling, `has_next=false`, and no page-control UI. Per [MOEBOORU-UX-LEARNINGS.md](MOEBOORU-UX-LEARNINGS.md), "every popular endpoint is a fixed window" was flagged as too narrow and needing per-period, per-date verification; the single-date probe below does not meet that bar yet. | Live shape observed for one date only; fixtures pending |
+| G-04 | Popular modes | Fixtures assert `/post.json` mapping, day/week/month date expressions, Monday-first week boundaries, `order:score`, page/limit continuation, short-page termination, and infinite-scroll UI. Raw `/post/popular_by_*` fixed-window behavior remains documented but is not used for this feed. | Adapter fixtures pass; live page-2 parity verified for week |
 | G-05 | Login/auth | Auth-state tests with absent/valid/expired cookie; Tauri serialization test proves cookies never cross the command boundary; manual browser-session smoke on a clean profile. | Manual auth smoke pending |
 | G-06 | Favorite mutation | Mock tests assert score 3/2 mapping and idempotent state handling; authorized live smoke adds then removes one explicitly selected test post and verifies the remote result. | Live write authorization pending |
 | G-07 | Favorite page | Authorized live read smoke proves current-user identity, private visibility, ordering, empty state, pagination/continuation, and refresh after mutation; fixture tests cover all UI states. | **BLOCKED: read mechanism unverified** |

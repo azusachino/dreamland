@@ -118,7 +118,7 @@ handle and never receive raw cookie material.
 | User-visible action | Required capability/command | Site-specific part | Runtime-owned part |
 | --- | --- | --- | --- |
 | Tag search | `PostQueryCapability` + `TagSuggestionCapability` | Yande tag expression and `/tag` mapping | query session, safe filtering, stale-result suppression |
-| Popular feed | `PostQueryCapability` | day/week/month endpoint and fixed-window/date semantics | feed state and no-false-pagination UI data |
+| Popular feed | `PostQueryCapability` | day/week/month date expression plus `order:score` on `/post.json` | feed state, page continuation, and selected-window labels |
 | Post detail | lookup/detail/children capabilities as advertised | response hydration and media variants | partial state, caching, common model |
 | Favorite add/remove | `RemoteFavoriteCapability` + `SiteAuth` | Yande score 3/2 mutation | auth gating, idempotency, race protection |
 | Favorite page | `RemoteFavoriteListCapability` + `SiteAuth` | verified current-user read route/query | collection session, loading/empty/error states |

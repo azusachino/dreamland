@@ -92,8 +92,8 @@ not introducing search for the first time:
   site-neutral commands;
 - clear loading, empty, site-error, and unavailable-capability states across
   more than one site;
-- preserve pagination semantics per site, including sites without Yande's
-  fixed-window popular behavior.
+- preserve pagination semantics per site, including Yande's selected-window
+  popular queries and sites that expose different popular-feed contracts.
 
 Search and tags must follow site capabilities. The UI should not present a
 search control for a site that cannot implement it.
