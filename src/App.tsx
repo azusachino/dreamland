@@ -61,6 +61,9 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
+  const [batchDownloading, setBatchDownloading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -164,6 +167,7 @@ function App() {
       ? `Failed to load images: ${errorMessage(imagesQuery.error)}`
       : "";
   const images = imagesQuery.data?.posts ?? [];
+  const selectedPosts = images.filter((post) => selectedPostIds.has(post.post.id));
   const loading = configQuery.isPending || imagesQuery.isFetching;
   const downloadRecords = downloadsQuery.data ?? [];
   const title = view === "search" ? "Search results" : view === "popular" ? "Popular" : "Latest posts";
@@ -188,6 +192,8 @@ function App() {
     setPage(1);
     setView(nextView);
     setDownloadsOpen(false);
+    setSelectedPostIds(new Set());
+    setSelectionMode(false);
   }
 
   function submitSearch(event?: FormEvent<HTMLFormElement>) {
@@ -203,6 +209,8 @@ function App() {
     setSubmittedSearch(expression);
     setView("search");
     setSearchFocused(false);
+    setSelectedPostIds(new Set());
+    setSelectionMode(false);
   }
 
   function chooseTag(tag: string) {
@@ -211,6 +219,41 @@ function App() {
     setPage(1);
     setView("search");
     setSearchFocused(false);
+    setSelectedPostIds(new Set());
+    setSelectionMode(false);
+  }
+
+  function togglePostSelection(postId: string) {
+    setSelectedPostIds((current) => {
+      const next = new Set(current);
+      if (next.has(postId)) next.delete(postId);
+      else next.add(postId);
+      return next;
+    });
+  }
+
+  function selectCurrentPage() {
+    setSelectedPostIds(new Set(images.map((post) => post.post.id)));
+  }
+
+  async function handleBatchDownload() {
+    if (selectedPosts.length === 0) return;
+    setBatchDownloading(true);
+    setError("");
+    setNotice("");
+    let queued = 0;
+    for (const post of selectedPosts) {
+      try {
+        await downloadMutation.mutateAsync({ postId: post.post.id, variant: "Full" });
+        queued += 1;
+      } catch {
+        // Each failed item is reported by the mutation; continue the batch.
+      }
+    }
+    setBatchDownloading(false);
+    setSelectedPostIds(new Set());
+    setSelectionMode(false);
+    if (queued > 0) showToast("Batch queued", `${queued} post${queued === 1 ? "" : "s"} added to Downloads.`);
   }
 
   async function handleDownload(post: Post) {
@@ -332,6 +375,12 @@ function App() {
               <p className="subtitle">{subtitle}</p>
             </div>
             <div className="heading-actions">
+              <button className="button button-outlined" type="button" onClick={() => {
+                setSelectionMode((current) => !current);
+                setSelectedPostIds(new Set());
+              }}>
+                {selectionMode ? "Cancel selection" : "Select posts"}
+              </button>
               {view === "popular" && (
                 <label className="period-picker">
                   <span>Period</span>
@@ -348,6 +397,16 @@ function App() {
               <span className="content-policy">{contentPolicyLabel(contentPolicy)}</span>
             </div>
           </section>
+
+          {selectionMode && (
+            <div className="batch-toolbar" role="toolbar" aria-label="Batch download">
+              <strong>{selectedPosts.length} selected</strong>
+              <button className="button button-text" type="button" onClick={selectCurrentPage}>Select current page</button>
+              <button className="button button-primary" type="button" disabled={!selectedPosts.length || batchDownloading} onClick={() => void handleBatchDownload()}>
+                {batchDownloading ? "Queueing…" : "Download selected"}
+              </button>
+            </div>
+          )}
 
           {error && !queryError && <p className="message message-error" role="alert">{error}</p>}
           {notice && <p className="message message-success" role="status">{notice}</p>}
@@ -367,9 +426,12 @@ function App() {
                   <ImageCard
                     key={post.post.id}
                     post={post}
+                    selectionMode={selectionMode}
+                    selected={selectedPostIds.has(post.post.id)}
                     downloading={downloadingId === post.post.id}
                     onDownload={handleDownload}
                     onSelect={setSelectedPost}
+                    onToggleSelection={() => togglePostSelection(post.post.id)}
                     onTag={chooseTag}
                   />
                 ))}
@@ -493,16 +555,19 @@ function Toast({ state, onClose }: ToastProps) {
 
 interface ImageCardProps {
   post: Post;
+  selectionMode: boolean;
+  selected: boolean;
   downloading: boolean;
   onDownload: (post: Post) => Promise<void>;
   onSelect: (post: Post) => void;
+  onToggleSelection: () => void;
   onTag: (tag: string) => void;
 }
 
-function ImageCard({ post, downloading, onDownload, onSelect, onTag }: ImageCardProps) {
+function ImageCard({ post, selectionMode, selected, downloading, onDownload, onSelect, onToggleSelection, onTag }: ImageCardProps) {
   const previewUrl = post.preview_url ?? post.sample_url ?? post.full_url;
   return (
-    <article className="card" onClick={() => onSelect(post)}>
+    <article className={`card${selected ? " selected" : ""}`} onClick={() => selectionMode ? onToggleSelection() : onSelect(post)}>
       <div className="preview">
         {previewUrl ? (
           <img src={previewUrl} alt={`Post ${post.post.id}`} loading="lazy" />
@@ -511,6 +576,20 @@ function ImageCard({ post, downloading, onDownload, onSelect, onTag }: ImageCard
         )}
         <span className="dimensions">{post.width ?? "?"}×{post.height ?? "?"}</span>
         <span className="rating-pill">{post.rating}</span>
+        {selectionMode && (
+          <button
+            className="selection-toggle"
+            type="button"
+            aria-label={`${selected ? "Deselect" : "Select"} post ${post.post.id}`}
+            aria-pressed={selected}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleSelection();
+            }}
+          >
+            {selected ? "✓" : ""}
+          </button>
+        )}
       </div>
       <div className="card-details">
         <div className="tag-list">
