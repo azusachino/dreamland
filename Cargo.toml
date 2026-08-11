@@ -4,6 +4,7 @@ members = [
   "crates/dreamland-sites",
   "crates/dreamland-site-pixiv",
   "crates/dreamland-site-twitter",
+  "crates/dreamland-site-konachan",
   "crates/dreamland-site-yandere",
   "crates/dreamland-runtime",
   "src-tauri",

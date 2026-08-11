@@ -29,9 +29,10 @@ current index; it deliberately does not duplicate their full rationale.
 
 ## Pending gates
 
-- [API and runtime design v1](API-V1.md) and [ADR 0007](adr/0007-api-v1-site-contract.md)
-  must be approved before site capabilities or registry behavior are
-  implemented.
+- [API and runtime design v1](API-V1.md) is the implementation baseline for
+  incremental site capabilities. [ADR 0007](adr/0007-api-v1-site-contract.md)
+  remains the explicit trait-review record; each new site still needs its own
+  capability and live-acceptance gate.
 - The Yande release ([YANDE-RELEASE-GATE.md](YANDE-RELEASE-GATE.md), Y-01
   through Y-09) and the "Proposed 0.1.0 gate"
   ([ROADMAP.md](ROADMAP.md)) are the same milestone: Yande-scoped search,

@@ -13,11 +13,17 @@ pub async fn query_posts(
     request: &PostQueryRequest,
     network: &NetworkPolicy,
 ) -> Result<SitePage> {
-    if site_id != DEFAULT_SITE_ID {
-        bail!("site '{site_id}' has no active post query adapter");
+    match site_id {
+        dreamland_site_yandere::SITE_ID => {
+            let config = dreamland_site_yandere::default_config();
+            dreamland_site_yandere::query_posts(&config.api_url, request, network).await
+        }
+        dreamland_site_konachan::SITE_ID => {
+            let config = dreamland_site_konachan::default_config();
+            dreamland_site_konachan::query_posts(&config.api_url, request, network).await
+        }
+        _ => bail!("site '{site_id}' has no active post query adapter"),
     }
-    let config = dreamland_site_yandere::default_config();
-    dreamland_site_yandere::query_posts(&config.api_url, request, network).await
 }
 
 pub async fn suggest_tags(
@@ -25,12 +31,19 @@ pub async fn suggest_tags(
     request: &TagSuggestionRequest,
     network: &NetworkPolicy,
 ) -> Result<Vec<TagSuggestion>> {
-    if site_id != DEFAULT_SITE_ID {
-        bail!("site '{site_id}' has no active tag suggestion adapter");
+    match site_id {
+        dreamland_site_yandere::SITE_ID => {
+            let config = dreamland_site_yandere::default_config();
+            let endpoint = dreamland_site_yandere::tag_endpoint(&config.api_url)?;
+            dreamland_site_yandere::fetch_tag_suggestions(&endpoint, request, network).await
+        }
+        dreamland_site_konachan::SITE_ID => {
+            let config = dreamland_site_konachan::default_config();
+            let endpoint = dreamland_site_konachan::tag_endpoint(&config.api_url)?;
+            dreamland_site_konachan::fetch_tag_suggestions(&endpoint, request, network).await
+        }
+        _ => bail!("site '{site_id}' has no active tag suggestion adapter"),
     }
-    let config = dreamland_site_yandere::default_config();
-    let endpoint = dreamland_site_yandere::tag_endpoint(&config.api_url)?;
-    dreamland_site_yandere::fetch_tag_suggestions(&endpoint, request, network).await
 }
 
 pub async fn list_pools(
@@ -135,11 +148,18 @@ pub fn resolve_media_url<'a>(
     post: &'a Post,
     variant: MediaVariant,
 ) -> Option<&'a str> {
-    (site_id == DEFAULT_SITE_ID).then(|| dreamland_site_yandere::variant_url(post, variant))?
+    match site_id {
+        dreamland_site_yandere::SITE_ID => dreamland_site_yandere::variant_url(post, variant),
+        dreamland_site_konachan::SITE_ID => dreamland_site_konachan::variant_url(post, variant),
+        _ => None,
+    }
 }
 
 pub fn descriptors() -> Vec<SiteDescriptor> {
-    vec![dreamland_site_yandere::descriptor()]
+    vec![
+        dreamland_site_yandere::descriptor(),
+        dreamland_site_konachan::descriptor(),
+    ]
 }
 
 pub fn skeleton_descriptors() -> Vec<SiteDescriptor> {
@@ -168,8 +188,9 @@ mod tests {
     fn registry_contains_yandere() {
         let sites = descriptors();
 
-        assert_eq!(sites.len(), 1);
+        assert_eq!(sites.len(), 2);
         assert_eq!(sites[0].id.as_str(), "yandere");
+        assert_eq!(sites[1].id.as_str(), "konachan");
     }
 
     #[test]
@@ -187,6 +208,7 @@ mod tests {
     #[test]
     fn only_registered_browse_capable_sites_pass_the_gate() {
         assert!(is_active_browse_site("yandere"));
+        assert!(is_active_browse_site("konachan"));
         assert!(!is_active_browse_site("pixiv"));
         assert!(!is_active_browse_site("does-not-exist"));
     }

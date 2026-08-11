@@ -749,6 +749,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "dreamland-site-konachan"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dreamland-core",
+ "dreamland-site-yandere",
+ "serde",
+ "toml 0.8.2",
+]
+
+[[package]]
 name = "dreamland-site-pixiv"
 version = "0.1.0"
 dependencies = [
@@ -781,6 +792,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "dreamland-core",
+ "dreamland-site-konachan",
  "dreamland-site-pixiv",
  "dreamland-site-twitter",
  "dreamland-site-yandere",

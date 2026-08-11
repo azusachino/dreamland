@@ -69,7 +69,7 @@ struct ImagePost {
     parent_id: Option<u64>,
     #[serde(default)]
     has_children: bool,
-    created_at: Option<String>,
+    created_at: Option<WireTimestamp>,
     width: Option<u32>,
     height: Option<u32>,
     file_url: Option<String>,
@@ -78,6 +78,13 @@ struct ImagePost {
     rating: Option<String>,
     score: Option<i32>,
     file_size: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+enum WireTimestamp {
+    Text(String),
+    UnixSeconds(i64),
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -136,7 +143,7 @@ impl From<ImagePost> for Post {
             source: image.source,
             parent_id: image.parent_id.map(|id| id.to_string()),
             has_children: image.has_children,
-            created_at: image.created_at,
+            created_at: normalize_timestamp(image.created_at),
             width: image.width,
             height: image.height,
             rating: match image.rating.as_deref() {
@@ -152,6 +159,34 @@ impl From<ImagePost> for Post {
             file_size: image.file_size,
         }
     }
+}
+
+fn normalize_timestamp(value: Option<WireTimestamp>) -> Option<String> {
+    match value? {
+        WireTimestamp::Text(value) => Some(value),
+        WireTimestamp::UnixSeconds(seconds) => Some(unix_seconds_to_rfc3339(seconds)),
+    }
+}
+
+fn unix_seconds_to_rfc3339(seconds: i64) -> String {
+    let days = seconds.div_euclid(86_400);
+    let day_seconds = seconds.rem_euclid(86_400);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let day_of_era = z - era * 146_097;
+    let year_of_era = (day_of_era - day_of_era / 1_460 + day_of_era / 36_524
+        - day_of_era / 146_096)
+        .div_euclid(365);
+    let year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_part = (5 * day_of_year + 2).div_euclid(153);
+    let day = day_of_year - (153 * month_part + 2).div_euclid(5) + 1;
+    let month = month_part + if month_part < 10 { 3 } else { -9 };
+    let year = year + i64::from(month <= 2);
+    let hour = day_seconds / 3_600;
+    let minute = day_seconds % 3_600 / 60;
+    let second = day_seconds % 60;
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
 }
 
 /// Decode both Yande post response envelopes observed in the live API.
@@ -838,6 +873,13 @@ mod tests {
         assert_eq!(posts[0].full_url, None);
         assert_eq!(posts[0].rating, Rating::Unknown);
         assert_eq!(posts[0].tags, vec!["artist", "-tag"]);
+    }
+
+    #[test]
+    fn numeric_created_at_is_normalized_for_moebooru_variants() {
+        let posts = decode_posts(br#"[{"id":7,"created_at":1786390664}]"#).unwrap();
+
+        assert_eq!(posts[0].created_at.as_deref(), Some("2026-08-10T19:37:44Z"));
     }
 
     #[test]

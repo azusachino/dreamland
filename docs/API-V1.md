@@ -1,8 +1,8 @@
 # Dreamland API v1
 
-Status: proposed for human review, 2026-08-10. This is the specification
-phase of API v1. It is not implementation approval until the review gaps at
-the end of this document are resolved.
+Status: implementation baseline, 2026-08-11. The core site/runtime boundary
+is accepted for incremental implementation; the review gaps at the end of
+this document remain explicit follow-up decisions.
 
 ## Naming decision
 
@@ -63,6 +63,13 @@ direct media variants, browser-cookie detection, and web favorite mutations
 through /post/vote.json. The current popular endpoints return fixed-size result
 windows and do not honor ordinary page/limit navigation, but their date
 parameters select different day/week/month windows.
+
+Konachan is the second real Moebooru adapter. Its current safe API origin is
+`https://konachan.net/post.json`; the explicit `.com` browser route is kept as
+the user-facing site URL because direct API requests there can be challenged
+by bot protection. The initial adapter advertises anonymous safe browse/search
+and tag suggestions only. It rejects non-safe content policies rather than
+silently claiming that the safe host can retrieve the explicit site.
 
 ## Boundaries
 
@@ -1504,6 +1511,17 @@ the operation_id and preserves retryable separately from the safe message.
 | CollectionDownloadCapability | Yande pool ZIP is exposed at `/pool/zip/:id`; the public pool page links it, but the observed request redirects anonymous users to login. |
 | SiteAuth | Browser session at /user/login, user_id cookie detection, secret-store-backed session. |
 | Media | Preview, sample, JPEG/large, original, MD5, dimensions, rating, score, source, posting account, and timestamps where present. |
+
+## Konachan v1 profile
+
+| Capability | Konachan behavior |
+| --- | --- |
+| PostQueryCapability | Anonymous tag search and latest browse through the safe `.net` Moebooru JSON API. |
+| Pagination | Page-numbered `post.json` requests with the requested limit. |
+| TagSuggestionCapability | The same Moebooru tag JSON shape, normalized at the adapter boundary. |
+| Content policy | Safe only for the initial release; explicit-host access is not advertised because `.com` API requests are bot-protection sensitive. |
+| Media | Preview, sample, full URL, dimensions, rating, score, author, source, checksum, and normalized timestamps where present. |
+| Auth/favorites/pools | Not advertised in this slice; these need separate `.com`/`.net` session and endpoint verification. |
 
 ## Verification contract
 

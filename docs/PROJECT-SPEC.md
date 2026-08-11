@@ -22,8 +22,9 @@ site set, API pagination, settings, and image-download behavior.
 - `src/` — React + TypeScript frontend
 - `dist/` — Vite build output loaded by Tauri
 - `crates/` — core, runtime, sites composition root, and site adapter crates
-  (`dreamland-site-yandere` active; `dreamland-site-pixiv`/`-twitter`
-  descriptor-only skeletons)
+  (`dreamland-site-yandere` and the safe-mode `dreamland-site-konachan`
+  adapters active; `dreamland-site-pixiv`/`-twitter` remain descriptor-only
+  skeletons)
 - `src-tauri/` — Tauri application and command boundary
 - `docs/` — project specification, decisions, ADRs, roadmap, and references
 - `scripts/` — uv-runnable daily tooling and platform-aware checks
@@ -36,7 +37,7 @@ backend calls.
 
 ## Testing Strategy
 
-Keep site response deserialization tests in the Yandere adapter crate and
+Keep site response deserialization tests in each site adapter crate and
 runtime I/O tests in the runtime crate. Add command-boundary tests only where
 behavior is not already covered by module tests. Validate the frontend through
 TypeScript and Vite production checks.
