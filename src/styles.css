@@ -750,6 +750,30 @@ select:focus-visible {
   left: 0.65rem;
 }
 
+.card-favorite {
+  background: rgb(17 17 23 / 78%) !important;
+  border: 1px solid rgb(255 255 255 / 30%) !important;
+  color: #fff !important;
+  height: 2.1rem;
+  position: absolute !important;
+  right: 0.65rem;
+  top: 0.55rem;
+  width: 2.1rem;
+  z-index: 1;
+}
+
+.card-favorite:hover,
+.card-favorite.is-favorited {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: var(--primary-ink) !important;
+}
+
+.card-favorite.Mui-disabled {
+  color: #fff !important;
+  opacity: 0.55;
+}
+
 .selection-toggle {
   align-items: center;
   background: var(--primary);

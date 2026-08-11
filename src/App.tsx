@@ -365,6 +365,8 @@ function App() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
   const [favoritePostIds, setFavoritePostIds] = useState<Set<string>>(new Set());
+  const [favoriteUpdatingIds, setFavoriteUpdatingIds] = useState<Set<string>>(new Set());
+  const favoriteMutationIds = useRef(new Set<string>());
   const [batchDownloading, setBatchDownloading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [authFlowStarted, setAuthFlowStarted] = useState(false);
@@ -456,7 +458,7 @@ function App() {
   const activeSiteId = activeSite?.id ?? "yandere";
   const activeSiteSafeOnly = activeSite?.capabilities.safe_content_only ?? false;
   const authQuery = useQuery({
-    queryKey: ["auth"],
+    queryKey: ["auth", activeSiteId],
     queryFn: authStatus,
     enabled: activeSite?.capabilities.authentication === true,
   });
@@ -603,8 +605,18 @@ function App() {
     enabled: relatedTagsOpen && Boolean(selectedPost) && activeSite?.capabilities.related_tags === true,
     staleTime: 300_000,
   });
+  const favoriteIdentity = authQuery.data?.authenticated && authQuery.data.username
+    ? `${activeSiteId}:${authQuery.data.username}`
+    : null;
+  const previousFavoriteIdentity = useRef<string | null>(null);
+  useEffect(() => {
+    if (previousFavoriteIdentity.current === favoriteIdentity) return;
+    previousFavoriteIdentity.current = favoriteIdentity;
+    setFavoritePostIds(new Set());
+    void queryClient.removeQueries({ queryKey: ["favorites"] });
+  }, [favoriteIdentity, queryClient]);
   const favoritesQuery = useInfiniteQuery({
-    queryKey: ["favorites"],
+    queryKey: ["favorites", activeSiteId, favoriteIdentity],
     initialPageParam: 1,
     queryFn: ({ pageParam }) => listFavorites(pageParam, 20),
     getNextPageParam: (lastPage, pages) => lastPage.posts.length >= lastPage.page_size ? pages.length + 1 : undefined,
@@ -612,9 +624,8 @@ function App() {
   });
   useEffect(() => {
     const posts = favoritesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
-    if (!posts.length) return;
-    setFavoritePostIds((current) => new Set([...current, ...posts.map((post) => post.post.id)]));
-  }, [favoritesQuery.data]);
+    setFavoritePostIds(new Set(posts.map((post) => post.post.id)));
+  }, [favoriteIdentity, favoritesQuery.data]);
   const saveConfigMutation = useMutation({
     mutationFn: ({ downloadPath, contentPolicy, downloadVariant, network }: ConfigInput) =>
       saveConfig(downloadPath, contentPolicy, downloadVariant, network),
@@ -1000,28 +1011,42 @@ function App() {
   }
 
   async function handleFavorite(post: Post) {
-    if (!authQuery.data?.authenticated) {
-      changeView("favorites");
-      showToast("sign in required", "connect your yandere account before changing favorites.", "info");
-      return;
-    }
     if (!activeSite?.capabilities.remote_favorites) {
       setError(`${activeSite?.name ?? "this site"} does not support remote favorites.`);
       return;
     }
-    const favorite = !favoritePostIds.has(post.post.id);
+    if (favoriteMutationIds.current.has(post.post.id)) return;
+    favoriteMutationIds.current.add(post.post.id);
+    setFavoriteUpdatingIds((current) => new Set([...current, post.post.id]));
     try {
+      const authResult = await authQuery.refetch();
+      if (!authResult.data?.authenticated) {
+        showToast("sign in required", "connect your yandere account before changing favorites.", "info");
+        return;
+      }
+      if (!authResult.data.username) {
+        showToast("account still loading", "refresh the login state, then try again.", "info");
+        return;
+      }
+      const favorite = !favoritePostIds.has(post.post.id);
       await setFavorite(post.post.id, favorite);
-      void queryClient.invalidateQueries({ queryKey: ["favorites"] });
       setFavoritePostIds((current) => {
         const next = new Set(current);
         if (favorite) next.add(post.post.id);
         else next.delete(post.post.id);
         return next;
       });
+      await queryClient.invalidateQueries({ queryKey: ["favorites", activeSiteId, `${activeSiteId}:${authResult.data.username}`] });
       showToast(favorite ? "added to favorites" : "removed from favorites", `post #${post.post.id} updated on yandere.`);
     } catch (reason) {
       showToast("favorite update failed", errorMessage(reason), "error");
+    } finally {
+      favoriteMutationIds.current.delete(post.post.id);
+      setFavoriteUpdatingIds((current) => {
+        const next = new Set(current);
+        next.delete(post.post.id);
+        return next;
+      });
     }
   }
 
@@ -1270,6 +1295,10 @@ function App() {
                         onSelect={openPostDetail}
                         onToggleSelection={() => togglePostSelection(post.post.id)}
                         onTag={chooseTag}
+                        favoriteSupported={activeSite?.capabilities.remote_favorites === true}
+                        favorited={favoritePostIds.has(post.post.id)}
+                        favoriteUpdating={favoriteUpdatingIds.has(post.post.id)}
+                        onFavorite={handleFavorite}
                       />
                     ))}
                   </div>
@@ -1330,6 +1359,10 @@ function App() {
               onSelectPost={openPostDetail}
               onDownload={handleDownload}
               onTag={chooseTag}
+              favoriteSupported={activeSite?.capabilities.remote_favorites === true}
+              favorited={(post) => favoritePostIds.has(post.post.id)}
+              favoriteUpdating={(post) => favoriteUpdatingIds.has(post.post.id)}
+              onFavorite={handleFavorite}
               downloadingId={downloadingId}
               siteName={activeSite?.name ?? "site"}
               collectionDownloads={activeSite?.capabilities.collection_downloads === true}
@@ -1354,6 +1387,10 @@ function App() {
               onSelect={openPostDetail}
               onDownload={handleDownload}
               onTag={chooseTag}
+              favoriteSupported={activeSite?.capabilities.remote_favorites === true}
+              favorited={(post) => favoritePostIds.has(post.post.id)}
+              favoriteUpdating={(post) => favoriteUpdatingIds.has(post.post.id)}
+              onFavorite={handleFavorite}
               onSignOut={async () => {
                 await signOut();
                 await authQuery.refetch();
@@ -1383,6 +1420,7 @@ function App() {
             similarSearchSupported={activeSite?.capabilities.similar_search === true}
             onDownload={handleDownload}
             favorited={favoritePostIds.has(selectedPost.post.id)}
+            favoriteUpdating={favoriteUpdatingIds.has(selectedPost.post.id)}
             onFavorite={handleFavorite}
             onTag={chooseTag}
             relatedTagsSupported={activeSite?.capabilities.related_tags === true}
@@ -1474,13 +1512,17 @@ interface ImageCardProps {
   selectionMode: boolean;
   selected: boolean;
   downloading: boolean;
+  favoriteSupported: boolean;
+  favorited: boolean;
+  favoriteUpdating: boolean;
   onDownload: (post: Post) => Promise<void>;
+  onFavorite: (post: Post) => Promise<void>;
   onSelect: (post: Post) => void;
   onToggleSelection: () => void;
   onTag: (tag: string) => void;
 }
 
-function ImageCard({ post, selectionMode, selected, downloading, onDownload, onSelect, onToggleSelection, onTag }: ImageCardProps) {
+function ImageCard({ post, selectionMode, selected, downloading, favoriteSupported, favorited, favoriteUpdating, onDownload, onFavorite, onSelect, onToggleSelection, onTag }: ImageCardProps) {
   const previewUrl = post.preview_url ?? post.sample_url ?? post.full_url;
   return (
     <article className={`card${selected ? " selected" : ""}`} onClick={() => selectionMode ? onToggleSelection() : onSelect(post)}>
@@ -1492,6 +1534,20 @@ function ImageCard({ post, selectionMode, selected, downloading, onDownload, onS
         )}
         <span className="dimensions">{post.width ?? "?"}×{post.height ?? "?"}</span>
         <span className="rating-pill">{post.rating.toLowerCase()}</span>
+        {favoriteSupported && (
+          <IconButton
+            className={`card-favorite${favorited ? " is-favorited" : ""}`}
+            aria-label={`${favorited ? "remove" : "add"} post ${post.post.id} ${favorited ? "from " : "to "}favorites`}
+            aria-pressed={favorited}
+            disabled={favoriteUpdating}
+            onClick={(event) => {
+              event.stopPropagation();
+              void onFavorite(post);
+            }}
+          >
+            <Icon name={favorited ? "heartFilled" : "heart"} />
+          </IconButton>
+        )}
         {selectionMode && (
           <IconButton
             className="selection-toggle"
@@ -1577,6 +1633,7 @@ interface PostInspectorProps {
   siteName: string;
   favoriteSupported: boolean;
   favorited: boolean;
+  favoriteUpdating: boolean;
   onClose: () => void;
   canGoPrevious: boolean;
   canGoNext: boolean;
@@ -1599,7 +1656,7 @@ interface PostInspectorProps {
   downloadVariant: MediaVariant;
 }
 
-function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onOpenPost, onOpenSimilarSearch, similarSearchSupported, onDownload, onFavorite, onTag, relatedTagsSupported, relatedTagsOpen, relatedTags, relatedTagsLoading, relatedTagsError, onToggleRelatedTags, downloadVariant }: PostInspectorProps) {
+function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, favoriteUpdating, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onOpenPost, onOpenSimilarSearch, similarSearchSupported, onDownload, onFavorite, onTag, relatedTagsSupported, relatedTagsOpen, relatedTags, relatedTagsLoading, relatedTagsError, onToggleRelatedTags, downloadVariant }: PostInspectorProps) {
   const originalUrl = post.full_url;
   return (
     <Dialog open fullScreen onClose={onClose} className="detail-overlay" slotProps={{ paper: { className: "detail-panel", "aria-label": "post details" } }}>
@@ -1632,8 +1689,8 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
           {detailError && <p className="detail-helper" role="alert">couldn’t refresh the post; showing the feed snapshot. {detailError}</p>}
           <div className="detail-primary-actions">
             {favoriteSupported && (
-              <Button variant="outlined" onClick={() => void onFavorite(post)}>
-                {favorited ? `remove from ${siteName} favorites` : `add to ${siteName} favorites`}
+              <Button variant="outlined" disabled={favoriteUpdating} startIcon={<Icon name={favorited ? "heartFilled" : "heart"} />} onClick={() => void onFavorite(post)}>
+                {favoriteUpdating ? "updating favorites…" : favorited ? `remove from ${siteName} favorites` : `add to ${siteName} favorites`}
               </Button>
             )}
             <Button variant="contained" disabled={downloading} onClick={() => void onDownload(post)}>
@@ -1883,6 +1940,10 @@ interface PoolPanelProps {
   onDownloadZip: (pool: Pool) => void;
   onSelectPost: (post: Post) => void;
   onDownload: (post: Post) => Promise<void>;
+  favoriteSupported: boolean;
+  favorited: (post: Post) => boolean;
+  favoriteUpdating: (post: Post) => boolean;
+  onFavorite: (post: Post) => Promise<void>;
   onTag: (tag: string) => void;
   downloadingId: string | null;
   siteName: string;
@@ -1893,7 +1954,7 @@ interface PoolPanelProps {
   onClearPoolSearch: () => void;
 }
 
-function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool, posts, postsLoading, postsError, postsHasNext, onRetryPools, onRetryPosts, onLoadMorePools, onLoadMorePosts, onBack, onBrowse, onDownloadZip, onSelectPost, onDownload, onTag, downloadingId, siteName, collectionDownloads, poolSearch, onPoolSearchChange, onSubmitPoolSearch, onClearPoolSearch }: PoolPanelProps) {
+function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool, posts, postsLoading, postsError, postsHasNext, onRetryPools, onRetryPosts, onLoadMorePools, onLoadMorePosts, onBack, onBrowse, onDownloadZip, onSelectPost, onDownload, favoriteSupported, favorited, favoriteUpdating, onFavorite, onTag, downloadingId, siteName, collectionDownloads, poolSearch, onPoolSearchChange, onSubmitPoolSearch, onClearPoolSearch }: PoolPanelProps) {
   if (selectedPool) {
     return (
       <section className="workspace-panel shell-surface" aria-label={`${selectedPool.name} pool`}>
@@ -1916,7 +1977,11 @@ function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool
               selectionMode={false}
               selected={false}
               downloading={downloadingId === post.post.id}
+              favoriteSupported={favoriteSupported}
+              favorited={favorited(post)}
+              favoriteUpdating={favoriteUpdating(post)}
               onDownload={onDownload}
+              onFavorite={onFavorite}
               onSelect={onSelectPost}
               onToggleSelection={() => undefined}
               onTag={onTag}
@@ -1969,11 +2034,15 @@ interface AccountPanelProps {
   onLoadMore: () => void;
   onSelect: (post: Post) => void;
   onDownload: (post: Post) => Promise<void>;
+  favoriteSupported: boolean;
+  favorited: (post: Post) => boolean;
+  favoriteUpdating: (post: Post) => boolean;
+  onFavorite: (post: Post) => Promise<void>;
   onTag: (tag: string) => void;
   onSignOut: () => Promise<void>;
 }
 
-function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favoritesHasNext, loading, authFlowStarted, onBeginAuth, onRefresh, onRetry, onLoadMore, onSelect, onDownload, onTag, onSignOut }: AccountPanelProps) {
+function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favoritesHasNext, loading, authFlowStarted, onBeginAuth, onRefresh, onRetry, onLoadMore, onSelect, onDownload, favoriteSupported, favorited, favoriteUpdating, onFavorite, onTag, onSignOut }: AccountPanelProps) {
   return (
     <section className="workspace-panel shell-surface" aria-label="favorites account">
       <div className="inspector-heading">
@@ -1993,7 +2062,11 @@ function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favor
                 selectionMode={false}
                 selected={false}
                 downloading={false}
+                favoriteSupported={favoriteSupported}
+                favorited={favorited(post)}
+                favoriteUpdating={favoriteUpdating(post)}
                 onDownload={onDownload}
+                onFavorite={onFavorite}
                 onSelect={onSelect}
                 onToggleSelection={() => undefined}
                 onTag={onTag}
