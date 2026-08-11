@@ -167,6 +167,10 @@ export function listPools(page = 1, pageSize = 20): Promise<PoolPage> {
   return invoke<PoolPage>("list_pools", { page, pageSize });
 }
 
+export function queryPoolPosts(poolId: string, page = 1, pageSize = 20): Promise<SitePage> {
+  return invoke<SitePage>("query_pool_posts", { poolId, page, pageSize });
+}
+
 export function setFavorite(postId: string, favorite: boolean): Promise<void> {
   return invoke<void>("set_favorite", { postId, favorite });
 }

@@ -14,6 +14,7 @@ import {
   retryDownload,
   loadConfig,
   queryPosts,
+  queryPoolPosts,
   saveConfig,
   setFavorite,
   signOut,
@@ -35,6 +36,7 @@ import {
 type ViewMode = "latest" | "popular" | "search" | "downloads" | "pools" | "favorites";
 type PopularPeriod = "Day" | "Week" | "Month";
 type ToastTone = "success" | "info" | "error";
+type IconName = "clock" | "trend" | "download" | "grid" | "heart" | "search" | "refresh" | "settings" | "close" | "back" | "check";
 
 interface ToastState {
   id: number;
@@ -60,6 +62,23 @@ function contentPolicyLabel(policy: ContentPolicy): string {
   }
 }
 
+function Icon({ name }: { name: IconName }) {
+  const paths: Record<IconName, string> = {
+    clock: "M12 6v6l4 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
+    trend: "m4 16 5-5 4 3 7-8M15 6h5v5",
+    download: "M12 3v12m0 0 5-5m-5 5-5-5M4 21h16",
+    grid: "M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h6v6h-6z",
+    heart: "m12 20-7-7a4.5 4.5 0 0 1 6.4-6.3L12 8.3l.6-1.6A4.5 4.5 0 0 1 19 13z",
+    search: "m21 21-4.4-4.4m2.4-5.1a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z",
+    refresh: "M20 11a8 8 0 1 0 2 5m0-5v-5m0 5h-5",
+    settings: "M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Zm0-11.2v2m0 14v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M3 12h2m14 0h2M4.9 19.1l1.4-1.4M18 6.3l1.4-1.4",
+    close: "M6 6l12 12M18 6 6 18",
+    back: "M19 12H5m6 6-6-6 6-6",
+    check: "m5 12 4 4L19 6",
+  };
+  return <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name]} /></svg>;
+}
+
 function App() {
   const queryClient = useQueryClient();
   const [view, setView] = useState<ViewMode>("latest");
@@ -68,7 +87,7 @@ function App() {
   const [submittedSearch, setSubmittedSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [poolPage, setPoolPage] = useState(1);
+  const [selectedPool, setSelectedPool] = useState<Pool | null>(null);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
@@ -79,6 +98,7 @@ function App() {
   const [notice, setNotice] = useState("");
   const [toast, setToast] = useState<ToastState | null>(null);
   const toastId = useRef(0);
+  const searchInput = useRef<HTMLInputElement>(null);
   const downloadStatuses = useRef(new Map<string, DownloadStatus>());
   const activeQuerySession = useRef<string | null>(null);
 
@@ -88,6 +108,10 @@ function App() {
     window.setTimeout(() => {
       setToast((current) => current?.id === id ? null : current);
     }, 4_500);
+  }
+
+  function focusTagSearch() {
+    searchInput.current?.focus();
   }
 
   const configQuery = useQuery({
@@ -164,13 +188,22 @@ function App() {
   const suggestionsQuery = useQuery({
     queryKey: ["tag-suggestions", searchDraft.trim()],
     queryFn: () => suggestTags(searchDraft.trim(), 7),
-    enabled: searchFocused && searchDraft.trim().length >= 2,
+    enabled: searchFocused && searchDraft.trim().length >= 1,
     staleTime: 30_000,
   });
-  const poolsQuery = useQuery({
-    queryKey: ["pools", poolPage],
-    queryFn: () => listPools(poolPage, 30),
-    enabled: view === "pools",
+  const poolsQuery = useInfiniteQuery({
+    queryKey: ["pools"],
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => listPools(pageParam, 30),
+    getNextPageParam: (lastPage, pages) => lastPage.has_next ? pages.length + 1 : undefined,
+    enabled: view === "pools" && selectedPool === null,
+  });
+  const poolPostsQuery = useInfiniteQuery({
+    queryKey: ["pool-posts", selectedPool?.id, contentPolicy],
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => queryPoolPosts(selectedPool!.id, pageParam, pageSize),
+    getNextPageParam: (lastPage, pages) => lastPage.posts.length >= lastPage.page_size ? pages.length + 1 : undefined,
+    enabled: view === "pools" && selectedPool !== null && configQuery.isSuccess,
   });
   const favoritesQuery = useInfiniteQuery({
     queryKey: ["favorites"],
@@ -214,6 +247,8 @@ function App() {
       : "";
   const images = imagesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
   const favoritePosts = favoritesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
+  const pools = poolsQuery.data?.pages.flatMap((page) => page.pools).filter((pool) => pool.public) ?? [];
+  const poolPosts = poolPostsQuery.data?.pages.flatMap((page) => page.posts) ?? [];
   const selectedPosts = images.filter((post) => selectedPostIds.has(post.post.id));
   const loading = configQuery.isPending || imagesQuery.isPending;
   const loadingMore = imagesQuery.isFetchingNextPage;
@@ -245,7 +280,7 @@ function App() {
     setError("");
     setNotice("");
     setView(nextView);
-    if (nextView === "pools") setPoolPage(1);
+    setSelectedPool(null);
     setSelectedPostIds(new Set());
     setSelectionMode(false);
   }
@@ -368,8 +403,9 @@ function App() {
           </div>
         </div>
         <form className="search-bar" onSubmit={submitSearch} role="search">
-          <span className="search-icon" aria-hidden="true">⌕</span>
+          <span className="search-icon"><Icon name="search" /></span>
           <input
+            ref={searchInput}
             aria-label="Search tags"
             placeholder="Search by tags…"
             value={searchDraft}
@@ -423,10 +459,11 @@ function App() {
               else void downloadsQuery.refetch();
             }}
           >
-            ↻
+            <Icon name="refresh" />
           </button>
-          <button className="button button-tonal" type="button" onClick={() => setSettingsOpen(true)}>
-            Settings
+          <button className="button button-tonal button-with-icon" type="button" onClick={() => setSettingsOpen(true)}>
+            <Icon name="settings" />
+            <span>Settings</span>
           </button>
         </div>
       </header>
@@ -434,16 +471,21 @@ function App() {
       <div className={`app-layout${selectedPost ? " has-detail" : ""}`}>
         <main className="content">
           <nav className="view-tabs shell-surface" aria-label="Dreamland sections" role="tablist">
-          <NavButton active={view === "latest"} label="Latest" icon="◷" onClick={() => changeView("latest")} />
-          <NavButton active={view === "popular"} label="Popular" icon="↗" onClick={() => changeView("popular")} />
-          <NavButton active={view === "downloads"} label="Downloads" icon="⇩" onClick={() => changeView("downloads")} />
-          <NavButton active={view === "pools"} label="Pools" icon="▦" onClick={() => changeView("pools")} />
-          <NavButton active={view === "favorites"} label="Favorites" icon="♡" onClick={() => changeView("favorites")} />
+          <NavButton active={view === "latest"} label="Latest" icon="clock" onClick={() => changeView("latest")} />
+          <NavButton active={view === "popular"} label="Popular" icon="trend" onClick={() => changeView("popular")} />
+          <NavButton active={view === "downloads"} label="Downloads" icon="download" onClick={() => changeView("downloads")} />
+          <NavButton active={view === "pools"} label="Pools" icon="grid" onClick={() => changeView("pools")} />
+          <NavButton active={view === "favorites"} label="Favorites" icon="heart" onClick={() => changeView("favorites")} />
           <span className="view-status">
             <span className="connection-dot" aria-hidden="true" />
             <span>Yandere connected</span>
           </span>
           </nav>
+          <div className="tag-search-reminder">
+            <span className="reminder-icon"><Icon name="search" /></span>
+            <div><strong>Search by tags</strong><span>Use tags, negative terms, or suggestions to find a feed.</span></div>
+            <button className="button button-tonal button-with-icon" type="button" onClick={focusTagSearch}><Icon name="search" /><span>Focus search</span></button>
+          </div>
           <section className="content-heading">
             <div>
               <p className="eyebrow">Explore freely</p>
@@ -537,15 +579,25 @@ function App() {
             />
           ) : view === "pools" ? (
             <PoolPanel
-              pools={poolsQuery.data?.pools ?? []}
-              page={poolPage}
-              hasNext={poolsQuery.data?.has_next ?? false}
-              loading={poolsQuery.isPending || poolsQuery.isFetching}
-              error={poolsQuery.error ? errorMessage(poolsQuery.error) : ""}
-              onRetry={() => void poolsQuery.refetch()}
-              onPrevious={() => setPoolPage((current) => Math.max(1, current - 1))}
-              onNext={() => setPoolPage((current) => current + 1)}
-              onBrowse={(pool) => chooseTag(`pool:${pool.id}`)}
+              pools={pools}
+              poolsLoading={poolsQuery.isPending || poolsQuery.isFetching}
+              poolsError={poolsQuery.error ? errorMessage(poolsQuery.error) : ""}
+              poolsHasNext={Boolean(poolsQuery.hasNextPage)}
+              selectedPool={selectedPool}
+              posts={poolPosts}
+              postsLoading={poolPostsQuery.isPending || poolPostsQuery.isFetching}
+              postsError={poolPostsQuery.error ? errorMessage(poolPostsQuery.error) : ""}
+              postsHasNext={Boolean(poolPostsQuery.hasNextPage)}
+              onRetryPools={() => void poolsQuery.refetch()}
+              onRetryPosts={() => void poolPostsQuery.refetch()}
+              onLoadMorePools={() => void poolsQuery.fetchNextPage()}
+              onLoadMorePosts={() => void poolPostsQuery.fetchNextPage()}
+              onBack={() => setSelectedPool(null)}
+              onBrowse={setSelectedPool}
+              onSelectPost={setSelectedPost}
+              onDownload={handleDownload}
+              onTag={chooseTag}
+              downloadingId={downloadingId}
             />
           ) : (
             <AccountPanel
@@ -611,7 +663,7 @@ interface NavButtonProps {
   active?: boolean;
   disabled?: boolean;
   hint?: string;
-  icon: string;
+  icon: IconName;
   label: string;
   onClick?: () => void;
 }
@@ -619,7 +671,7 @@ interface NavButtonProps {
 function NavButton({ active, disabled, hint, icon, label, onClick }: NavButtonProps) {
   return (
     <button className={`nav-item${active ? " active" : ""}`} disabled={disabled} onClick={onClick} title={hint} role="tab" aria-selected={active}>
-      <span className="nav-icon" aria-hidden="true">{icon}</span>
+      <span className="nav-icon"><Icon name={icon} /></span>
       <span>{label}</span>
       {hint && <small>{hint}</small>}
     </button>
@@ -656,7 +708,7 @@ function Toast({ state, onClose }: ToastProps) {
         <strong>{state.title}</strong>
         <p>{state.message}</p>
       </div>
-      <button className="icon-button" type="button" aria-label="Dismiss notification" onClick={onClose}>×</button>
+      <button className="icon-button" type="button" aria-label="Dismiss notification" onClick={onClose}><Icon name="close" /></button>
     </aside>
   );
 }
@@ -670,10 +722,14 @@ interface LoadMoreProps {
 function LoadMore({ hasNext, loading, onLoadMore }: LoadMoreProps) {
   const sentinel = useRef<HTMLDivElement>(null);
 
+  function requestMore() {
+    if (hasNext && !loading) onLoadMore();
+  }
+
   useEffect(() => {
     if (!hasNext || loading || !sentinel.current) return;
     const observer = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting) onLoadMore();
+      if (entries[0]?.isIntersecting) requestMore();
     }, { rootMargin: "800px" });
     observer.observe(sentinel.current);
     return () => observer.disconnect();
@@ -682,7 +738,7 @@ function LoadMore({ hasNext, loading, onLoadMore }: LoadMoreProps) {
   if (!hasNext && !loading) return <div className="load-more-end">You’ve reached the end.</div>;
   return (
     <div className="load-more" ref={sentinel}>
-      {loading ? <><span /> Loading more…</> : <button className="button button-outlined" type="button" onClick={onLoadMore}>Load more</button>}
+      {loading ? <><span /> Loading more…</> : <button className="button button-outlined" type="button" onClick={requestMore}>Load more</button>}
     </div>
   );
 }
@@ -721,7 +777,7 @@ function ImageCard({ post, selectionMode, selected, downloading, onDownload, onS
               onToggleSelection();
             }}
           >
-            {selected ? "✓" : ""}
+            {selected && <Icon name="check" />}
           </button>
         )}
       </div>
@@ -768,7 +824,7 @@ function PostInspector({ post, downloading, favorited, onClose, onDownload, onFa
           <p className="eyebrow">Post details</p>
           <h2>#{post.post.id}</h2>
         </div>
-        <button className="icon-button" type="button" aria-label="Close details" onClick={onClose}>×</button>
+        <button className="icon-button" type="button" aria-label="Close details" onClick={onClose}><Icon name="close" /></button>
       </div>
       <div className="detail-preview">
         <DetailImage key={post.post.id} post={post} />
@@ -873,41 +929,76 @@ function DownloadRow({ record, onCancel, onRetry }: DownloadRowProps) {
 
 interface PoolPanelProps {
   pools: Pool[];
-  page: number;
-  hasNext: boolean;
-  loading: boolean;
-  error: string;
-  onRetry: () => void;
-  onPrevious: () => void;
-  onNext: () => void;
+  poolsLoading: boolean;
+  poolsError: string;
+  poolsHasNext: boolean;
+  selectedPool: Pool | null;
+  posts: Post[];
+  postsLoading: boolean;
+  postsError: string;
+  postsHasNext: boolean;
+  onRetryPools: () => void;
+  onRetryPosts: () => void;
+  onLoadMorePools: () => void;
+  onLoadMorePosts: () => void;
+  onBack: () => void;
   onBrowse: (pool: Pool) => void;
+  onSelectPost: (post: Post) => void;
+  onDownload: (post: Post) => Promise<void>;
+  onTag: (tag: string) => void;
+  downloadingId: string | null;
 }
 
-function PoolPanel({ pools, page, hasNext, loading, error, onRetry, onPrevious, onNext, onBrowse }: PoolPanelProps) {
+function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool, posts, postsLoading, postsError, postsHasNext, onRetryPools, onRetryPosts, onLoadMorePools, onLoadMorePosts, onBack, onBrowse, onSelectPost, onDownload, onTag, downloadingId }: PoolPanelProps) {
+  if (selectedPool) {
+    return (
+      <section className="workspace-panel shell-surface" aria-label={`${selectedPool.name} pool`}>
+        <div className="inspector-heading">
+          <div><p className="eyebrow">Yande pool</p><h2>{selectedPool.name}</h2></div>
+          <button className="button button-outlined button-with-icon" type="button" onClick={onBack}><Icon name="back" /><span>All pools</span></button>
+        </div>
+        <p className="helper-text">{selectedPool.post_count} ordered post{selectedPool.post_count === 1 ? "" : "s"} from Yande.</p>
+        {postsError && <div className="panel-error" role="alert"><p>{postsError}</p><button className="button button-outlined" type="button" onClick={onRetryPosts}>Try again</button></div>}
+        {postsLoading && posts.length === 0 && <p className="loading-line" role="status"><span /> Loading pool posts…</p>}
+        {!postsLoading && !postsError && posts.length === 0 && <div className="panel-empty">This pool has no visible posts.</div>}
+        <div className="gallery-grid">
+          {posts.map((post) => (
+            <ImageCard
+              key={post.post.id}
+              post={post}
+              selectionMode={false}
+              selected={false}
+              downloading={downloadingId === post.post.id}
+              onDownload={onDownload}
+              onSelect={onSelectPost}
+              onToggleSelection={() => undefined}
+              onTag={onTag}
+            />
+          ))}
+        </div>
+        {posts.length > 0 && <LoadMore hasNext={postsHasNext} loading={postsLoading} onLoadMore={onLoadMorePosts} />}
+      </section>
+    );
+  }
+
   return (
     <section className="workspace-panel shell-surface" aria-label="Pools">
       <div className="inspector-heading">
         <div><p className="eyebrow">Yande collections</p><h2>Pools</h2></div>
       </div>
       <p className="helper-text">Public pools group ordered posts from the site. ZIP download will be enabled after authenticated archive handling is wired.</p>
-      {loading && <p className="helper-text">Loading pools…</p>}
-      {error && <div className="panel-error" role="alert"><p>{error}</p><button className="button button-outlined" type="button" onClick={onRetry}>Try again</button></div>}
-      {!loading && !error && pools.filter((pool) => pool.public).length === 0 && <div className="panel-empty">No public pools found.</div>}
+      {poolsLoading && pools.length === 0 && <p className="loading-line" role="status"><span /> Loading pools…</p>}
+      {poolsError && <div className="panel-error" role="alert"><p>{poolsError}</p><button className="button button-outlined" type="button" onClick={onRetryPools}>Try again</button></div>}
+      {!poolsLoading && !poolsError && pools.length === 0 && <div className="panel-empty">No public pools found.</div>}
       <div className="collection-list">
-        {pools.filter((pool) => pool.public).map((pool) => (
+        {pools.map((pool) => (
           <article className="collection-row" key={pool.id}>
             <div><strong>{pool.name}</strong><p>{pool.post_count} post{pool.post_count === 1 ? "" : "s"}</p></div>
             <button className="button button-outlined" type="button" onClick={() => onBrowse(pool)}>Browse</button>
           </article>
         ))}
       </div>
-      {!loading && !error && (
-        <div className="collection-pagination">
-          <button className="button button-outlined" type="button" disabled={page <= 1} onClick={onPrevious}>Previous</button>
-          <span>Page {page}</span>
-          <button className="button button-outlined" type="button" disabled={!hasNext} onClick={onNext}>Next</button>
-        </div>
-      )}
+      {pools.length > 0 && <LoadMore hasNext={poolsHasNext} loading={poolsLoading} onLoadMore={onLoadMorePools} />}
     </section>
   );
 }
@@ -1029,7 +1120,7 @@ function SettingsDialog({ config, onCancel, onSave }: SettingsDialogProps) {
       <form className="settings-dialog shell-surface" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <div className="inspector-heading">
           <div><p className="eyebrow">App preferences</p><h2 id="settings-title">Settings</h2></div>
-          <button className="icon-button" type="button" aria-label="Close settings" onClick={onCancel}>×</button>
+          <button className="icon-button" type="button" aria-label="Close settings" onClick={onCancel}><Icon name="close" /></button>
         </div>
         <div className="settings-section">
           <p className="section-label">Storage & site</p>

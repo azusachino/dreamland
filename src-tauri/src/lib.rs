@@ -221,6 +221,21 @@ async fn list_pools(
 }
 
 #[tauri::command]
+async fn query_pool_posts(pool_id: String, page: u32, page_size: u16) -> Result<SitePage, String> {
+    let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
+    dreamland_sites::query_pool_posts(
+        dreamland_sites::DEFAULT_SITE_ID,
+        &pool_id,
+        config.content_policy,
+        page,
+        page_size,
+        &config.network,
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 async fn list_favorites(
     state: State<'_, RuntimeState>,
     page: u32,
@@ -461,6 +476,7 @@ pub fn run() {
             auth_status,
             sign_out,
             list_pools,
+            query_pool_posts,
             list_favorites,
             set_favorite,
             query_posts,

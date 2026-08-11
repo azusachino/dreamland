@@ -3,23 +3,23 @@
 :root {
   color-scheme: dark;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --ink: #e9e9f3;
-  --ink-muted: #a8a8ba;
-  --ink-subtle: #77778d;
-  --surface: #111117;
-  --surface-raised: #1b1b24;
-  --surface-container: #23232e;
-  --surface-high: #2d2d3b;
-  --outline: #414150;
-  --outline-strong: #68687b;
-  --primary: #c5c0ff;
-  --primary-ink: #24204e;
-  --secondary: #d8c3ff;
-  --tertiary: #f7b9cb;
-  --success: #a6d9b0;
+  --ink: #e7ebee;
+  --ink-muted: #aeb8bf;
+  --ink-subtle: #7f8b93;
+  --surface: #111619;
+  --surface-raised: #192024;
+  --surface-container: #222b30;
+  --surface-high: #2d393f;
+  --outline: #435158;
+  --outline-strong: #697980;
+  --primary: #b7cbd0;
+  --primary-ink: #1d2a2e;
+  --secondary: #b1cec5;
+  --tertiary: #efc0b5;
+  --success: #a7d2b7;
   --danger: #ffb4ab;
-  --glass-fallback: rgb(27 27 36 / 94%);
-  --glass-surface: rgb(35 35 46 / 78%);
+  --glass-fallback: rgb(25 32 36 / 94%);
+  --glass-surface: rgb(34 43 48 / 80%);
   --radius-sm: 0.7rem;
   --radius-md: 1rem;
   --radius-lg: 1.45rem;
@@ -30,24 +30,24 @@
 @media (prefers-color-scheme: light) {
   :root {
     color-scheme: light;
-    --ink: #1b1b21;
-    --ink-muted: #5d5d6b;
-    --ink-subtle: #777785;
-    --surface: #f8f7fc;
+    --ink: #1d282d;
+    --ink-muted: #5a6970;
+    --ink-subtle: #78868c;
+    --surface: #f5f7f6;
     --surface-raised: #ffffff;
-    --surface-container: #efedf7;
-    --surface-high: #e6e3f0;
-    --outline: #d1cedb;
-    --outline-strong: #9995a7;
-    --primary: #5b52a6;
+    --surface-container: #edf2f1;
+    --surface-high: #e1eae8;
+    --outline: #cbd5d5;
+    --outline-strong: #8b9a9d;
+    --primary: #52737b;
     --primary-ink: #ffffff;
-    --secondary: #6a4d94;
-    --tertiary: #9b4764;
+    --secondary: #4f7468;
+    --tertiary: #9b5f56;
     --success: #216b37;
     --danger: #ba1a1a;
     --glass-fallback: rgb(255 255 255 / 94%);
-    --glass-surface: rgb(255 255 255 / 78%);
-    --shadow: 0 1.2rem 3rem rgb(42 38 64 / 12%);
+    --glass-surface: rgb(255 255 255 / 80%);
+    --shadow: 0 1.2rem 3rem rgb(31 52 58 / 14%);
   }
 }
 
@@ -84,8 +84,8 @@ select:focus-visible {
 .app {
   min-height: 100dvh;
   background:
-    radial-gradient(circle at 78% -12%, rgb(197 192 255 / 13%), transparent 31rem),
-    radial-gradient(circle at 8% 24%, rgb(247 185 203 / 7%), transparent 25rem),
+    radial-gradient(circle at 78% -12%, rgb(183 203 208 / 15%), transparent 31rem),
+    radial-gradient(circle at 8% 24%, rgb(177 206 197 / 8%), transparent 25rem),
     var(--surface);
 }
 
@@ -180,8 +180,13 @@ select:focus-visible {
 
 .search-icon {
   color: var(--ink-muted);
-  font-size: 1.35rem;
-  line-height: 1;
+  display: inline-flex;
+}
+
+.icon {
+  display: block;
+  height: 1.1em;
+  width: 1.1em;
 }
 
 .search-bar input {
@@ -239,6 +244,12 @@ select:focus-visible {
   min-height: 2.45rem;
   padding: 0.58rem 1rem;
   transition: background 160ms var(--ease), border-color 160ms var(--ease), transform 160ms var(--ease);
+}
+
+.button-with-icon {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.45rem;
 }
 
 .button:hover:not(:disabled) {
@@ -360,6 +371,48 @@ select:focus-visible {
   flex: 0 0 auto;
   gap: 0.45rem;
   padding: 0 0.75rem;
+  white-space: nowrap;
+}
+
+.tag-search-reminder {
+  align-items: center;
+  background: var(--surface-container);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.tag-search-reminder > div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.tag-search-reminder strong {
+  font-size: 0.82rem;
+}
+
+.tag-search-reminder div span {
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+}
+
+.reminder-icon {
+  align-items: center;
+  background: var(--primary);
+  border-radius: 0.65rem;
+  color: var(--primary-ink);
+  display: inline-flex;
+  flex: 0 0 2.15rem;
+  height: 2.15rem;
+  justify-content: center;
+}
+
+.tag-search-reminder .button {
+  margin-left: auto;
   white-space: nowrap;
 }
 
@@ -742,20 +795,6 @@ select:focus-visible {
   gap: 0.65rem;
 }
 
-.collection-pagination {
-  align-items: center;
-  border-top: 1px solid var(--outline);
-  display: flex;
-  gap: 0.65rem;
-  justify-content: space-between;
-  padding-top: 0.85rem;
-}
-
-.collection-pagination span {
-  color: var(--ink-muted);
-  font-size: 0.75rem;
-}
-
 .load-more,
 .load-more-end {
   align-items: center;
@@ -1037,6 +1076,11 @@ select:focus-visible {
   padding-top: 1.25rem;
 }
 
+.settings-section {
+  display: grid;
+  gap: 0.8rem;
+}
+
 .field {
   color: var(--ink-muted);
   display: grid;
@@ -1046,8 +1090,20 @@ select:focus-visible {
 
 .field input,
 .field select {
+  background: var(--surface-container);
+  border: 1px solid var(--outline);
+  border-radius: 0.7rem;
   color: var(--ink);
+  min-height: 2.65rem;
+  padding: 0.62rem 0.75rem;
   width: 100%;
+}
+
+.field input:focus,
+.field select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 0.18rem rgb(82 115 123 / 16%);
+  outline: 0;
 }
 
 .field-grid {
