@@ -128,6 +128,15 @@ fn detect_proxy() -> dreamland_runtime::ProxyDetection {
     dreamland_runtime::detect_proxy()
 }
 
+#[tauri::command]
+async fn clear_cache(state: State<'_, RuntimeState>) -> Result<(), String> {
+    state
+        .downloads
+        .clear_cache()
+        .await
+        .map_err(|error| error.to_string())
+}
+
 fn yande_auth_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
     if let Some(window) = app.get_webview_window("yande-auth") {
         if visible {
@@ -620,7 +629,6 @@ async fn lookup_post(
 
 #[tauri::command]
 async fn load_detail_image(
-    app: AppHandle,
     state: State<'_, RuntimeState>,
     site_id: String,
     post_id: String,
@@ -630,12 +638,7 @@ async fn load_detail_image(
         dreamland_runtime::log_detail_failure(&site_id, &post_id, &error);
         return Err(error);
     }
-    let cache_root = app
-        .path()
-        .cache_dir()
-        .map_err(|error| error.to_string())?
-        .join("dreamland")
-        .join("detail");
+    let cache_root = dreamland_runtime::default_detail_cache_path();
     if let Some(path) =
         dreamland_runtime::find_cached_detail_image_at(&site_id, &post_id, &cache_root)
             .await
@@ -879,13 +882,7 @@ pub fn run() {
         .manage(runtime_state)
         .setup(|app| {
             let downloads = app.state::<RuntimeState>().downloads.clone();
-            let detail_cache_root = app
-                .path()
-                .cache_dir()
-                .expect("Dreamland detail cache directory must be available")
-                .join("dreamland")
-                .join("detail");
-            downloads.set_detail_cache_root(detail_cache_root);
+            downloads.set_detail_cache_root(dreamland_runtime::default_detail_cache_path());
             tauri::async_runtime::spawn(downloads.worker());
             tauri::async_runtime::spawn(downloads.archive_worker());
             Ok(())
@@ -895,6 +892,7 @@ pub fn run() {
             load_config,
             save_config,
             detect_proxy,
+            clear_cache,
             begin_auth,
             open_site,
             open_post,

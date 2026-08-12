@@ -2,12 +2,17 @@
 
 > A native desktop image-board browser and collector for macOS and Windows.
 
+[![status: 0.1.0 foundation merged](https://img.shields.io/badge/status-0.1.0%20foundation%20merged-5b7f86)](https://github.com/azusachino/dreamland/issues/5)
+[![targets: macOS and Windows](https://img.shields.io/badge/targets-macOS%20%7C%20Windows-5b7f86)](docs/adr/0001-platform-and-toolchain.md)
+[![Tauri 2](https://img.shields.io/badge/Tauri-2-24c8db)](https://v2.tauri.app/)
+[![React 19](https://img.shields.io/badge/React-19-61dafb)](https://react.dev/)
+
 Dreamland is being rebuilt as a focused Tauri application: a React and
 TypeScript interface over a Rust runtime that owns site adapters, configuration,
 local data, and downloads.
 
-**Status:** 0.1.0 milestone in progress  ·  **Targets:** macOS, Windows  ·
-**Site ID:** `yandere`
+**Status:** 0.1.0 foundation merged  ·  **Targets:** macOS, Windows  ·
+**Site ID:** `yandere`  ·  **Next blockers:** [0.1.1 issue #5](https://github.com/azusachino/dreamland/issues/5)
 
 ## What exists now
 
@@ -22,6 +27,28 @@ local data, and downloads.
 
 Linux and mobile are not planned targets. There is no release schedule or
 distribution plan yet.
+
+## Local state and paths
+
+Dreamland separates user-owned downloads from disposable runtime files. On
+Linux, the runtime honors the XDG variables shown below; macOS and Windows use
+the platform directories resolved by the `dirs` crate. The exact paths are
+created only when the corresponding feature needs them.
+
+| Data | Linux default | macOS / Windows | Cleanup policy |
+| --- | --- | --- | --- |
+| Settings | `$XDG_CONFIG_HOME/dreamland/config.json` (`~/.config` fallback) | platform config directory / `dreamland/config.json` | kept by cache cleanup |
+| Queue and history | `$XDG_DATA_HOME/dreamland/state.sqlite3` (`~/.local/share` fallback) | platform local-data directory / `dreamland/state.sqlite3` | kept by cache cleanup |
+| Download staging | `$XDG_CACHE_HOME/dreamland/downloads` (`~/.cache` fallback) | platform cache directory / `dreamland/downloads` | removed by **Settings → clear local cache** |
+| Detail-image cache | `$XDG_CACHE_HOME/dreamland/detail` | platform cache directory / `dreamland/detail` | removed by **Settings → clear local cache** |
+| Detail staging | `$XDG_CACHE_HOME/dreamland/detail-staging` | platform cache directory / `dreamland/detail-staging` | removed by **Settings → clear local cache** |
+| Logs | `$XDG_STATE_HOME/dreamland/logs/dreamland.log` (`~/.local/state` fallback) | platform local-data directory / `dreamland/logs/dreamland.log` | kept for diagnostics |
+| Download library | configured path; default `~/Downloads/dreamland_images` | configured path; platform download directory by default | never removed by cache cleanup |
+
+The cache action is deliberately narrow: it refuses while a download or pool
+archive is running, then removes only temporary staging and detail previews.
+It does not reset settings, the SQLite queue/history, the configured download
+library, or the site login WebView session.
 
 ## Architecture
 
@@ -105,10 +132,7 @@ Windows; Linux is intentionally outside the acceptance matrix.
 
 ## Contributing direction
 
-The next architectural gate is approval of API v1. Until then, keep changes
-inside the documented boundaries and avoid adding site capabilities, registries,
-search, favorites, tags, or batch workflows speculatively. "Speculative" means
-implementing or shipping these in code ahead of approval -- the
-`docs/API-V1.md`, `docs/ARCHITECTURE-V1.md`, and `docs/USER-STORIES-V1.md`
-design-gate documents specifying them ahead of approval is the intended
-process, not an exception to it.
+API v1 and the site/runtime boundaries are the implementation baseline. Keep
+new site capabilities behind the documented contracts, release gates, and
+user stories; record a cross-platform path or persistence change here and in
+the relevant runtime documentation when it changes ownership or cleanup.

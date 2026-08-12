@@ -26,12 +26,19 @@ pub fn default_state_path() -> std::path::PathBuf {
 }
 
 pub fn default_cache_path() -> std::path::PathBuf {
+    default_cache_root().join("downloads")
+}
+
+pub fn default_detail_cache_path() -> std::path::PathBuf {
+    default_cache_root().join("detail")
+}
+
+fn default_cache_root() -> std::path::PathBuf {
     std::env::var_os("XDG_CACHE_HOME")
         .map(std::path::PathBuf::from)
         .or_else(dirs::cache_dir)
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("dreamland")
-        .join("downloads")
 }
 
 pub fn default_log_path() -> std::path::PathBuf {

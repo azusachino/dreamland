@@ -857,6 +857,35 @@ impl DownloadManager {
             .expect("detail cache lock poisoned") = Some(path.into());
     }
 
+    pub async fn clear_cache(&self) -> Result<()> {
+        if !self
+            .active
+            .lock()
+            .expect("download active lock poisoned")
+            .is_empty()
+        {
+            bail!("cannot clear cache while downloads are active");
+        }
+        let download_cache = self.cache_root.as_ref().clone();
+        let detail_cache = self
+            .detail_cache_root
+            .read()
+            .expect("detail cache lock poisoned")
+            .clone()
+            .unwrap_or_else(crate::default_detail_cache_path);
+        let detail_staging = detail_cache.with_file_name("detail-staging");
+        tokio::task::spawn_blocking(move || {
+            for path in [download_cache, detail_cache, detail_staging] {
+                if path.exists() {
+                    std::fs::remove_dir_all(path)?;
+                }
+            }
+            Ok::<_, std::io::Error>(())
+        })
+        .await??;
+        Ok(())
+    }
+
     pub async fn enqueue(&self, request: DownloadRequest) -> Result<DownloadRecord> {
         let store = self.store.clone();
         let record = tokio::task::spawn_blocking(move || store.enqueue(request)).await??;
@@ -1626,6 +1655,37 @@ mod tests {
         assert_eq!(store.recover_running().unwrap(), 1);
         assert_eq!(store.active(10).unwrap()[0].status, DownloadStatus::Queued);
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn clear_cache_keeps_user_library_and_state() {
+        let root = std::env::temp_dir().join(format!("dreamland-cache-{}", uuid::Uuid::new_v4()));
+        let state_path = root.join("state.sqlite3");
+        let download_cache = root.join("downloads");
+        let detail_cache = root.join("detail");
+        let detail_staging = root.join("detail-staging");
+        let library = root.join("library");
+        std::fs::create_dir_all(&download_cache).unwrap();
+        std::fs::create_dir_all(&detail_cache).unwrap();
+        std::fs::create_dir_all(&detail_staging).unwrap();
+        std::fs::create_dir_all(&library).unwrap();
+        std::fs::write(download_cache.join("staged.part"), b"temporary").unwrap();
+        std::fs::write(detail_cache.join("preview.jpg"), b"temporary").unwrap();
+        std::fs::write(detail_staging.join("staged.part"), b"temporary").unwrap();
+        std::fs::write(library.join("keep.jpg"), b"download").unwrap();
+
+        let manager =
+            DownloadManager::open(&state_path, &download_cache, NetworkPolicy::default()).unwrap();
+        manager.set_detail_cache_root(&detail_cache);
+        manager.clear_cache().await.unwrap();
+
+        assert!(!download_cache.exists());
+        assert!(!detail_cache.exists());
+        assert!(!detail_staging.exists());
+        assert!(library.join("keep.jpg").exists());
+        assert!(state_path.exists());
+        drop(manager);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
