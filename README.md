@@ -4,6 +4,7 @@
 > art you actually want.
 
 [![status: 0.1.1 release candidate](https://img.shields.io/badge/status-0.1.1%20release%20candidate-557c86)](https://github.com/azusachino/dreamland/issues/5)
+[![ci](https://github.com/azusachino/dreamland/actions/workflows/ci.yml/badge.svg)](https://github.com/azusachino/dreamland/actions/workflows/ci.yml)
 [![targets: macOS and Windows](https://img.shields.io/badge/targets-macOS%20%7C%20Windows-557c86)](docs/adr/0001-platform-and-toolchain.md)
 [![Tauri 2](https://img.shields.io/badge/Tauri-2-24c8db)](https://v2.tauri.app/)
 [![React 19](https://img.shields.io/badge/React-19-61dafb)](https://react.dev/)
