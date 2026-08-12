@@ -1,8 +1,12 @@
 use anyhow::{bail, Context, Result};
 use dreamland_core::{
-    ContentPolicy, DiscoverySource, MediaVariant, NetworkPolicy, PaginationRequest, Pool, PoolPage,
-    PopularPeriod, Post, PostQueryRequest, ProxyMode, SiteCapabilities, SiteDescriptor, SiteError,
-    SiteId, SitePage, TagSuggestion, TagSuggestionRequest,
+    BrowserRoutesCapability, CollectionCapability, CollectionDownloadCapability, ContentPolicy,
+    CurrentUserCapability, DiscoverySource, MediaResolutionCapability, MediaVariant, NetworkPolicy,
+    PaginationRequest, Pool, PoolPage, PopularPeriod, Post, PostLookupCapability,
+    PostQueryCapability, PostQueryRequest, ProxyMode, RelatedTagCapability,
+    RemoteFavoriteCapability, RemoteFavoriteListCapability, SiteAdapter, SiteCapabilities,
+    SiteDescriptor, SiteError, SiteErrorCode, SiteFuture, SiteId, SitePage, TagSuggestion,
+    TagSuggestionCapability, TagSuggestionRequest,
 };
 use serde::Deserialize;
 
@@ -48,6 +52,250 @@ pub fn descriptor() -> SiteDescriptor {
             collections: true,
             collection_downloads: true,
         },
+    }
+}
+
+#[derive(Clone)]
+pub struct Adapter {
+    config: SiteDefaults,
+    descriptor: SiteDescriptor,
+}
+
+impl Default for Adapter {
+    fn default() -> Self {
+        Self {
+            config: default_config(),
+            descriptor: descriptor(),
+        }
+    }
+}
+
+fn adapter_error(error: anyhow::Error) -> SiteError {
+    SiteError::new(SiteErrorCode::NetworkFailed, error.to_string(), true)
+}
+
+impl PostQueryCapability for Adapter {
+    fn query_posts<'a>(
+        &'a self,
+        request: &'a PostQueryRequest,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, SitePage> {
+        Box::pin(async move {
+            query_posts(&self.config.api_url, request, network)
+                .await
+                .map_err(adapter_error)
+        })
+    }
+}
+
+impl TagSuggestionCapability for Adapter {
+    fn suggest_tags<'a>(
+        &'a self,
+        request: &'a TagSuggestionRequest,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, Vec<TagSuggestion>> {
+        Box::pin(async move {
+            let endpoint = tag_endpoint(&self.config.api_url).map_err(adapter_error)?;
+            fetch_tag_suggestions(&endpoint, request, network)
+                .await
+                .map_err(adapter_error)
+        })
+    }
+}
+
+impl RelatedTagCapability for Adapter {
+    fn related_tags<'a>(
+        &'a self,
+        request: &'a dreamland_core::RelatedTagRequest,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, Vec<dreamland_core::RelatedTag>> {
+        Box::pin(async move {
+            let endpoint = related_tag_endpoint(&self.config.api_url).map_err(adapter_error)?;
+            fetch_related_tags(&endpoint, request, network)
+                .await
+                .map_err(adapter_error)
+        })
+    }
+}
+
+impl CollectionCapability for Adapter {
+    fn list_pools<'a>(
+        &'a self,
+        query: &'a str,
+        page: u32,
+        page_size: u16,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, PoolPage> {
+        Box::pin(async move {
+            fetch_pools(&self.config.api_url, query, page, page_size, network)
+                .await
+                .map_err(adapter_error)
+        })
+    }
+
+    fn query_pool_posts<'a>(
+        &'a self,
+        pool_id: &'a str,
+        content_policy: ContentPolicy,
+        page: u32,
+        page_size: u16,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, SitePage> {
+        Box::pin(async move {
+            query_pool_posts(
+                &self.config.api_url,
+                pool_id,
+                content_policy,
+                page,
+                page_size,
+                network,
+            )
+            .await
+            .map_err(adapter_error)
+        })
+    }
+}
+
+impl CollectionDownloadCapability for Adapter {
+    fn pool_zip_url(&self, pool_id: &str) -> Result<String, SiteError> {
+        pool_zip_endpoint(&self.config.api_url, pool_id).map_err(adapter_error)
+    }
+}
+
+impl RemoteFavoriteCapability for Adapter {
+    fn set_favorite<'a>(
+        &'a self,
+        post_id: &'a str,
+        favorite: bool,
+        cookie_header: &'a str,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, ()> {
+        Box::pin(async move {
+            set_favorite(
+                &self.config.api_url,
+                post_id,
+                favorite,
+                cookie_header,
+                network,
+            )
+            .await
+            .map_err(adapter_error)
+        })
+    }
+}
+
+impl RemoteFavoriteListCapability for Adapter {
+    fn list_favorites<'a>(
+        &'a self,
+        username: &'a str,
+        cookie_header: &'a str,
+        content_policy: ContentPolicy,
+        page: u32,
+        page_size: u16,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, SitePage> {
+        Box::pin(async move {
+            list_favorites(
+                &self.config.api_url,
+                username,
+                cookie_header,
+                content_policy,
+                page,
+                page_size,
+                network,
+            )
+            .await
+            .map_err(adapter_error)
+        })
+    }
+}
+
+impl CurrentUserCapability for Adapter {
+    fn current_user<'a>(
+        &'a self,
+        user_id: &'a str,
+        cookie_header: &'a str,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, String> {
+        Box::pin(async move {
+            current_user(&self.config.api_url, user_id, cookie_header, network)
+                .await
+                .map_err(adapter_error)
+        })
+    }
+}
+
+impl MediaResolutionCapability for Adapter {
+    fn resolve_media_url<'a>(&'a self, post: &'a Post, variant: MediaVariant) -> Option<&'a str> {
+        variant_url(post, variant)
+    }
+}
+
+impl BrowserRoutesCapability for Adapter {
+    fn browser_url(&self) -> Result<String, SiteError> {
+        Ok(self.config.browser_url.clone())
+    }
+
+    fn browser_post_url(&self, post_id: &str) -> Result<String, SiteError> {
+        browser_post_url(&self.config.browser_url, post_id).map_err(adapter_error)
+    }
+
+    fn browser_similar_url(&self) -> Result<String, SiteError> {
+        Err(SiteError::new(
+            SiteErrorCode::UnsupportedCapability,
+            "yandere does not provide a similar-search browser route",
+            false,
+        ))
+    }
+}
+
+impl SiteAdapter for Adapter {
+    fn descriptor(&self) -> &SiteDescriptor {
+        &self.descriptor
+    }
+
+    fn post_query(&self) -> &dyn PostQueryCapability {
+        self
+    }
+
+    fn tag_suggestions(&self) -> Option<&dyn TagSuggestionCapability> {
+        Some(self)
+    }
+
+    fn related_tags(&self) -> Option<&dyn RelatedTagCapability> {
+        Some(self)
+    }
+
+    fn post_lookup(&self) -> Option<&dyn PostLookupCapability> {
+        None
+    }
+
+    fn collections(&self) -> Option<&dyn CollectionCapability> {
+        Some(self)
+    }
+
+    fn collection_download(&self) -> Option<&dyn CollectionDownloadCapability> {
+        Some(self)
+    }
+
+    fn remote_favorites(&self) -> Option<&dyn RemoteFavoriteCapability> {
+        Some(self)
+    }
+
+    fn remote_favorite_list(&self) -> Option<&dyn RemoteFavoriteListCapability> {
+        Some(self)
+    }
+
+    fn current_user(&self) -> Option<&dyn CurrentUserCapability> {
+        Some(self)
+    }
+
+    fn media_resolution(&self) -> &dyn MediaResolutionCapability {
+        self
+    }
+
+    fn browser_routes(&self) -> &dyn BrowserRoutesCapability {
+        self
     }
 }
 

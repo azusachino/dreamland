@@ -954,128 +954,37 @@ network-specific collections as explicit site actions/extensions.
 
 ## Site descriptor and capabilities
 
-Static booleans are insufficient: auth, config, health, and category selection
-can change what is usable. The descriptor contains stable metadata; the
-runtime obtains an effective capability snapshot.
+The 0.1.1 implementation uses object-safe capability ports. A site adapter owns
+its validated bundled defaults and returns optional ports only for features it
+actually implements. The registry validates that descriptor flags agree with
+those ports before the Tauri runtime starts.
 
 ~~~rust
 pub trait SiteAdapter: Send + Sync {
-    fn descriptor(&self) -> SiteDescriptor;
-    fn capabilities(&self, context: CapabilityContext) -> EffectiveCapabilities;
-    fn query(&self) -> &dyn PostQueryCapability;
-    fn tags(&self) -> Option<&dyn TagSuggestionCapability>;
+    fn descriptor(&self) -> &SiteDescriptor;
+    fn post_query(&self) -> &dyn PostQueryCapability;
+    fn tag_suggestions(&self) -> Option<&dyn TagSuggestionCapability>;
     fn related_tags(&self) -> Option<&dyn RelatedTagCapability>;
-    fn lookup(&self) -> Option<&dyn PostLookupCapability>;
-    fn detail(&self) -> Option<&dyn PostDetailCapability>;
-    fn favorites(&self) -> Option<&dyn RemoteFavoriteCapability>;
-    fn favorite_list(&self) -> Option<&dyn RemoteFavoriteListCapability>;
-    fn remote_collections(&self) -> Option<&dyn RemoteCollectionCapability>;
-    fn collection_downloads(&self) -> Option<&dyn CollectionDownloadCapability>;
-    fn creators(&self) -> Option<&dyn CreatorCapability>;
+    fn post_lookup(&self) -> Option<&dyn PostLookupCapability>;
     fn collections(&self) -> Option<&dyn CollectionCapability>;
-    fn media_resolution(&self) -> Option<&dyn MediaResolutionCapability>;
-    fn actions(&self) -> Option<&dyn PostActionCapability>;
-    fn categories(&self) -> Option<&dyn CategoryCapability>;
-    fn mirrors(&self) -> Option<&dyn MirrorCapability>;
-    fn auth(&self) -> Option<&dyn SiteAuth>;
+    fn collection_download(&self) -> Option<&dyn CollectionDownloadCapability>;
+    fn remote_favorites(&self) -> Option<&dyn RemoteFavoriteCapability>;
+    fn remote_favorite_list(&self) -> Option<&dyn RemoteFavoriteListCapability>;
+    fn current_user(&self) -> Option<&dyn CurrentUserCapability>;
+    fn media_resolution(&self) -> &dyn MediaResolutionCapability;
+    fn browser_routes(&self) -> &dyn BrowserRoutesCapability;
 }
 
-pub struct SiteDescriptor {
-    pub id: SiteId,
-    pub name: String,
-    pub home_url: String,
-    pub config_schema_version: u32,
-}
-
-pub struct EffectiveCapabilities {
-    pub discovery_sources: Vec<DiscoverySourceKind>,
-    pub query_controls: QueryControls,
-    pub page_navigation: PageNavigation,
-    pub media_variants: Vec<MediaVariantKind>,
-    pub tag_suggestions: bool,
-    pub lookup: bool,
-    pub detail_expansions: Vec<DetailExpansion>,
-    pub remote_favorite: bool,
-    pub favorite_list: bool,
-    pub remote_collections: bool,
-    pub collection_downloads: bool,
-    pub creators: bool,
-    pub collections: bool,
-    pub media_resolution: bool,
-    pub post_actions: bool,
-    pub categories: bool,
-    pub mirrors: bool,
-    pub auth: AuthStatus,
-    pub operation_requirements: OperationRequirements,
-}
-
-pub struct QueryControls {
-    pub tag_expression: bool,
-    pub multi_keyword: bool,
-    pub sort_keys: Vec<String>,
-    pub date_range: bool,
-    pub content_ratings: Vec<RatingLevel>,
-    pub resolution_filter: bool,
-    pub orientation_filter: bool,
-    pub file_extensions: Vec<String>,
-    pub categories: bool,
-    pub mirrors: bool,
-}
-
-pub struct CapabilityContext {
-    pub auth: AuthStatus,
-    pub config: SiteConfig,
-}
-
-pub struct OperationRequirements {
-    pub query: AuthRequirement,
-    pub remote_favorite: AuthRequirement,
-    pub favorite_list: AuthRequirement,
-    pub remote_collections: AuthRequirement,
-    pub collection_downloads: AuthRequirement,
-}
-
-pub enum AuthRequirement {
-    Anonymous,
-    Authenticated,
-}
-
-pub struct PageNavigation {
-    pub browse: NavigationKind,
-    pub search: NavigationKind,
-    pub feed: FeedNavigation,
-    pub creator: NavigationKind,
-    pub collection: NavigationKind,
-}
-
-pub struct FeedNavigation {
-    pub latest: NavigationKind,
-    pub popular_day: NavigationKind,
-    pub popular_week: NavigationKind,
-    pub popular_month: NavigationKind,
-    pub ranking: NavigationKind,
-    pub site_defined: NavigationKind,
-}
-
-pub enum NavigationKind {
-    FixedWindow,
-    PageNumbers { max_page_size: u16 },
-    Cursor { max_page_size: u16 },
-    PageNumbersAndCursor { max_page_size: u16 },
-}
-
-pub enum DiscoverySourceKind {
-    Browse,
-    Search,
-    Feed,
-    Creator,
-    Collection,
+pub struct SiteRegistry {
+    adapters: Vec<Box<dyn SiteAdapter>>,
 }
 ~~~
 
-The registry validates at construction that advertised capabilities have
-corresponding trait objects. It recalculates effective capabilities when
-auth/config changes. The frontend renders only from this snapshot.
+The registry is the only composition root. Tauri and runtime callers resolve a
+site once and invoke a capability port; they do not match site IDs or import a
+concrete adapter. Unsupported capabilities are absent, not empty success
+methods. Effective auth/config health snapshots remain a later extension of
+the same ports rather than a second dispatch mechanism.
 
 ## Authentication
 
@@ -1319,33 +1228,23 @@ temporary files are cleaned up or retained only when needed for explicit retry.
 ## Registry
 
 ~~~rust
-pub trait SiteRegistry: Send + Sync {
-    fn list(&self) -> Vec<SiteDescriptor>;
-    fn descriptor(&self, id: &SiteId) -> Result<SiteDescriptor, RuntimeError>;
-    fn capabilities(
-        &self,
-        id: &SiteId,
-        context: CapabilityContext,
-    ) -> Result<EffectiveCapabilities, RuntimeError>;
-    fn config_schema(&self, id: &SiteId) -> Result<SiteConfigSchema, RuntimeError>;
-    fn config(&self, id: &SiteId) -> Result<SiteConfig, RuntimeError>;
-    fn validate_config(
-        &self,
-        id: &SiteId,
-        input: SiteConfigInput,
-    ) -> Result<SiteConfig, RuntimeError>;
-    fn apply_config(
-        &self,
-        id: &SiteId,
-        input: SiteConfigInput,
-    ) -> Result<SiteConfig, RuntimeError>;
-    fn site(&self, id: &SiteId) -> Result<&dyn SiteAdapter, RuntimeError>;
+pub struct SiteRegistry {
+    active: Vec<Box<dyn SiteAdapter>>,
+    skeletons: Vec<SiteDescriptor>,
+}
+
+impl SiteRegistry {
+    pub fn site(&self, site_id: &str) -> anyhow::Result<&dyn SiteAdapter>;
+    pub fn descriptors(&self) -> Vec<SiteDescriptor>;
+    pub fn all_descriptors(&self) -> Vec<SiteDescriptor>;
+    pub fn validate(&self) -> anyhow::Result<()>;
 }
 ~~~
 
 The runtime constructs the registry once. Unknown, disabled, unhealthy, and
-unsupported sites are distinct runtime states. Adding a site must not
-require frontend code that understands its response shape.
+unsupported sites are distinct runtime states. Adding an active site requires
+registering an adapter in this composition root, but does not add site-shaped
+branches to Tauri, runtime, or the frontend.
 
 ## Tauri command surface
 

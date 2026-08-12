@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+use std::future::Future;
+use std::pin::Pin;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SiteId(String);
@@ -158,6 +160,146 @@ pub struct SiteError {
     pub code: SiteErrorCode,
     pub message: String,
     pub retryable: bool,
+}
+
+impl SiteError {
+    pub fn new(code: SiteErrorCode, message: impl Into<String>, retryable: bool) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            retryable,
+        }
+    }
+}
+
+pub type SiteFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, SiteError>> + Send + 'a>>;
+
+pub trait PostQueryCapability: Send + Sync {
+    fn query_posts<'a>(
+        &'a self,
+        request: &'a PostQueryRequest,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, SitePage>;
+}
+
+pub trait TagSuggestionCapability: Send + Sync {
+    fn suggest_tags<'a>(
+        &'a self,
+        request: &'a TagSuggestionRequest,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, Vec<TagSuggestion>>;
+}
+
+pub trait RelatedTagCapability: Send + Sync {
+    fn related_tags<'a>(
+        &'a self,
+        request: &'a RelatedTagRequest,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, Vec<RelatedTag>>;
+}
+
+pub trait PostLookupCapability: Send + Sync {
+    fn lookup_post<'a>(
+        &'a self,
+        post_id: &'a str,
+        content_policy: ContentPolicy,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, Post>;
+}
+
+pub trait CollectionCapability: Send + Sync {
+    fn list_pools<'a>(
+        &'a self,
+        query: &'a str,
+        page: u32,
+        page_size: u16,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, PoolPage>;
+
+    fn query_pool_posts<'a>(
+        &'a self,
+        pool_id: &'a str,
+        content_policy: ContentPolicy,
+        page: u32,
+        page_size: u16,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, SitePage>;
+}
+
+pub trait CollectionDownloadCapability: Send + Sync {
+    fn pool_zip_url(&self, pool_id: &str) -> Result<String, SiteError>;
+}
+
+pub trait RemoteFavoriteCapability: Send + Sync {
+    fn set_favorite<'a>(
+        &'a self,
+        post_id: &'a str,
+        favorite: bool,
+        cookie_header: &'a str,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, ()>;
+}
+
+pub trait RemoteFavoriteListCapability: Send + Sync {
+    fn list_favorites<'a>(
+        &'a self,
+        username: &'a str,
+        cookie_header: &'a str,
+        content_policy: ContentPolicy,
+        page: u32,
+        page_size: u16,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, SitePage>;
+}
+
+pub trait CurrentUserCapability: Send + Sync {
+    fn current_user<'a>(
+        &'a self,
+        user_id: &'a str,
+        cookie_header: &'a str,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, String>;
+}
+
+pub trait MediaResolutionCapability: Send + Sync {
+    fn resolve_media_url<'a>(&'a self, post: &'a Post, variant: MediaVariant) -> Option<&'a str>;
+}
+
+pub trait BrowserRoutesCapability: Send + Sync {
+    fn browser_url(&self) -> Result<String, SiteError>;
+    fn browser_post_url(&self, post_id: &str) -> Result<String, SiteError>;
+    fn browser_similar_url(&self) -> Result<String, SiteError>;
+}
+
+pub trait SiteAdapter: Send + Sync {
+    fn descriptor(&self) -> &SiteDescriptor;
+    fn post_query(&self) -> &dyn PostQueryCapability;
+    fn tag_suggestions(&self) -> Option<&dyn TagSuggestionCapability> {
+        None
+    }
+    fn related_tags(&self) -> Option<&dyn RelatedTagCapability> {
+        None
+    }
+    fn post_lookup(&self) -> Option<&dyn PostLookupCapability> {
+        None
+    }
+    fn collections(&self) -> Option<&dyn CollectionCapability> {
+        None
+    }
+    fn collection_download(&self) -> Option<&dyn CollectionDownloadCapability> {
+        None
+    }
+    fn remote_favorites(&self) -> Option<&dyn RemoteFavoriteCapability> {
+        None
+    }
+    fn remote_favorite_list(&self) -> Option<&dyn RemoteFavoriteListCapability> {
+        None
+    }
+    fn current_user(&self) -> Option<&dyn CurrentUserCapability> {
+        None
+    }
+    fn media_resolution(&self) -> &dyn MediaResolutionCapability;
+    fn browser_routes(&self) -> &dyn BrowserRoutesCapability;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

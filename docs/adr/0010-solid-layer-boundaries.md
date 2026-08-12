@@ -1,6 +1,6 @@
 # ADR 0010: SOLID boundaries for the site API
 
-- Status: Accepted audit baseline; registry follow-up required
+- Status: Accepted and implemented in 0.1.1
 - Date: 2026-08-12
 
 ## Context
@@ -12,17 +12,18 @@ implementations. The API v1 documents describe capability traits, but the
 first real adapters are being proven.
 
 The 0.1.1 release must describe this accurately. A clean crate split is not
-the same thing as complete SOLID conformance.
+the same thing as complete SOLID conformance, so the provisional switchboard
+must be replaced before the release is considered complete.
 
 ## Audit
 
 | Principle | Current result | Evidence |
 | --- | --- | --- |
 | Single responsibility | Mostly aligned | `dreamland-core` holds neutral models; site crates decode/map wire data; `dreamland-runtime` owns sessions, persistence, cache, and downloads; Tauri owns IPC/window commands. |
-| Open/closed | Partial gap | `dreamland-sites` repeats `match site_id` for each operation. Adding a site requires editing the composition crate. |
+| Open/closed | Aligned at the runtime boundary | `SiteRegistry` resolves `SiteAdapter` objects by identity; Tauri/runtime no longer match site IDs or import concrete adapters. The composition root is the intentional registration point. |
 | Liskov substitution | Mostly aligned | Active adapters return the same `Post`, `SitePage`, `PoolPage`, and descriptor models; unsupported operations fail explicitly. |
-| Interface segregation | Partial gap | `SiteCapabilities` is a flat boolean descriptor and the implemented API is a set of free functions rather than separate object-safe capability ports. |
-| Dependency inversion | Partial gap | Runtime calls the composition functions, but the composition crate chooses concrete adapters and bundled defaults directly instead of resolving an injected registry of ports. |
+| Interface segregation | Aligned for shipped capabilities | Optional features are separate object-safe ports; unsupported operations are absent rather than fake methods. Descriptor flags are validated against the ports. |
+| Dependency inversion | Aligned at the application boundary | Runtime/Tauri depend on `SiteAdapter` ports and `SiteRegistry`; only the composition root depends on concrete adapter crates and their defaults. |
 
 ## Decision
 
@@ -40,30 +41,27 @@ runtime application services
 Tauri controller and typed IPC
 ```
 
-The current 0.1.1 release does not add a generic dependency-injection
-framework or claim that the switchboard is already a trait registry. The
-shared Moebooru protocol remains a reusable implementation module, not a
-site identity or a runtime service.
+The 0.1.1 implementation adds no generic dependency-injection framework. The
+shared Moebooru protocol remains a reusable implementation module, not a site
+identity or a runtime service.
 
-The next registry increment must be contract-first and incremental:
+The registry implementation follows this contract-first standard:
 
 1. define object-safe capability ports in `dreamland-core` using typed
    operation inputs and stable `SiteError` outputs;
 2. give each concrete site an adapter object that owns its validated defaults;
 3. make `dreamland-sites` the only composition root and resolve adapters by
    `SiteId`, with optional capabilities represented by absent ports;
-4. migrate Tauri/runtime callers from free-function dispatch to the registry;
+4. route Tauri/runtime callers through the registry;
 5. test descriptor/port agreement and keep unsupported capabilities absent.
 
 This preserves the current working behavior while making the OCP, ISP, and
 DIP improvements independently testable. No site-specific branch is added to
-`dreamland-core` or `dreamland-runtime` as part of a new adapter.
+`dreamland-core`, `dreamland-runtime`, or Tauri when another adapter is added.
 
 ## Consequences
 
-- 0.1.1 can ship the recent configuration, local-state, cache, and pagination
-  work without overstating the maturity of API v1.
-- The current switchboard is a known architectural follow-up, not hidden
-  accidental coupling.
+- 0.1.1 ships the recent configuration, local-state, cache, pagination, and
+  capability-registry work behind one standard.
 - A future Pixiv/Twitter implementation must enter through the registry and
   capability ports rather than expanding runtime conditionals.

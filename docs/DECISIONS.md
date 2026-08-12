@@ -14,19 +14,12 @@ current index; it deliberately does not duplicate their full rationale.
 | [0003](adr/0003-rust-workspace-boundaries.md) | Cargo workspace with isolated core, shared protocol, runtime, site adapter, and Tauri shell crates |
 | [0004](adr/0004-site-runtime-boundary.md) | Rust-owned site/runtime boundary; `yandere` is one site ID |
 | [0005](adr/0005-toml-runtime-configuration.md) | TOML runtime settings with per-site sections |
+| [0007](adr/0007-api-v1-site-contract.md) | Object-safe site capability ports and registry composition |
 | [0008](adr/0008-frontend-visual-language.md) | Material 3 Expressive content system with restrained Liquid Glass shell and opaque cross-platform fallback |
 | [0010](adr/0010-solid-layer-boundaries.md) | SOLID audit baseline for core, registry, runtime, and concrete site layers |
 
 ## Proposed, not yet accepted
 
-- [ADR 0007](adr/0007-api-v1-site-contract.md) proposes the v1 site-capability
-  trait set: `PostQueryCapability`, `TagSuggestionCapability`,
-  `PostLookupCapability`, `RemoteFavoriteCapability`, `SiteAuth`,
-  `RemoteFavoriteListCapability`, `RemoteCollectionCapability`, and
-  `CollectionDownloadCapability`. This is now reconciled with
-  [ARCHITECTURE-V1.md](ARCHITECTURE-V1.md)'s feature-to-flow bindings (one
-  list, not two). The ADR's own status is still "proposed research
-  hypothesis," pending the site-wide matrix review.
 - [ADR 0009](adr/0009-runtime-operation-context-and-common-services.md)
   defines an explicit lifecycle context plus typed runtime services for auth,
   cache, logging, configuration, and persistence. It deliberately does not
@@ -36,9 +29,8 @@ current index; it deliberately does not duplicate their full rationale.
 ## Pending gates
 
 - [API and runtime design v1](API-V1.md) is the implementation baseline for
-  incremental site capabilities. [ADR 0007](adr/0007-api-v1-site-contract.md)
-  remains the explicit trait-review record; each new site still needs its own
-  capability and live-acceptance gate.
+  the object-safe capability ports and registry. Each new site still needs its
+  own capability and live-acceptance gate.
 - The Yande release ([YANDE-RELEASE-GATE.md](YANDE-RELEASE-GATE.md), Y-01
   through Y-09) and the "Proposed 0.1.0 gate"
   ([ROADMAP.md](ROADMAP.md)) are the same milestone: Yande-scoped search,

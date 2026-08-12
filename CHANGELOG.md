@@ -17,8 +17,8 @@ distribution and the external Yande release gate remain separate decisions.
 - TOML-only runtime configuration with explicit per-site sections.
 - Dedicated `dreamland-local-state` SQLite schema and repository-infrastructure
   crate with versioned migrations.
-- SOLID layer audit and registry follow-up decision for the core/site/runtime
-  boundary.
+- Object-safe capability ports and a validated `SiteRegistry` composition root
+  for the core/site/runtime boundary.
 
 ### Changed
 

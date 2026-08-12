@@ -12,7 +12,7 @@ new alternatives or superseding choices get a new ADR.
 | [0004](0004-site-runtime-boundary.md) | Site/runtime boundary | Accepted |
 | [0005](0005-toml-runtime-configuration.md) | TOML runtime configuration | Accepted |
 | [0006](0006-roadmap-and-github-issues.md) | Roadmap and GitHub Issues | Proposed |
-| [0007](0007-api-v1-site-contract.md) | API v1 site contract | Proposed research hypothesis |
+| [0007](0007-api-v1-site-contract.md) | API v1 site contract | Accepted; initial ports implemented in 0.1.1 |
 | [0008](0008-frontend-visual-language.md) | Frontend visual language and cross-platform rendering | Accepted |
 | [0009](0009-runtime-operation-context-and-common-services.md) | Runtime operation context and common services | Accepted design; incremental implementation |
-| [0010](0010-solid-layer-boundaries.md) | SOLID boundaries for the site API | Accepted audit baseline; registry follow-up required |
+| [0010](0010-solid-layer-boundaries.md) | SOLID boundaries for the site API | Accepted and implemented in 0.1.1 |
