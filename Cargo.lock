@@ -734,13 +734,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dreamland-local-state"
-version = "0.1.1"
-dependencies = [
- "rusqlite",
-]
-
-[[package]]
 name = "dreamland-moe"
 version = "0.1.1"
 dependencies = [
@@ -759,7 +752,7 @@ dependencies = [
  "anyhow",
  "dirs 5.0.1",
  "dreamland-core",
- "dreamland-local-state",
+ "dreamland-state",
  "reqwest 0.11.27",
  "rusqlite",
  "serde",
@@ -820,6 +813,13 @@ dependencies = [
  "dreamland-site-pixiv",
  "dreamland-site-twitter",
  "dreamland-site-yandere",
+]
+
+[[package]]
+name = "dreamland-state"
+version = "0.1.1"
+dependencies = [
+ "rusqlite",
 ]
 
 [[package]]

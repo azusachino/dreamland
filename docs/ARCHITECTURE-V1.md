@@ -16,7 +16,7 @@ Tauri command boundary
 Dreamland runtime
   ├── dreamland-sites composition root → selected SiteAdapter → shared/site protocol → remote HTTP
   ├── Auth/session bridge → browser flow + secret store
-  ├── SQLite LocalStateStore → saved queries, history, queue, cache metadata
+  ├── SQLite StateStore → saved queries, history, queue, cache metadata
   ├── Download worker → site media/archive resolution
   │                    → temporary local cache → atomic final rename
   └── filesystem opener → runtime-owned completed download path
@@ -29,7 +29,7 @@ Ownership is strict:
 | Rendering, selector, query editor, card/detail state | React | site adapter or filesystem |
 | Site HTTP, decoding, normalization, capability negotiation | SiteAdapter/runtime | React |
 | Auth cookies, tokens, session handles | browser bridge/secret store/runtime | React, ordinary TOML, SQLite rows |
-| Saved query definitions and query history | SQLite LocalStateStore | remote site |
+| Saved query definitions and query history | SQLite StateStore | remote site |
 | Remote favorites, pools, pool ZIP route | the selected site through capabilities | local saved-query state |
 | Queue state, metadata snapshots, terminal outcomes | SQLite + runtime worker | remote site or React |
 | Temp files and final paths | runtime download worker | React or site response JSON |
@@ -152,7 +152,7 @@ worker boundary.
 | Pool browse | `RemoteCollectionCapability` | Yande pool metadata and ordered posts | pagination/session and common collection model |
 | Pool ZIP | `CollectionDownloadCapability` | Yande `/pool/zip/:id` and auth behavior | archive target, queue, path, history |
 | Single download | enqueue/download worker | media resolution and referer requirements | best quality selection, URL validation, atomic write |
-| Saved query | `LocalStateStore` | stored site expression remains opaque | pin/order/history and replay |
+| Saved query | `StateStore` | stored site expression remains opaque | pin/order/history and replay |
 | Settings | config commands + `SiteConfigSchema` | site extension fields | validation, secret references, persistence, capability refresh |
 
 Pools are not part of the required site core. Yande binds them by advertising

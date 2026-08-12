@@ -28,9 +28,9 @@ Derived from [`plan.md`](plan.md), ordered by dependency.
 - [ ] Slice 3: Add SQLite local state and durable download queue.
   - Acceptance: enqueue/retry/cancel/restart, cache staging, atomic rename,
     `ExistingTarget`, metadata snapshots, and history work.
-  - Verify: migration, queue, path-security, and local HTTP integration tests.
+  - Verify: schema, queue, path-security, and local HTTP integration tests.
   - Files: `crates/dreamland-runtime/`.
-  - Checkpoint: queue/history migrations, restart recovery, async worker,
+  - Checkpoint: queue/history schema, restart recovery, async worker,
     cancellation/retry, cache staging, canonical paths, existing-target
     protection, typed commands, and the Downloads panel are present; saved
     query/history tables, `open_download`, full progress events, and cache

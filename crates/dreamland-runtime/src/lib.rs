@@ -1,19 +1,19 @@
 mod config;
-mod local_state;
 mod media;
 mod sessions;
+mod state;
 
 pub use config::{detect_proxy, AppConfig, ProxyDetection};
-pub use local_state::{
-    ArchiveRecord, ArchiveRequest, DownloadCancellation, DownloadManager, DownloadRecord,
-    DownloadRequest, DownloadStatus, LocalStateStore,
-};
 pub use media::{
     cache_detail_image, cache_detail_image_at, download_archive, download_image,
     download_image_with_detail_cache, find_cached_detail_image_at, log_detail_failure,
     DownloadOutcome,
 };
 pub use sessions::{QuerySession, QuerySessionStore, SessionOperation};
+pub use state::{
+    ArchiveRecord, ArchiveRequest, DownloadCancellation, DownloadManager, DownloadRecord,
+    DownloadRequest, DownloadStatus, StateStore,
+};
 
 pub fn default_state_path() -> std::path::PathBuf {
     std::env::var_os("XDG_DATA_HOME")

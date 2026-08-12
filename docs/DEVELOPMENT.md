@@ -26,6 +26,7 @@ Or use `make install`, `make doctor`, `make dev`, and `make check` inside
 - `uv run scripts/doctor.py` — check the local toolchain
 - `uv run scripts/check.py` — run the daily platform-aware checks
 - `cargo fmt --all -- --check` — check Rust formatting
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — lint Rust
 - `cargo test --workspace` — run Rust tests
 
 ## Architecture

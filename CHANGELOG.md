@@ -15,8 +15,8 @@ distribution and the external Yande release gate remain separate decisions.
 ### Added
 
 - TOML-only runtime configuration with explicit per-site sections.
-- Dedicated `dreamland-local-state` SQLite schema and repository-infrastructure
-  crate with versioned migrations.
+- Dedicated `dreamland-state` SQLite schema and repository-infrastructure
+  crate with a current-schema initializer.
 - Object-safe capability ports and a validated `SiteRegistry` composition root
   for the core/site/runtime boundary.
 

@@ -884,7 +884,7 @@ write these tables directly, and local rows are not treated as proof of remote
 state.
 
 ~~~rust
-pub trait LocalStateStore: Send + Sync {
+pub trait StateStore: Send + Sync {
     async fn save_query(
         &self,
         query: SavedQuery,

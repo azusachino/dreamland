@@ -58,9 +58,9 @@ may validate and consume their own extension section, but cannot bypass common
 hooks or access SQLite directly.
 
 The first mechanical steps are TOML site sections and the dedicated
-`dreamland-local-state` SQLite infrastructure crate. Larger state and adapter
-migrations follow only when the corresponding typed boundary has at least two
-real consumers.
+`dreamland-state` SQLite infrastructure crate. Larger state and adapter changes
+follow only when the corresponding typed boundary has at least two real
+consumers.
 
 ## Consequences
 

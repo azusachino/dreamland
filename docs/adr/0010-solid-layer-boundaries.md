@@ -66,7 +66,7 @@ browser-session lifecycle is generalized.
 
 ## Consequences
 
-- 0.1.1 ships the recent configuration, local-state, cache, pagination, and
+- 0.1.1 ships the recent configuration, state, cache, pagination, and
   capability-registry work behind one standard.
 - A future Pixiv/Twitter implementation must enter through the registry and
   capability ports rather than expanding runtime conditionals.

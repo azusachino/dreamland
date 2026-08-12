@@ -167,18 +167,13 @@ pub enum PaginationRequest {
     FixedWindow,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ContentPolicy {
+    #[default]
     SafeOnly,
     AllowQuestionable,
     AllowExplicit,
     ExplicitOnly,
-}
-
-impl Default for ContentPolicy {
-    fn default() -> Self {
-        Self::SafeOnly
-    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

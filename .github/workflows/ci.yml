@@ -32,7 +32,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.1
-          components: rustfmt
+          components: rustfmt, clippy
 
       - name: Install Linux desktop dependencies
         run: |

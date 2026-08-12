@@ -85,7 +85,7 @@ schedule yet.
 └──────────────┬──────────────┘  └───────┬─────────┬────────────┘
                │                         │         │
 ┌──────────────▼──────────────┐  ┌───────▼───┐ ┌──▼────────────┐
-│ dreamland-local-state        │  │ yandere  │ │ konachan      │
+│ dreamland-state              │  │ yandere  │ │ konachan      │
 │ SQLite schema + repository   │  │ adapter  │ │ adapter       │
 └──────────────┬──────────────┘  └───────────┘ └───────────────┘
                │
@@ -133,8 +133,7 @@ Credentials and cookies stay in the native session boundary and never enter
 TOML or SQLite. The cache action refuses to run during active downloads and
 removes only temporary media state.
 
-See the [local-state contract](docs/LOCAL-STATE.md) for lifecycle rules and
-the [SQLite boundary](docs/adr/0009-sqlite-local-state.md) for the database
+See the [state contract](docs/STATE.md) for lifecycle rules and the SQLite
 schema and repository ownership.
 
 ## Technology
@@ -146,7 +145,7 @@ schema and repository ownership.
 | UI system | MUI components and theme tokens |
 | Async UI state | TanStack Query |
 | Runtime | Rust 2024, Tokio, Reqwest |
-| Local database | SQLite through `dreamland-local-state` and `rusqlite` |
+| Local database | SQLite through `dreamland-state` and `rusqlite` |
 | Shared protocol | `dreamland-moe` |
 | Tooling | Nix, mise, uv, Make |
 
@@ -182,7 +181,7 @@ an attractive screen cannot hide a broken command contract.
 - [API v1](docs/API-V1.md) — site/runtime capability contract
 - [User stories](docs/USER-STORIES-V1.md) — happy, edge, and failure flows
 - [Architecture v1](docs/ARCHITECTURE-V1.md) — ownership, workflow, and dataflow
-- [Local state](docs/LOCAL-STATE.md) — TOML, SQLite, XDG, cache, and logs
+- [State](docs/STATE.md) — TOML, SQLite, XDG, cache, and logs
 - [MoeBooru UX learnings](docs/MOEBOORU-UX-LEARNINGS.md) — reference flows
 - [MoeLoader site matrix](docs/MOELOADER-SITE-MATRIX.md) — capability research
 - [Yande release gate](docs/YANDE-RELEASE-GATE.md) — external acceptance evidence
@@ -195,7 +194,7 @@ an attractive screen cannot hide a broken command contract.
 Keep new behavior behind the documented contracts and user stories. A new
 site should implement only the capabilities it genuinely supports, register its
 descriptor through the composite, and add contract-level tests. A persistence,
-cache, or platform change must update the local-state contract and its relevant
+cache, or platform change must update the state contract and its relevant
 ADR in the same change.
 
 The project is early enough to fix a bad boundary now. Prefer a small, explicit

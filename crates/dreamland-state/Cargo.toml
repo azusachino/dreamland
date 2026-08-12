@@ -1,5 +1,5 @@
 [package]
-name = "dreamland-local-state"
+name = "dreamland-state"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

@@ -79,7 +79,7 @@ remaining API trait/registry review are still open.
 
 ### Slice 3 — SQLite local state and download queue — in progress
 
-Add the runtime-owned SQLite store and migrations for saved queries, query
+Add the runtime-owned SQLite store and current schema for saved queries, query
 history, site cache, download queue, and download history. Replace the current
 synchronous path download with the durable queue worker and local-cache
 staging model.
@@ -95,10 +95,10 @@ Acceptance:
   observable;
 - `open_download` opens only a runtime-owned completed record.
 
-Verify: SQLite migration tests, queue state-machine tests, path/security tests,
+Verify: SQLite schema tests, queue state-machine tests, path/security tests,
 and an integration test using a local HTTP fixture server.
 
-Current checkpoint: SQLite migrations, saved-query/history tables, durable
+Current checkpoint: SQLite current schema, saved-query/history tables, durable
 queue/history rows, restart recovery, asynchronous worker, cancellation, retry,
 cache staging, canonical site/post paths, existing-target protection, network
 policy, runtime-owned file opening, typed Tauri/IPC commands, and the Downloads

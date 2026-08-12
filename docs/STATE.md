@@ -10,9 +10,9 @@ disposable files, user downloads, and site state.
 | --- | --- | --- |
 | Controller | `src-tauri` commands and typed frontend IPC | accepts application inputs and returns safe DTOs |
 | Application service | `dreamland-runtime` workers and use cases | owns lifecycle, policy, transactions, and orchestration |
-| Repository | `LocalStateStore` backed by `dreamland-local-state::SqliteStateRepository` | owns local persistence calls; sites and React never access SQLite |
+| Repository | `StateStore` backed by `dreamland-state::SqliteStateRepository` | owns persistence calls; sites and React never access SQLite |
 | Model | `dreamland-core` plus local queue/history records | carries validated domain data, not HTTP or UI concerns |
-| Infrastructure | `dreamland-local-state` | owns SQLite connection policy, schema, and migrations |
+| Infrastructure | `dreamland-state` | owns SQLite connection policy and current schema |
 
 The controller/service/repository names describe ownership, not a new web
 framework. The Tauri shell is the controller; there is no HTTP MVC server in
@@ -25,16 +25,15 @@ version `0.32` with the `bundled` feature. Bundling SQLite keeps macOS and
 Windows builds independent of an installed system library. Dreamland does not
 use an ORM or a second database abstraction.
 
-`dreamland-local-state` is the specified persistence crate. Its public API is
+`dreamland-state` is the specified persistence crate. Its public API is
 small:
 
-- `SqliteStateRepository::open(path)` creates the parent directory, applies
-  migrations, and fixes the busy timeout;
+- `SqliteStateRepository::open(path)` creates the parent directory, initializes
+  the current schema, and fixes the busy timeout;
 - `SqliteStateRepository::path()` exposes the runtime-owned database path;
 - `SqliteStateRepository::connection()` provides a configured connection to
   the runtime repository implementation;
-- `migrate()` applies idempotent, forward-only schema changes and records the
-  current version in `PRAGMA user_version`.
+- `initialize_schema()` creates the current schema idempotently.
 
 `dreamland-runtime` remains the application service and repository API for
 queue/history operations. The SQLite crate does not know about site adapters,
@@ -60,9 +59,8 @@ runtime-owned `Running` rows back to `Queued`; it never scans or rewrites
 arbitrary user files. The worker checks the final target immediately before
 atomic rename, so an existing completed file remains authoritative.
 
-Schema migrations are forward-only, idempotent, and tested in
-`dreamland-local-state`. New tables or columns must land there before a
-runtime repository method consumes them.
+The current schema is idempotent and tested in `dreamland-state`. New tables or
+columns must land there before a runtime repository method consumes them.
 
 ## Common lifecycle hooks
 
