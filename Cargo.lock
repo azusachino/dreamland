@@ -715,7 +715,7 @@ dependencies = [
 
 [[package]]
 name = "dreamland"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "dreamland-core",
@@ -728,21 +728,21 @@ dependencies = [
 
 [[package]]
 name = "dreamland-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "dreamland-local-state"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "rusqlite",
 ]
 
 [[package]]
 name = "dreamland-moe"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "dreamland-core",
@@ -754,7 +754,7 @@ dependencies = [
 
 [[package]]
 name = "dreamland-runtime"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "dirs 5.0.1",
@@ -771,7 +771,7 @@ dependencies = [
 
 [[package]]
 name = "dreamland-site-konachan"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "dreamland-core",
@@ -784,21 +784,21 @@ dependencies = [
 
 [[package]]
 name = "dreamland-site-pixiv"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "dreamland-core",
 ]
 
 [[package]]
 name = "dreamland-site-twitter"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "dreamland-core",
 ]
 
 [[package]]
 name = "dreamland-site-yandere"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "dreamland-core",
@@ -812,7 +812,7 @@ dependencies = [
 
 [[package]]
 name = "dreamland-sites"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "dreamland-core",

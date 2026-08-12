@@ -17,7 +17,7 @@ resolver = "2"
 authors = ["azusachino"]
 edition = "2021"
 repository = "https://github.com/azusachino/dreamland"
-version = "0.1.0"
+version = "0.1.1"
 
 [workspace.dependencies]
 anyhow = "1"

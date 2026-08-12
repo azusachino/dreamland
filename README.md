@@ -2,7 +2,7 @@
 
 > A native desktop image-board browser and collector for macOS and Windows.
 
-[![status: 0.1.0 foundation merged](https://img.shields.io/badge/status-0.1.0%20foundation%20merged-5b7f86)](https://github.com/azusachino/dreamland/issues/5)
+[![status: 0.1.1 release candidate](https://img.shields.io/badge/status-0.1.1%20release%20candidate-5b7f86)](https://github.com/azusachino/dreamland/issues/5)
 [![targets: macOS and Windows](https://img.shields.io/badge/targets-macOS%20%7C%20Windows-5b7f86)](docs/adr/0001-platform-and-toolchain.md)
 [![Tauri 2](https://img.shields.io/badge/Tauri-2-24c8db)](https://v2.tauri.app/)
 [![React 19](https://img.shields.io/badge/React-19-61dafb)](https://react.dev/)
@@ -11,7 +11,7 @@ Dreamland is being rebuilt as a focused Tauri application: a React and
 TypeScript interface over a Rust runtime that owns site adapters, configuration,
 local data, and downloads.
 
-**Status:** 0.1.0 foundation merged  ·  **Targets:** macOS, Windows  ·
+**Status:** 0.1.1 release candidate  ·  **Targets:** macOS, Windows  ·
 **Site ID:** `yandere`  ·  **Next blockers:** [0.1.1 issue #5](https://github.com/azusachino/dreamland/issues/5)
 
 ## What exists now

@@ -15,3 +15,4 @@ new alternatives or superseding choices get a new ADR.
 | [0007](0007-api-v1-site-contract.md) | API v1 site contract | Proposed research hypothesis |
 | [0008](0008-frontend-visual-language.md) | Frontend visual language and cross-platform rendering | Accepted |
 | [0009](0009-runtime-operation-context-and-common-services.md) | Runtime operation context and common services | Accepted design; incremental implementation |
+| [0010](0010-solid-layer-boundaries.md) | SOLID boundaries for the site API | Accepted audit baseline; registry follow-up required |

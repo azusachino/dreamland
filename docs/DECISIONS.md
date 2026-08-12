@@ -1,6 +1,6 @@
 # Architecture decisions
 
-Last updated: 2026-08-11.
+Last updated: 2026-08-12.
 
 ADRs are the canonical record for accepted decisions. This page is only the
 current index; it deliberately does not duplicate their full rationale.
@@ -15,6 +15,7 @@ current index; it deliberately does not duplicate their full rationale.
 | [0004](adr/0004-site-runtime-boundary.md) | Rust-owned site/runtime boundary; `yandere` is one site ID |
 | [0005](adr/0005-toml-runtime-configuration.md) | TOML runtime settings with per-site sections |
 | [0008](adr/0008-frontend-visual-language.md) | Material 3 Expressive content system with restrained Liquid Glass shell and opaque cross-platform fallback |
+| [0010](adr/0010-solid-layer-boundaries.md) | SOLID audit baseline for core, registry, runtime, and concrete site layers |
 
 ## Proposed, not yet accepted
 
