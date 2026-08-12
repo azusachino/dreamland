@@ -52,12 +52,17 @@ The registry implementation follows this contract-first standard:
 2. give each concrete site an adapter object that owns its validated defaults;
 3. make `dreamland-sites` the only composition root and resolve adapters by
    `SiteId`, with optional capabilities represented by absent ports;
-4. route Tauri/runtime callers through the registry;
+4. route Tauri/runtime callers through the registry; keep browser-session
+   lifecycle and the default product site's user-flow selection in the
+   composition/controller boundary rather than in core or generic runtime
+   services;
 5. test descriptor/port agreement and keep unsupported capabilities absent.
 
 This preserves the current working behavior while making the OCP, ISP, and
 DIP improvements independently testable. No site-specific branch is added to
-`dreamland-core`, `dreamland-runtime`, or Tauri when another adapter is added.
+`dreamland-core` or `dreamland-runtime` when another adapter is added. A future
+authenticated site may require its own login-window command wiring until the
+browser-session lifecycle is generalized.
 
 ## Consequences
 

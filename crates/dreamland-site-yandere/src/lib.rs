@@ -71,6 +71,12 @@ impl Default for Adapter {
 }
 
 fn adapter_error(error: anyhow::Error) -> SiteError {
+    if let Some(site_error) = error.downcast_ref::<SiteError>() {
+        return site_error.clone();
+    }
+    if error.downcast_ref::<reqwest::Error>().is_some() {
+        return SiteError::new(SiteErrorCode::NetworkFailed, error.to_string(), true);
+    }
     dreamland_moe::map_error_message(&error.to_string(), SITE_ID)
 }
 
@@ -650,7 +656,7 @@ async fn get_bytes(
         let status = response.status();
         if retry >= network.max_retries || !matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504) {
             let error = map_http_status(status);
-            bail!("{}", error.message);
+            return Err(anyhow::Error::new(error));
         }
         let delay_ms = retry_after_ms(&response)
             .unwrap_or_else(|| {

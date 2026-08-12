@@ -529,7 +529,7 @@ async fn get_bytes(
         let status = response.status();
         if retry >= network.max_retries || !matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504) {
             let error = map_http_status(status, site_name);
-            bail!("{}", error.message);
+            return Err(anyhow::Error::new(error));
         }
         let delay_ms = response
             .headers()
@@ -730,7 +730,10 @@ pub async fn set_favorite(
     if response.status().is_success() {
         Ok(())
     } else {
-        bail!("{}", map_http_status(response.status(), site_name).message)
+        return Err(anyhow::Error::new(map_http_status(
+            response.status(),
+            site_name,
+        )));
     }
 }
 
