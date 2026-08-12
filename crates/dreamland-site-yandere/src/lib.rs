@@ -1,12 +1,12 @@
 use anyhow::{bail, Context, Result};
 use dreamland_core::{
-    BrowserRoutesCapability, CollectionCapability, CollectionDownloadCapability, ContentPolicy,
-    CurrentUserCapability, DiscoverySource, MediaResolutionCapability, MediaVariant, NetworkPolicy,
-    PaginationRequest, Pool, PoolPage, PopularPeriod, Post, PostLookupCapability,
-    PostQueryCapability, PostQueryRequest, ProxyMode, RelatedTagCapability,
-    RemoteFavoriteCapability, RemoteFavoriteListCapability, SiteAdapter, SiteCapabilities,
-    SiteDescriptor, SiteError, SiteErrorCode, SiteFuture, SiteId, SitePage, TagSuggestion,
-    TagSuggestionCapability, TagSuggestionRequest,
+    AuthenticationCapability, BrowserCookie, BrowserRoutesCapability, CollectionCapability,
+    CollectionDownloadCapability, ContentPolicy, CurrentUserCapability, DiscoverySource,
+    MediaResolutionCapability, MediaVariant, NetworkPolicy, PaginationRequest, Pool, PoolPage,
+    PopularPeriod, Post, PostLookupCapability, PostQueryCapability, PostQueryRequest, ProxyMode,
+    RelatedTagCapability, RemoteFavoriteCapability, RemoteFavoriteListCapability, SiteAdapter,
+    SiteCapabilities, SiteDescriptor, SiteError, SiteErrorCode, SiteFuture, SiteId, SitePage,
+    SiteSession, TagSuggestion, TagSuggestionCapability, TagSuggestionRequest,
 };
 use serde::Deserialize;
 
@@ -71,7 +71,12 @@ impl Default for Adapter {
 }
 
 fn adapter_error(error: anyhow::Error) -> SiteError {
-    SiteError::new(SiteErrorCode::NetworkFailed, error.to_string(), true)
+    dreamland_moe::map_error_message(&error.to_string(), SITE_ID)
+}
+
+fn parse_yande_user_id(value: &str) -> Option<String> {
+    let id = value.split(';').next()?.trim().parse::<u64>().ok()?;
+    (id > 0).then(|| id.to_string())
 }
 
 impl PostQueryCapability for Adapter {
@@ -167,7 +172,7 @@ impl RemoteFavoriteCapability for Adapter {
         &'a self,
         post_id: &'a str,
         favorite: bool,
-        cookie_header: &'a str,
+        session: &'a SiteSession,
         network: &'a NetworkPolicy,
     ) -> SiteFuture<'a, ()> {
         Box::pin(async move {
@@ -175,7 +180,7 @@ impl RemoteFavoriteCapability for Adapter {
                 &self.config.api_url,
                 post_id,
                 favorite,
-                cookie_header,
+                session.cookie_header(),
                 network,
             )
             .await
@@ -187,8 +192,7 @@ impl RemoteFavoriteCapability for Adapter {
 impl RemoteFavoriteListCapability for Adapter {
     fn list_favorites<'a>(
         &'a self,
-        username: &'a str,
-        cookie_header: &'a str,
+        session: &'a SiteSession,
         content_policy: ContentPolicy,
         page: u32,
         page_size: u16,
@@ -197,8 +201,8 @@ impl RemoteFavoriteListCapability for Adapter {
         Box::pin(async move {
             list_favorites(
                 &self.config.api_url,
-                username,
-                cookie_header,
+                session.user_id(),
+                session.cookie_header(),
                 content_policy,
                 page,
                 page_size,
@@ -213,15 +217,54 @@ impl RemoteFavoriteListCapability for Adapter {
 impl CurrentUserCapability for Adapter {
     fn current_user<'a>(
         &'a self,
-        user_id: &'a str,
-        cookie_header: &'a str,
+        session: &'a SiteSession,
         network: &'a NetworkPolicy,
     ) -> SiteFuture<'a, String> {
         Box::pin(async move {
-            current_user(&self.config.api_url, user_id, cookie_header, network)
-                .await
-                .map_err(adapter_error)
+            current_user(
+                &self.config.api_url,
+                session.user_id(),
+                session.cookie_header(),
+                network,
+            )
+            .await
+            .map_err(adapter_error)
         })
+    }
+}
+
+impl AuthenticationCapability for Adapter {
+    fn session_from_cookies(
+        &self,
+        cookies: &[BrowserCookie],
+    ) -> Result<Option<SiteSession>, SiteError> {
+        let user_id = cookies
+            .iter()
+            .find(|cookie| cookie.name == "user_id")
+            .and_then(|cookie| parse_yande_user_id(&cookie.value))
+            .or_else(|| {
+                cookies
+                    .iter()
+                    .find(|cookie| cookie.name == "user_info")
+                    .and_then(|cookie| parse_yande_user_id(&cookie.value))
+            });
+        let Some(user_id) = user_id else {
+            return Ok(None);
+        };
+        let cookie_header = cookies
+            .iter()
+            .map(|cookie| format!("{}={}", cookie.name, cookie.value))
+            .collect::<Vec<_>>()
+            .join("; ");
+        Ok(Some(SiteSession::new(
+            SiteId::new(SITE_ID),
+            user_id,
+            cookie_header,
+        )))
+    }
+
+    fn login_url(&self) -> Result<String, SiteError> {
+        Ok(format!("{}/user/login", self.config.browser_url))
     }
 }
 
@@ -287,6 +330,10 @@ impl SiteAdapter for Adapter {
     }
 
     fn current_user(&self) -> Option<&dyn CurrentUserCapability> {
+        Some(self)
+    }
+
+    fn authentication(&self) -> Option<&dyn AuthenticationCapability> {
         Some(self)
     }
 
@@ -944,6 +991,24 @@ mod tests {
     #[test]
     fn default_config_is_loaded_from_the_bundled_toml_not_hardcoded() {
         assert_eq!(default_config().api_url, "https://yande.re/post.json");
+    }
+
+    #[test]
+    fn authentication_adapter_owns_cookie_mapping() {
+        use dreamland_core::{AuthenticationCapability, BrowserCookie};
+        let session = Adapter::default()
+            .session_from_cookies(&[BrowserCookie {
+                name: "user_info".to_owned(),
+                value: "12345;20;1".to_owned(),
+            }])
+            .unwrap()
+            .unwrap();
+        assert_eq!(session.user_id(), "12345");
+        assert_eq!(session.site().as_str(), SITE_ID);
+        assert!(Adapter::default()
+            .session_from_cookies(&[])
+            .unwrap()
+            .is_none());
     }
 
     #[test]

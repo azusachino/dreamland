@@ -124,6 +124,13 @@ impl AppConfig {
         Ok(())
     }
 
+    pub fn enabled_site_ids(&self) -> impl Iterator<Item = &str> {
+        self.sites
+            .iter()
+            .filter(|(_, site)| site.enabled)
+            .map(|(site_id, _)| site_id.as_str())
+    }
+
     fn validate(&self) -> anyhow::Result<()> {
         if self.download_path.as_os_str().is_empty() {
             bail!("download path cannot be empty");

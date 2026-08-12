@@ -1045,8 +1045,10 @@ Rules:
   detection; the adapter also accepts the legacy `user_id` cookie.
   Browser integration imports session state into the runtime secret store;
   React receives only AuthStatus and safe challenge metadata.
-- Site methods obtain an internal session handle from runtime context; no
-  site method accepts raw cookies or passwords from a Tauri command.
+- Site methods obtain a site-bound `SiteSession` from runtime context; no
+  site capability accepts a free-standing cookie or password from a Tauri
+  command. The runtime may unwrap the session only at the adapter/transport
+  boundary.
 - For BrowserSession, begin opens or returns the declared login URL,
   complete asks the runtime browser bridge to import the challenge's cookie
   domains, and refresh revalidates the imported session. The site never

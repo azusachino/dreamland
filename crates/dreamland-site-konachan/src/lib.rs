@@ -3,7 +3,7 @@ use dreamland_core::{
     BrowserRoutesCapability, CollectionCapability, ContentPolicy, MediaResolutionCapability,
     MediaVariant, NetworkPolicy, Pool, PoolPage, Post, PostLookupCapability, PostQueryCapability,
     PostQueryRequest, RelatedTagCapability, SiteAdapter, SiteCapabilities, SiteDescriptor,
-    SiteError, SiteErrorCode, SiteFuture, SiteId, SitePage, TagSuggestion, TagSuggestionCapability,
+    SiteError, SiteFuture, SiteId, SitePage, TagSuggestion, TagSuggestionCapability,
     TagSuggestionRequest,
 };
 use serde::Deserialize;
@@ -66,7 +66,7 @@ impl Default for Adapter {
 }
 
 fn adapter_error(error: anyhow::Error) -> SiteError {
-    SiteError::new(SiteErrorCode::NetworkFailed, error.to_string(), true)
+    dreamland_moe::map_error_message(&error.to_string(), SITE_ID)
 }
 
 impl PostQueryCapability for Adapter {

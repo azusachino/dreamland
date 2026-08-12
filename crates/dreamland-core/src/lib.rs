@@ -15,6 +15,42 @@ impl SiteId {
     }
 }
 
+/// Runtime-owned authentication material for one site.
+#[derive(Clone)]
+pub struct SiteSession {
+    site: SiteId,
+    user_id: String,
+    cookie_header: String,
+}
+
+#[derive(Clone)]
+pub struct BrowserCookie {
+    pub name: String,
+    pub value: String,
+}
+
+impl SiteSession {
+    pub fn new(site: SiteId, user_id: String, cookie_header: String) -> Self {
+        Self {
+            site,
+            user_id,
+            cookie_header,
+        }
+    }
+
+    pub fn site(&self) -> &SiteId {
+        &self.site
+    }
+
+    pub fn user_id(&self) -> &str {
+        &self.user_id
+    }
+
+    pub fn cookie_header(&self) -> &str {
+        &self.cookie_header
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PostRef {
     pub site: SiteId,
@@ -172,6 +208,14 @@ impl SiteError {
     }
 }
 
+impl std::fmt::Display for SiteError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{:?}: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for SiteError {}
+
 pub type SiteFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, SiteError>> + Send + 'a>>;
 
 pub trait PostQueryCapability: Send + Sync {
@@ -235,7 +279,7 @@ pub trait RemoteFavoriteCapability: Send + Sync {
         &'a self,
         post_id: &'a str,
         favorite: bool,
-        cookie_header: &'a str,
+        session: &'a SiteSession,
         network: &'a NetworkPolicy,
     ) -> SiteFuture<'a, ()>;
 }
@@ -243,8 +287,7 @@ pub trait RemoteFavoriteCapability: Send + Sync {
 pub trait RemoteFavoriteListCapability: Send + Sync {
     fn list_favorites<'a>(
         &'a self,
-        username: &'a str,
-        cookie_header: &'a str,
+        session: &'a SiteSession,
         content_policy: ContentPolicy,
         page: u32,
         page_size: u16,
@@ -255,10 +298,18 @@ pub trait RemoteFavoriteListCapability: Send + Sync {
 pub trait CurrentUserCapability: Send + Sync {
     fn current_user<'a>(
         &'a self,
-        user_id: &'a str,
-        cookie_header: &'a str,
+        session: &'a SiteSession,
         network: &'a NetworkPolicy,
     ) -> SiteFuture<'a, String>;
+}
+
+pub trait AuthenticationCapability: Send + Sync {
+    fn session_from_cookies(
+        &self,
+        cookies: &[BrowserCookie],
+    ) -> Result<Option<SiteSession>, SiteError>;
+
+    fn login_url(&self) -> Result<String, SiteError>;
 }
 
 pub trait MediaResolutionCapability: Send + Sync {
@@ -296,6 +347,9 @@ pub trait SiteAdapter: Send + Sync {
         None
     }
     fn current_user(&self) -> Option<&dyn CurrentUserCapability> {
+        None
+    }
+    fn authentication(&self) -> Option<&dyn AuthenticationCapability> {
         None
     }
     fn media_resolution(&self) -> &dyn MediaResolutionCapability;

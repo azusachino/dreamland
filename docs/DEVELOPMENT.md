@@ -32,16 +32,18 @@ Or use `make install`, `make doctor`, `make dev`, and `make check` inside
 
 ```text
 React + TypeScript (src/) ── typed Tauri IPC ── commands (src-tauri/src/lib.rs)
-                                                   ├── Yandere adapter crate
+                                                   ├── site registry/composition
                                                    ├── runtime crate
-                                                   └── core crate
+                                                   └── site-neutral core ports
 ```
 
 The frontend calls `load_config`, `save_config`, `query_posts`,
 `continue_query`, `cancel_query`, `suggest_tags`, `enqueue_download`,
 `cancel_download`, `retry_download`, and `list_downloads`. Native filesystem,
 SQLite, and network access stays in Rust. Network settings are applied on the
-next operation without restarting the app.
+next operation without restarting the app. Site enablement is loaded from the
+TOML `[sites.<site-id>]` sections when the runtime builds its registry; the
+composition crate is the only place that registers concrete adapters.
 
 Download queue state is stored in the runtime-owned SQLite database under the
 platform data directory. Temporary `.part` files are written under the

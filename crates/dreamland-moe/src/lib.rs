@@ -489,6 +489,29 @@ pub fn map_http_status(status: reqwest::StatusCode, site_name: &str) -> SiteErro
     }
 }
 
+pub fn map_error_message(message: &str, site_name: &str) -> SiteError {
+    let lower = message.to_ascii_lowercase();
+    let code = if lower.contains("http 401") || lower.contains("http 403") {
+        SiteErrorCode::AuthRequired
+    } else if lower.contains("http 429") {
+        SiteErrorCode::RateLimited
+    } else if lower.contains("decode") || lower.contains("deserialize") {
+        SiteErrorCode::DecodeFailed
+    } else if lower.contains("must ") || lower.contains("invalid") {
+        SiteErrorCode::InvalidRequest
+    } else {
+        SiteErrorCode::NetworkFailed
+    };
+    SiteError::new(
+        code,
+        format!("{site_name} request failed: {message}"),
+        matches!(
+            code,
+            SiteErrorCode::RateLimited | SiteErrorCode::NetworkFailed
+        ),
+    )
+}
+
 async fn get_bytes(
     client: &reqwest::Client,
     endpoint: &str,

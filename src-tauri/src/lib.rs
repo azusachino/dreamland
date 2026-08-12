@@ -4,8 +4,8 @@ use std::process::Command;
 use std::sync::Mutex;
 
 use dreamland_core::{
-    ContentPolicy, MediaVariant, NetworkPolicy, PoolPage, Post, PostQueryRequest, QuerySessionId,
-    SavedQuery, SiteId, SitePage, TagSuggestion, TagSuggestionRequest,
+    BrowserCookie, ContentPolicy, MediaVariant, NetworkPolicy, PoolPage, Post, PostQueryRequest,
+    QuerySessionId, SavedQuery, SiteId, SitePage, SiteSession, TagSuggestion, TagSuggestionRequest,
 };
 use dreamland_runtime::{
     AppConfig, ArchiveRecord, ArchiveRequest, DownloadRecord, DownloadRequest,
@@ -20,7 +20,7 @@ use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowB
 /// the selected site.
 struct RuntimeState {
     posts: Mutex<HashMap<String, Post>>,
-    auth_cookie: Mutex<Option<String>>,
+    auth_session: Mutex<Option<SiteSession>>,
     auth_username: Mutex<Option<String>>,
     sessions: dreamland_runtime::QuerySessionStore,
     downloads: dreamland_runtime::DownloadManager,
@@ -31,18 +31,13 @@ fn post_cache_key(site_id: &str, post_id: &str) -> String {
     format!("{site_id}:{post_id}")
 }
 
-fn parse_yande_user_id(value: &str) -> Option<String> {
-    let id = value.split(';').next()?.trim().parse::<u64>().ok()?;
-    (id > 0).then(|| id.to_string())
-}
-
 impl RuntimeState {
     fn new(config: &AppConfig) -> anyhow::Result<Self> {
-        let registry = dreamland_sites::SiteRegistry::default();
+        let registry = dreamland_sites::SiteRegistry::from_enabled(config.enabled_site_ids());
         registry.validate()?;
         Ok(Self {
             posts: Mutex::new(HashMap::new()),
-            auth_cookie: Mutex::new(None),
+            auth_session: Mutex::new(None),
             auth_username: Mutex::new(None),
             sessions: dreamland_runtime::QuerySessionStore::default(),
             downloads: dreamland_runtime::DownloadManager::open(
@@ -117,6 +112,7 @@ fn save_config(
     let mut config =
         AppConfig::from_user_input(download_path).map_err(|error| error.to_string())?;
     config.images_per_page = current.images_per_page;
+    config.sites = current.sites;
     config.content_policy = content_policy;
     config.download_variant = download_variant;
     config.network = network.clone();
@@ -139,7 +135,11 @@ async fn clear_cache(state: State<'_, RuntimeState>) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
-fn yande_auth_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
+fn yande_auth_window(
+    app: &AppHandle,
+    state: &RuntimeState,
+    visible: bool,
+) -> Result<WebviewWindow, String> {
     if let Some(window) = app.get_webview_window("yande-auth") {
         if visible {
             window.show().map_err(|error| error.to_string())?;
@@ -151,7 +151,10 @@ fn yande_auth_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, St
         app,
         "yande-auth",
         WebviewUrl::External(
-            "https://yande.re/user/login"
+            state
+                .registry
+                .auth_login_url(dreamland_sites::DEFAULT_SITE_ID)
+                .map_err(|error| error.to_string())?
                 .parse()
                 .map_err(|error| format!("invalid login URL: {error}"))?,
         ),
@@ -164,8 +167,8 @@ fn yande_auth_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, St
 }
 
 #[tauri::command]
-fn begin_auth(app: AppHandle) -> Result<(), String> {
-    yande_auth_window(&app, true).map(|_| ())
+fn begin_auth(app: AppHandle, state: State<'_, RuntimeState>) -> Result<(), String> {
+    yande_auth_window(&app, &state, true).map(|_| ())
 }
 
 #[tauri::command]
@@ -281,7 +284,7 @@ fn open_similar_search(
 
 #[tauri::command]
 async fn auth_status(app: AppHandle, state: State<'_, RuntimeState>) -> Result<AuthStatus, String> {
-    let window = yande_auth_window(&app, false)?;
+    let window = yande_auth_window(&app, &state, false)?;
     let cookies = window
         .cookies_for_url(
             "https://yande.re/"
@@ -289,40 +292,33 @@ async fn auth_status(app: AppHandle, state: State<'_, RuntimeState>) -> Result<A
                 .map_err(|error| format!("invalid yandere URL: {error}"))?,
         )
         .map_err(|error| error.to_string())?;
-    let user_id = cookies
+    let browser_cookies = cookies
         .iter()
-        .find(|cookie| cookie.name() == "user_id")
-        .and_then(|cookie| parse_yande_user_id(cookie.value()))
-        .or_else(|| {
-            cookies
-                .iter()
-                .find(|cookie| cookie.name() == "user_info")
-                .and_then(|cookie| parse_yande_user_id(cookie.value()))
-        });
-    let authenticated = user_id.is_some();
-    let cookie_header = cookies
-        .iter()
-        .map(|cookie| format!("{}={}", cookie.name(), cookie.value()))
-        .collect::<Vec<_>>()
-        .join("; ");
-    *state.auth_cookie.lock().expect("auth cookie lock poisoned") =
-        authenticated.then_some(cookie_header);
-    let cookie_for_lookup = state
-        .auth_cookie
+        .map(|cookie| BrowserCookie {
+            name: cookie.name().to_owned(),
+            value: cookie.value().to_owned(),
+        })
+        .collect::<Vec<_>>();
+    let session = state
+        .registry
+        .auth_session(dreamland_sites::DEFAULT_SITE_ID, &browser_cookies)
+        .map_err(|error| error.to_string())?;
+    let authenticated = session.is_some();
+    *state
+        .auth_session
         .lock()
-        .expect("auth cookie lock poisoned")
+        .expect("auth session lock poisoned") = session.clone();
+    let session_for_lookup = state
+        .auth_session
+        .lock()
+        .expect("auth session lock poisoned")
         .clone();
     let username = if authenticated {
-        if let (Some(user_id), Some(cookie_header)) = (user_id, cookie_for_lookup) {
+        if let Some(session) = session_for_lookup {
             let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
             state
                 .registry
-                .current_user(
-                    dreamland_sites::DEFAULT_SITE_ID,
-                    &user_id,
-                    &cookie_header,
-                    &config.network,
-                )
+                .current_user(dreamland_sites::DEFAULT_SITE_ID, &session, &config.network)
                 .await
                 .ok()
         } else {
@@ -343,7 +339,10 @@ async fn auth_status(app: AppHandle, state: State<'_, RuntimeState>) -> Result<A
 
 #[tauri::command]
 fn sign_out(app: AppHandle, state: State<'_, RuntimeState>) -> Result<(), String> {
-    *state.auth_cookie.lock().expect("auth cookie lock poisoned") = None;
+    *state
+        .auth_session
+        .lock()
+        .expect("auth session lock poisoned") = None;
     *state
         .auth_username
         .lock()
@@ -407,10 +406,10 @@ async fn enqueue_pool_zip(
     pool_id: String,
     pool_name: String,
 ) -> Result<ArchiveRecord, String> {
-    let cookie = state
-        .auth_cookie
+    let session = state
+        .auth_session
         .lock()
-        .expect("auth cookie lock poisoned")
+        .expect("auth session lock poisoned")
         .clone()
         .ok_or_else(|| "yandere login is required to download a pool ZIP".to_owned())?;
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
@@ -426,7 +425,7 @@ async fn enqueue_pool_zip(
             pool_name,
             source_url: url,
             download_root: config.download_path,
-            cookie_header: cookie,
+            cookie_header: session.cookie_header().to_owned(),
         })
         .await
         .map_err(|error| error.to_string())
@@ -438,25 +437,18 @@ async fn list_favorites(
     page: u32,
     page_size: u16,
 ) -> Result<SitePage, String> {
-    let cookie = state
-        .auth_cookie
+    let session = state
+        .auth_session
         .lock()
-        .expect("auth cookie lock poisoned")
+        .expect("auth session lock poisoned")
         .clone()
         .ok_or_else(|| "yandere login is required to view favorites".to_owned())?;
-    let username = state
-        .auth_username
-        .lock()
-        .expect("auth username lock poisoned")
-        .clone()
-        .ok_or_else(|| "Refresh yandere login status before viewing favorites".to_owned())?;
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
     let page = state
         .registry
         .list_favorites(
             dreamland_sites::DEFAULT_SITE_ID,
-            &username,
-            &cookie,
+            &session,
             config.content_policy,
             page,
             page_size,
@@ -556,10 +548,10 @@ async fn set_favorite(
     post_id: String,
     favorite: bool,
 ) -> Result<(), String> {
-    let cookie = state
-        .auth_cookie
+    let session = state
+        .auth_session
         .lock()
-        .expect("auth cookie lock poisoned")
+        .expect("auth session lock poisoned")
         .clone()
         .ok_or_else(|| "yandere login is required to change favorites".to_owned())?;
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
@@ -569,7 +561,7 @@ async fn set_favorite(
             dreamland_sites::DEFAULT_SITE_ID,
             &post_id,
             favorite,
-            &cookie,
+            &session,
             &config.network,
         )
         .await
@@ -961,20 +953,4 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Dreamland");
-}
-
-#[cfg(test)]
-mod tests {
-    use super::parse_yande_user_id;
-
-    #[test]
-    fn parses_current_yande_user_info_cookie() {
-        assert_eq!(parse_yande_user_id("12345;20;1"), Some("12345".to_owned()));
-    }
-
-    #[test]
-    fn rejects_empty_and_anonymous_user_info() {
-        assert_eq!(parse_yande_user_id(""), None);
-        assert_eq!(parse_yande_user_id("0;0;0"), None);
-    }
 }

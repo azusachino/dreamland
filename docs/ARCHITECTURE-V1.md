@@ -135,9 +135,10 @@ Anonymous → ChallengeStarted → BrowserComplete → Authenticated
 ```
 
 React receives only safe auth status and challenge metadata. The browser bridge
-imports declared cookie domains into the secret/session boundary. Favorite,
-favorite-list, and pool-ZIP operations ask the runtime for an internal session
-handle and never receive raw cookie material.
+imports declared cookie domains into the runtime-owned `SiteSession`. Favorite,
+favorite-list, and pool-ZIP operations pass that site-bound session through the
+capability ports; raw cookie material remains inside the runtime and download
+worker boundary.
 
 ## Feature-to-flow bindings
 

@@ -1,9 +1,10 @@
 use anyhow::{anyhow, bail, Result};
 use dreamland_core::{
-    ContentPolicy, MediaVariant, NetworkPolicy, PoolPage, Post, PostQueryRequest, RelatedTag,
-    RelatedTagRequest, SiteAdapter, SiteError, SiteErrorCode, SitePage, TagSuggestion,
-    TagSuggestionRequest,
+    BrowserCookie, ContentPolicy, MediaVariant, NetworkPolicy, PoolPage, Post, PostQueryRequest,
+    RelatedTag, RelatedTagRequest, SiteAdapter, SiteError, SiteErrorCode, SitePage, SiteSession,
+    TagSuggestion, TagSuggestionRequest,
 };
+use std::collections::BTreeSet;
 
 pub use dreamland_core::SiteDescriptor;
 
@@ -16,11 +17,30 @@ pub struct SiteRegistry {
 
 impl Default for SiteRegistry {
     fn default() -> Self {
+        Self::from_enabled([
+            dreamland_site_yandere::SITE_ID,
+            dreamland_site_konachan::SITE_ID,
+        ])
+    }
+}
+
+impl SiteRegistry {
+    pub fn from_enabled<'a>(enabled: impl IntoIterator<Item = &'a str>) -> Self {
+        let enabled: BTreeSet<&str> = enabled.into_iter().collect();
         Self {
-            active: vec![
-                Box::new(dreamland_site_yandere::Adapter::default()),
-                Box::new(dreamland_site_konachan::Adapter::default()),
-            ],
+            active: [
+                (
+                    dreamland_site_yandere::SITE_ID,
+                    Box::new(dreamland_site_yandere::Adapter::default()) as Box<dyn SiteAdapter>,
+                ),
+                (
+                    dreamland_site_konachan::SITE_ID,
+                    Box::new(dreamland_site_konachan::Adapter::default()) as Box<dyn SiteAdapter>,
+                ),
+            ]
+            .into_iter()
+            .filter_map(|(site_id, adapter)| enabled.contains(site_id).then_some(adapter))
+            .collect(),
             skeletons: vec![
                 dreamland_site_pixiv::descriptor(),
                 dreamland_site_twitter::descriptor(),
@@ -81,6 +101,27 @@ impl SiteRegistry {
                 bail!(
                     "site '{}' authentication descriptor does not match its adapter port",
                     descriptor.id.as_str()
+                );
+            }
+            if descriptor.capabilities.authentication != adapter.authentication().is_some() {
+                bail!(
+                    "site '{}' authentication descriptor does not match its auth port",
+                    descriptor.id.as_str()
+                );
+            }
+        }
+        let mut ids = BTreeSet::new();
+        for adapter in &self.active {
+            let id = adapter.descriptor().id.as_str();
+            if !ids.insert(id) {
+                bail!("duplicate active site id: {id}");
+            }
+        }
+        for skeleton in &self.skeletons {
+            if !ids.insert(skeleton.id.as_str()) {
+                bail!(
+                    "active and skeleton site ids collide: {}",
+                    skeleton.id.as_str()
                 );
             }
         }
@@ -231,15 +272,16 @@ impl SiteRegistry {
         site_id: &str,
         post_id: &str,
         favorite: bool,
-        cookie_header: &str,
+        session: &SiteSession,
         network: &NetworkPolicy,
     ) -> Result<()> {
+        ensure_session_site(site_id, session)?;
         let capability = self
             .site(site_id)?
             .remote_favorites()
             .ok_or_else(|| unsupported(site_id, "remote favorites"))?;
         capability
-            .set_favorite(post_id, favorite, cookie_header, network)
+            .set_favorite(post_id, favorite, session, network)
             .await
             .map_err(site_error)
     }
@@ -247,16 +289,16 @@ impl SiteRegistry {
     pub async fn current_user(
         &self,
         site_id: &str,
-        user_id: &str,
-        cookie_header: &str,
+        session: &SiteSession,
         network: &NetworkPolicy,
     ) -> Result<String> {
+        ensure_session_site(site_id, session)?;
         let capability = self
             .site(site_id)?
             .current_user()
             .ok_or_else(|| unsupported(site_id, "current-user lookup"))?;
         capability
-            .current_user(user_id, cookie_header, network)
+            .current_user(session, network)
             .await
             .map_err(site_error)
     }
@@ -264,27 +306,40 @@ impl SiteRegistry {
     pub async fn list_favorites(
         &self,
         site_id: &str,
-        username: &str,
-        cookie_header: &str,
+        session: &SiteSession,
         content_policy: ContentPolicy,
         page: u32,
         page_size: u16,
         network: &NetworkPolicy,
     ) -> Result<SitePage> {
+        ensure_session_site(site_id, session)?;
         let capability = self
             .site(site_id)?
             .remote_favorite_list()
             .ok_or_else(|| unsupported(site_id, "remote favorite list"))?;
         capability
-            .list_favorites(
-                username,
-                cookie_header,
-                content_policy,
-                page,
-                page_size,
-                network,
-            )
+            .list_favorites(session, content_policy, page, page_size, network)
             .await
+            .map_err(site_error)
+    }
+
+    pub fn auth_session(
+        &self,
+        site_id: &str,
+        cookies: &[BrowserCookie],
+    ) -> Result<Option<SiteSession>> {
+        self.site(site_id)?
+            .authentication()
+            .ok_or_else(|| unsupported(site_id, "authentication"))?
+            .session_from_cookies(cookies)
+            .map_err(site_error)
+    }
+
+    pub fn auth_login_url(&self, site_id: &str) -> Result<String> {
+        self.site(site_id)?
+            .authentication()
+            .ok_or_else(|| unsupported(site_id, "authentication"))?
+            .login_url()
             .map_err(site_error)
     }
 
@@ -323,24 +378,34 @@ impl SiteRegistry {
 }
 
 fn unsupported(site_id: &str, capability: &str) -> anyhow::Error {
-    anyhow!("site '{site_id}' does not support {capability}")
+    anyhow::Error::new(SiteError::new(
+        SiteErrorCode::UnsupportedCapability,
+        format!("site '{site_id}' does not support {capability}"),
+        false,
+    ))
+}
+
+fn ensure_session_site(site_id: &str, session: &SiteSession) -> Result<()> {
+    if session.site().as_str() != site_id {
+        return Err(anyhow::Error::new(SiteError::new(
+            SiteErrorCode::InvalidRequest,
+            format!(
+                "session belongs to '{}' but was used for '{site_id}'",
+                session.site().as_str()
+            ),
+            false,
+        )));
+    }
+    Ok(())
 }
 
 fn site_error(error: SiteError) -> anyhow::Error {
-    let code = match error.code {
-        SiteErrorCode::InvalidRequest => "invalid_request",
-        SiteErrorCode::UnsupportedCapability => "unsupported_capability",
-        SiteErrorCode::DecodeFailed => "decode_failed",
-        SiteErrorCode::RateLimited => "rate_limited",
-        SiteErrorCode::AuthRequired => "auth_required",
-        SiteErrorCode::NetworkFailed => "network_failed",
-    };
-    anyhow!("{code}: {}", error.message)
+    anyhow::Error::new(error)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::SiteRegistry;
+    use super::{SiteError, SiteErrorCode, SiteRegistry};
 
     #[test]
     fn registry_contains_only_real_active_adapters() {
@@ -369,5 +434,26 @@ mod tests {
         assert!(konachan.post_lookup().is_some());
         assert!(konachan.remote_favorites().is_none());
         assert!(konachan.collection_download().is_none());
+    }
+
+    #[test]
+    fn registry_applies_toml_site_enablement() {
+        let registry = SiteRegistry::from_enabled([dreamland_site_yandere::SITE_ID]);
+        registry.validate().unwrap();
+        assert_eq!(registry.descriptors().len(), 1);
+        assert!(registry.is_active_browse_site("yandere"));
+        assert!(!registry.is_active_browse_site("konachan"));
+    }
+
+    #[test]
+    fn unsupported_capability_keeps_canonical_error_code() {
+        let error = super::unsupported("konachan", "favorites");
+        assert_eq!(
+            error
+                .downcast_ref::<SiteError>()
+                .expect("registry should retain SiteError")
+                .code,
+            SiteErrorCode::UnsupportedCapability
+        );
     }
 }

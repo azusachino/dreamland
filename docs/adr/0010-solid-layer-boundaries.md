@@ -7,9 +7,9 @@
 
 Dreamland has four relevant boundaries: site-neutral core contracts, the
 site composition crate, runtime application services, and concrete site
-implementations. The API v1 documents describe capability traits, but the
-0.1.0 implementation still uses a small function-based switchboard while the
-first real adapters are being proven.
+implementations. The API v1 documents describe capability traits, and the
+0.1.1 implementation now applies TOML site enablement through the registry and
+uses a site-bound `SiteSession` for authenticated capability calls.
 
 The 0.1.1 release must describe this accurately. A clean crate split is not
 the same thing as complete SOLID conformance, so the provisional switchboard
