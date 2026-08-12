@@ -7,6 +7,7 @@ members = [
   "crates/dreamland-site-twitter",
   "crates/dreamland-site-konachan",
   "crates/dreamland-site-yandere",
+  "crates/dreamland-state",
   "crates/dreamland-runtime",
   "src-tauri",
 ]
@@ -16,7 +17,7 @@ resolver = "2"
 authors = ["azusachino"]
 edition = "2021"
 repository = "https://github.com/azusachino/dreamland"
-version = "0.1.0"
+version = "0.1.1"
 
 [workspace.dependencies]
 anyhow = "1"

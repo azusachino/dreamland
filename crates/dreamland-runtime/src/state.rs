@@ -112,144 +112,23 @@ impl DownloadCancellation {
 }
 
 #[derive(Clone)]
-pub struct LocalStateStore {
-    path: Arc<PathBuf>,
+pub struct StateStore {
+    repository: dreamland_state::SqliteStateRepository,
 }
 
-impl LocalStateStore {
+impl StateStore {
     pub fn open(path: impl Into<PathBuf>) -> Result<Self> {
-        let path = path.into();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let store = Self {
-            path: Arc::new(path),
-        };
-        store.migrate()?;
-        Ok(store)
+        Ok(Self {
+            repository: dreamland_state::SqliteStateRepository::open(path)?,
+        })
     }
 
     pub fn path(&self) -> &Path {
-        self.path.as_ref()
+        self.repository.path()
     }
 
     fn connection(&self) -> Result<Connection> {
-        let connection = Connection::open(self.path())?;
-        connection.busy_timeout(std::time::Duration::from_secs(5))?;
-        Ok(connection)
-    }
-
-    fn migrate(&self) -> Result<()> {
-        let connection = self.connection()?;
-        let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        if version < 1 {
-            connection.execute_batch(
-                "
-                CREATE TABLE IF NOT EXISTS download_queue (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    site_id TEXT NOT NULL,
-                    post_id TEXT NOT NULL,
-                    variant TEXT NOT NULL,
-                    source_url TEXT NOT NULL,
-                    download_root TEXT NOT NULL,
-                    metadata_json TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    target_path TEXT,
-                    error TEXT,
-                    attempts INTEGER NOT NULL DEFAULT 0,
-                    bytes_downloaded INTEGER NOT NULL DEFAULT 0,
-                    total_bytes INTEGER,
-                    created_at_ms INTEGER NOT NULL,
-                    updated_at_ms INTEGER NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS download_history (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    site_id TEXT NOT NULL,
-                    post_id TEXT NOT NULL,
-                    variant TEXT NOT NULL,
-                    source_url TEXT NOT NULL,
-                    download_root TEXT NOT NULL,
-                    metadata_json TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    target_path TEXT,
-                    error TEXT,
-                    attempts INTEGER NOT NULL,
-                    bytes_downloaded INTEGER NOT NULL,
-                    total_bytes INTEGER,
-                    created_at_ms INTEGER NOT NULL,
-                    updated_at_ms INTEGER NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_download_queue_order
-                    ON download_queue (created_at_ms, id);
-                CREATE INDEX IF NOT EXISTS idx_download_history_updated
-                    ON download_history (updated_at_ms DESC);
-                PRAGMA user_version = 1;
-                ",
-            )?;
-        }
-        if version < 2 {
-            connection.execute_batch(
-                "
-                CREATE TABLE IF NOT EXISTS saved_queries (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    site_id TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    query_json TEXT NOT NULL,
-                    pinned INTEGER NOT NULL DEFAULT 0,
-                    position INTEGER NOT NULL DEFAULT 0,
-                    created_at_ms INTEGER NOT NULL,
-                    updated_at_ms INTEGER NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_saved_queries_order
-                    ON saved_queries (pinned DESC, position ASC, updated_at_ms DESC);
-                PRAGMA user_version = 2;
-                ",
-            )?;
-        }
-        if version < 3 {
-            connection.execute_batch(
-                "
-                CREATE TABLE IF NOT EXISTS archive_queue (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    site_id TEXT NOT NULL,
-                    pool_id TEXT NOT NULL,
-                    pool_name TEXT NOT NULL,
-                    source_url TEXT NOT NULL,
-                    download_root TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    target_path TEXT,
-                    error TEXT,
-                    attempts INTEGER NOT NULL DEFAULT 0,
-                    bytes_downloaded INTEGER NOT NULL DEFAULT 0,
-                    total_bytes INTEGER,
-                    created_at_ms INTEGER NOT NULL,
-                    updated_at_ms INTEGER NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS archive_history (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    site_id TEXT NOT NULL,
-                    pool_id TEXT NOT NULL,
-                    pool_name TEXT NOT NULL,
-                    source_url TEXT NOT NULL,
-                    download_root TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    target_path TEXT,
-                    error TEXT,
-                    attempts INTEGER NOT NULL,
-                    bytes_downloaded INTEGER NOT NULL,
-                    total_bytes INTEGER,
-                    created_at_ms INTEGER NOT NULL,
-                    updated_at_ms INTEGER NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_archive_queue_order
-                    ON archive_queue (created_at_ms, id);
-                CREATE INDEX IF NOT EXISTS idx_archive_history_updated
-                    ON archive_history (updated_at_ms DESC);
-                PRAGMA user_version = 3;
-                ",
-            )?;
-        }
-        Ok(())
+        Ok(self.repository.connection()?)
     }
 
     pub fn enqueue(&self, request: DownloadRequest) -> Result<DownloadRecord> {
@@ -497,7 +376,6 @@ impl LocalStateStore {
         let rows = statement.query_map(params![site.as_str()], decode_saved_query)?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .context("decode saved queries")
-            .map_err(Into::into)
     }
 
     pub fn save_saved_query(&self, site: &SiteId, mut saved: SavedQuery) -> Result<SavedQuery> {
@@ -791,7 +669,6 @@ impl LocalStateStore {
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .context("decode local download records")
-            .map_err(Into::into)
     }
 }
 
@@ -804,7 +681,7 @@ pub(crate) struct StoredDownload {
 
 #[derive(Clone)]
 pub struct DownloadManager {
-    store: LocalStateStore,
+    store: StateStore,
     cache_root: Arc<PathBuf>,
     detail_cache_root: Arc<RwLock<Option<PathBuf>>>,
     network: Arc<RwLock<NetworkPolicy>>,
@@ -819,7 +696,7 @@ impl DownloadManager {
         cache_root: impl Into<PathBuf>,
         network: NetworkPolicy,
     ) -> Result<Self> {
-        let store = LocalStateStore::open(state_path)?;
+        let store = StateStore::open(state_path)?;
         store.recover_running()?;
         store.recover_running_archives()?;
         Ok(Self {
@@ -855,6 +732,35 @@ impl DownloadManager {
             .detail_cache_root
             .write()
             .expect("detail cache lock poisoned") = Some(path.into());
+    }
+
+    pub async fn clear_cache(&self) -> Result<()> {
+        if !self
+            .active
+            .lock()
+            .expect("download active lock poisoned")
+            .is_empty()
+        {
+            bail!("cannot clear cache while downloads are active");
+        }
+        let download_cache = self.cache_root.as_ref().clone();
+        let detail_cache = self
+            .detail_cache_root
+            .read()
+            .expect("detail cache lock poisoned")
+            .clone()
+            .unwrap_or_else(crate::default_detail_cache_path);
+        let detail_staging = detail_cache.with_file_name("detail-staging");
+        tokio::task::spawn_blocking(move || {
+            for path in [download_cache, detail_cache, detail_staging] {
+                if path.exists() {
+                    std::fs::remove_dir_all(path)?;
+                }
+            }
+            Ok::<_, std::io::Error>(())
+        })
+        .await??;
+        Ok(())
     }
 
     pub async fn enqueue(&self, request: DownloadRequest) -> Result<DownloadRecord> {
@@ -1413,9 +1319,9 @@ mod tests {
     }
 
     #[test]
-    fn migrations_create_queue_and_history() {
+    fn schema_creates_queue_and_history() {
         let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
-        let store = LocalStateStore::open(&path).unwrap();
+        let store = StateStore::open(&path).unwrap();
         let request = test_request(&std::env::temp_dir());
         let record = store.enqueue(request).unwrap();
         assert_eq!(record.status, DownloadStatus::Queued);
@@ -1428,7 +1334,7 @@ mod tests {
     fn saved_queries_round_trip_and_delete() {
         let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
         let yandere = SiteId::new("yandere");
-        let store = LocalStateStore::open(&path).unwrap();
+        let store = StateStore::open(&path).unwrap();
         let saved = store
             .save_saved_query(
                 &yandere,
@@ -1476,7 +1382,7 @@ mod tests {
             updated_at_ms: 0,
         };
         let saved = {
-            let store = LocalStateStore::open(&path).unwrap();
+            let store = StateStore::open(&path).unwrap();
             let saved = store.save_saved_query(&yandere, saved).unwrap();
             store
                 .save_saved_query(
@@ -1494,7 +1400,7 @@ mod tests {
                 .unwrap();
             saved
         };
-        let reopened = LocalStateStore::open(&path).unwrap();
+        let reopened = StateStore::open(&path).unwrap();
         assert_eq!(
             reopened.saved_queries(&yandere).unwrap(),
             vec![saved.clone()]
@@ -1520,7 +1426,7 @@ mod tests {
     fn saved_queries_move_within_their_pin_group() {
         let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
         let yandere = SiteId::new("yandere");
-        let store = LocalStateStore::open(&path).unwrap();
+        let store = StateStore::open(&path).unwrap();
         let mut ids = Vec::new();
         for (name, pinned, position) in [
             ("one", false, 0),
@@ -1584,7 +1490,7 @@ mod tests {
     #[test]
     fn archive_queue_round_trip_and_restart_recovery() {
         let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
-        let store = LocalStateStore::open(&path).unwrap();
+        let store = StateStore::open(&path).unwrap();
         let request = ArchiveRequest {
             site: SiteId::new("yandere"),
             pool_id: "42".to_owned(),
@@ -1619,7 +1525,7 @@ mod tests {
     #[test]
     fn running_items_are_requeued_after_restart() {
         let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
-        let store = LocalStateStore::open(&path).unwrap();
+        let store = StateStore::open(&path).unwrap();
         store.enqueue(test_request(&std::env::temp_dir())).unwrap();
         let job = store.claim_next().unwrap().unwrap();
         assert_eq!(job.record.status, DownloadStatus::Running);
@@ -1628,10 +1534,41 @@ mod tests {
         std::fs::remove_file(path).unwrap();
     }
 
+    #[tokio::test]
+    async fn clear_cache_keeps_user_library_and_state() {
+        let root = std::env::temp_dir().join(format!("dreamland-cache-{}", uuid::Uuid::new_v4()));
+        let state_path = root.join("state.sqlite3");
+        let download_cache = root.join("downloads");
+        let detail_cache = root.join("detail");
+        let detail_staging = root.join("detail-staging");
+        let library = root.join("library");
+        std::fs::create_dir_all(&download_cache).unwrap();
+        std::fs::create_dir_all(&detail_cache).unwrap();
+        std::fs::create_dir_all(&detail_staging).unwrap();
+        std::fs::create_dir_all(&library).unwrap();
+        std::fs::write(download_cache.join("staged.part"), b"temporary").unwrap();
+        std::fs::write(detail_cache.join("preview.jpg"), b"temporary").unwrap();
+        std::fs::write(detail_staging.join("staged.part"), b"temporary").unwrap();
+        std::fs::write(library.join("keep.jpg"), b"download").unwrap();
+
+        let manager =
+            DownloadManager::open(&state_path, &download_cache, NetworkPolicy::default()).unwrap();
+        manager.set_detail_cache_root(&detail_cache);
+        manager.clear_cache().await.unwrap();
+
+        assert!(!download_cache.exists());
+        assert!(!detail_cache.exists());
+        assert!(!detail_staging.exists());
+        assert!(library.join("keep.jpg").exists());
+        assert!(state_path.exists());
+        drop(manager);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn queued_cancel_is_terminal_history_without_overwrite() {
         let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
-        let store = LocalStateStore::open(&path).unwrap();
+        let store = StateStore::open(&path).unwrap();
         let record = store.enqueue(test_request(&std::env::temp_dir())).unwrap();
         let cancelled = store.cancel_queued(&record.id).unwrap();
         assert_eq!(cancelled.status, DownloadStatus::Cancelled);
@@ -1646,7 +1583,7 @@ mod tests {
     #[test]
     fn history_page_supports_loading_older_records() {
         let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
-        let store = LocalStateStore::open(&path).unwrap();
+        let store = StateStore::open(&path).unwrap();
         let first = store.enqueue(test_request(&std::env::temp_dir())).unwrap();
         let second = store.enqueue(test_request(&std::env::temp_dir())).unwrap();
         store.cancel_queued(&first.id).unwrap();

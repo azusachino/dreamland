@@ -356,10 +356,9 @@ pub async fn query_posts_with_cookie(
     })
 }
 
-pub fn request_parts(
-    api_url: &str,
-    request: &PostQueryRequest,
-) -> Result<(String, Vec<(&'static str, String)>, u16, bool)> {
+pub type RequestParts = (String, Vec<(&'static str, String)>, u16, bool);
+
+pub fn request_parts(api_url: &str, request: &PostQueryRequest) -> Result<RequestParts> {
     let (page, page_size) = match request.pagination {
         PaginationRequest::First { page_size } => (1, page_size),
         PaginationRequest::Page { number, page_size } => (number, page_size),
@@ -489,6 +488,29 @@ pub fn map_http_status(status: reqwest::StatusCode, site_name: &str) -> SiteErro
     }
 }
 
+pub fn map_error_message(message: &str, site_name: &str) -> SiteError {
+    let lower = message.to_ascii_lowercase();
+    let code = if lower.contains("http 401") || lower.contains("http 403") {
+        SiteErrorCode::AuthRequired
+    } else if lower.contains("http 429") {
+        SiteErrorCode::RateLimited
+    } else if lower.contains("decode") || lower.contains("deserialize") {
+        SiteErrorCode::DecodeFailed
+    } else if lower.contains("must ") || lower.contains("invalid") {
+        SiteErrorCode::InvalidRequest
+    } else {
+        SiteErrorCode::NetworkFailed
+    };
+    SiteError::new(
+        code,
+        format!("{site_name} request failed: {message}"),
+        matches!(
+            code,
+            SiteErrorCode::RateLimited | SiteErrorCode::NetworkFailed
+        ),
+    )
+}
+
 async fn get_bytes(
     client: &reqwest::Client,
     endpoint: &str,
@@ -506,7 +528,7 @@ async fn get_bytes(
         let status = response.status();
         if retry >= network.max_retries || !matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504) {
             let error = map_http_status(status, site_name);
-            bail!("{}", error.message);
+            return Err(anyhow::Error::new(error));
         }
         let delay_ms = response
             .headers()
@@ -707,7 +729,10 @@ pub async fn set_favorite(
     if response.status().is_success() {
         Ok(())
     } else {
-        bail!("{}", map_http_status(response.status(), site_name).message)
+        Err(anyhow::Error::new(map_http_status(
+            response.status(),
+            site_name,
+        )))
     }
 }
 
@@ -727,7 +752,7 @@ fn csrf_token_from_html(body: &[u8]) -> Option<String> {
 
 fn html_attribute(tag: &str, name: &str) -> Option<String> {
     let rest = tag;
-    while let Some(start) = rest.find(name) {
+    if let Some(start) = rest.find(name) {
         let after_name = &rest[start + name.len()..];
         let after_equals = after_name.trim_start().strip_prefix('=')?.trim_start();
         let quote = after_equals.chars().next()?;
@@ -736,9 +761,10 @@ fn html_attribute(tag: &str, name: &str) -> Option<String> {
         }
         let value = &after_equals[quote.len_utf8()..];
         let end = value.find(quote)?;
-        return Some(value[..end].to_owned());
+        Some(value[..end].to_owned())
+    } else {
+        None
     }
-    None
 }
 
 pub async fn fetch_images(url: &str, page: usize, site_id: &str) -> Result<Vec<Post>> {

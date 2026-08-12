@@ -24,6 +24,7 @@ import {
   authStatus,
   beginAuth,
   cancelArchive,
+  clearCache,
   cancelQuery,
   continueQuery,
   detectProxy,
@@ -647,6 +648,10 @@ function App() {
       showToast("settings saved", "your preferences are now active.");
     },
     onError: (reason) => setError(`failed to save settings: ${errorMessage(reason)}`),
+  });
+  const clearCacheMutation = useMutation({
+    mutationFn: clearCache,
+    onSuccess: () => showToast("local cache cleared", "temporary files and detail previews were removed."),
   });
   const downloadMutation = useMutation({
     mutationFn: ({ siteId, postId, variant }: DownloadInput) => enqueueDownload(siteId, postId, variant),
@@ -1454,6 +1459,7 @@ function App() {
           onCancel={() => setSettingsOpen(false)}
           onSave={handleSaveConfig}
           onDetectProxy={detectProxy}
+          onClearCache={() => clearCacheMutation.mutateAsync()}
           formatError={errorMessage}
         />
       )}

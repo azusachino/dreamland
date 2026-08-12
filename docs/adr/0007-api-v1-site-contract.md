@@ -1,7 +1,7 @@
 # ADR 0007: API v1 site contract
 
-- Status: Proposed research hypothesis
-- Date: 2026-08-10
+- Status: Accepted; initial ports implemented in 0.1.1
+- Date: 2026-08-12
 
 ## Context
 
@@ -19,7 +19,7 @@ forcing sites to implement fake methods. It must also keep saved-query
 definitions, caching, and download queue state separate from remote site
 models. A remote favorite is not a local bookmark.
 
-## Proposal under review
+## Decision
 
 The current proposal is one required post-query capability and several
 optional capabilities. This list is reconciled with
@@ -47,10 +47,12 @@ them:
   (ZIP) download target.
 
 The base `SiteAdapter` owns identity and exposes the required and optional
-capability trait objects. The registry validates that descriptor capability
-flags agree with those accessors. All remote calls receive cancellation and a
-runtime operation ID. The runtime owns stale-result suppression, local
-filtering, downloads, and stable application errors.
+object-safe capability ports. `SiteRegistry` validates that descriptor
+capability flags agree with those accessors. Current remote calls receive the
+validated network policy; runtime session cancellation and operation IDs stay
+above the adapter port until the operation-context hook is wired through.
+The runtime owns stale-result suppression, local filtering, downloads, and
+stable application errors.
 
 Normalized posts use `(site_id, post_id)` identity, optional metadata, an
 explicit content-rating mapping, algorithm-labelled checksums, and stable
@@ -59,10 +61,11 @@ the v1 download model. Frontend commands accept references and variant kinds,
 never site JSON, URLs, or filesystem paths.
 
 Cursor pagination, tag mutation, and site-specific download-resolution
-traits remain deferred until a concrete site and product flow require
-them. Yande’s authenticated favorite mutation is now part of the first
-site profile, but this ADR remains a proposed hypothesis pending the
-site-wide matrix review.
+extensions remain deferred until a concrete site and product flow require
+them. Yande’s authenticated favorite mutation is part of the first site
+profile. New capabilities must be added as separate ports and registered
+through `SiteRegistry`; they must not become shared optional methods with
+fake implementations.
 
 ## Potential consequences
 

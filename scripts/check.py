@@ -30,6 +30,17 @@ def main() -> int:
         "--",
         "--check",
     )
+    run(
+        "Rust lint",
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--all-features",
+        "--",
+        "-D",
+        "warnings",
+    )
 
     if platform.system() == "Linux":
         print("==> native Rust tests (skipped: Linux is unsupported)")

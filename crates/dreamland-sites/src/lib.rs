@@ -1,333 +1,459 @@
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use dreamland_core::{
-    ContentPolicy, MediaVariant, NetworkPolicy, PoolPage, Post, PostQueryRequest, RelatedTag,
-    RelatedTagRequest, SitePage, TagSuggestion, TagSuggestionRequest,
+    BrowserCookie, ContentPolicy, MediaVariant, NetworkPolicy, PoolPage, Post, PostQueryRequest,
+    RelatedTag, RelatedTagRequest, SiteAdapter, SiteError, SiteErrorCode, SitePage, SiteSession,
+    TagSuggestion, TagSuggestionRequest,
 };
+use std::collections::BTreeSet;
 
 pub use dreamland_core::SiteDescriptor;
 
 pub const DEFAULT_SITE_ID: &str = dreamland_site_yandere::SITE_ID;
 
-pub async fn query_posts(
-    site_id: &str,
-    request: &PostQueryRequest,
-    network: &NetworkPolicy,
-) -> Result<SitePage> {
-    match site_id {
-        dreamland_site_yandere::SITE_ID => {
-            let config = dreamland_site_yandere::default_config();
-            dreamland_site_yandere::query_posts(&config.api_url, request, network).await
-        }
-        dreamland_site_konachan::SITE_ID => {
-            let config = dreamland_site_konachan::default_config();
-            dreamland_site_konachan::query_posts(&config.api_url, request, network).await
-        }
-        _ => bail!("site '{site_id}' has no active post query adapter"),
+pub struct SiteRegistry {
+    active: Vec<Box<dyn SiteAdapter>>,
+    skeletons: Vec<SiteDescriptor>,
+}
+
+impl Default for SiteRegistry {
+    fn default() -> Self {
+        Self::from_enabled([
+            dreamland_site_yandere::SITE_ID,
+            dreamland_site_konachan::SITE_ID,
+        ])
     }
 }
 
-pub async fn lookup_post(
-    site_id: &str,
-    post_id: &str,
-    content_policy: ContentPolicy,
-    network: &NetworkPolicy,
-) -> Result<Post> {
-    match site_id {
-        dreamland_site_konachan::SITE_ID => {
-            let config = dreamland_site_konachan::default_config();
-            dreamland_site_konachan::lookup_post(&config.api_url, post_id, content_policy, network)
-                .await
+impl SiteRegistry {
+    pub fn from_enabled<'a>(enabled: impl IntoIterator<Item = &'a str>) -> Self {
+        let enabled: BTreeSet<&str> = enabled.into_iter().collect();
+        Self {
+            active: [
+                (
+                    dreamland_site_yandere::SITE_ID,
+                    Box::new(dreamland_site_yandere::Adapter::default()) as Box<dyn SiteAdapter>,
+                ),
+                (
+                    dreamland_site_konachan::SITE_ID,
+                    Box::new(dreamland_site_konachan::Adapter::default()) as Box<dyn SiteAdapter>,
+                ),
+            ]
+            .into_iter()
+            .filter_map(|(site_id, adapter)| enabled.contains(site_id).then_some(adapter))
+            .collect(),
+            skeletons: vec![
+                dreamland_site_pixiv::descriptor(),
+                dreamland_site_twitter::descriptor(),
+            ],
         }
-        _ => bail!("site '{site_id}' has no active post lookup adapter"),
     }
 }
 
-pub async fn suggest_tags(
-    site_id: &str,
-    request: &TagSuggestionRequest,
-    network: &NetworkPolicy,
-) -> Result<Vec<TagSuggestion>> {
-    match site_id {
-        dreamland_site_yandere::SITE_ID => {
-            let config = dreamland_site_yandere::default_config();
-            let endpoint = dreamland_site_yandere::tag_endpoint(&config.api_url)?;
-            dreamland_site_yandere::fetch_tag_suggestions(&endpoint, request, network).await
+impl SiteRegistry {
+    pub fn validate(&self) -> Result<()> {
+        for adapter in &self.active {
+            let descriptor = adapter.descriptor();
+            if !descriptor.capabilities.browse {
+                bail!(
+                    "active site '{}' must support browse",
+                    descriptor.id.as_str()
+                );
+            }
+            if descriptor.capabilities.post_lookup != adapter.post_lookup().is_some() {
+                bail!(
+                    "site '{}' post_lookup descriptor does not match its adapter port",
+                    descriptor.id.as_str()
+                );
+            }
+            if descriptor.capabilities.related_tags != adapter.related_tags().is_some() {
+                bail!(
+                    "site '{}' related_tags descriptor does not match its adapter port",
+                    descriptor.id.as_str()
+                );
+            }
+            if descriptor.capabilities.collections != adapter.collections().is_some() {
+                bail!(
+                    "site '{}' collections descriptor does not match its adapter port",
+                    descriptor.id.as_str()
+                );
+            }
+            if descriptor.capabilities.collection_downloads
+                != adapter.collection_download().is_some()
+            {
+                bail!(
+                    "site '{}' collection_downloads descriptor does not match its adapter port",
+                    descriptor.id.as_str()
+                );
+            }
+            if descriptor.capabilities.remote_favorites != adapter.remote_favorites().is_some() {
+                bail!(
+                    "site '{}' remote_favorites descriptor does not match its adapter port",
+                    descriptor.id.as_str()
+                );
+            }
+            if descriptor.capabilities.favorite_list != adapter.remote_favorite_list().is_some() {
+                bail!(
+                    "site '{}' favorite_list descriptor does not match its adapter port",
+                    descriptor.id.as_str()
+                );
+            }
+            if descriptor.capabilities.authentication != adapter.current_user().is_some() {
+                bail!(
+                    "site '{}' authentication descriptor does not match its adapter port",
+                    descriptor.id.as_str()
+                );
+            }
+            if descriptor.capabilities.authentication != adapter.authentication().is_some() {
+                bail!(
+                    "site '{}' authentication descriptor does not match its auth port",
+                    descriptor.id.as_str()
+                );
+            }
         }
-        dreamland_site_konachan::SITE_ID => {
-            let config = dreamland_site_konachan::default_config();
-            let endpoint = dreamland_site_konachan::tag_endpoint(&config.api_url)?;
-            dreamland_site_konachan::fetch_tag_suggestions(&endpoint, request, network).await
+        let mut ids = BTreeSet::new();
+        for adapter in &self.active {
+            let id = adapter.descriptor().id.as_str();
+            if !ids.insert(id) {
+                bail!("duplicate active site id: {id}");
+            }
         }
-        _ => bail!("site '{site_id}' has no active tag suggestion adapter"),
+        for skeleton in &self.skeletons {
+            if !ids.insert(skeleton.id.as_str()) {
+                bail!(
+                    "active and skeleton site ids collide: {}",
+                    skeleton.id.as_str()
+                );
+            }
+        }
+        Ok(())
     }
-}
 
-pub async fn related_tags(
-    site_id: &str,
-    request: &RelatedTagRequest,
-    network: &NetworkPolicy,
-) -> Result<Vec<RelatedTag>> {
-    match site_id {
-        dreamland_site_yandere::SITE_ID => {
-            let config = dreamland_site_yandere::default_config();
-            let endpoint = dreamland_site_yandere::related_tag_endpoint(&config.api_url)?;
-            dreamland_site_yandere::fetch_related_tags(&endpoint, request, network).await
-        }
-        dreamland_site_konachan::SITE_ID => {
-            let config = dreamland_site_konachan::default_config();
-            let endpoint = dreamland_site_konachan::related_tag_endpoint(&config.api_url)?;
-            dreamland_site_konachan::fetch_related_tags(&endpoint, request, network).await
-        }
-        _ => bail!("site '{site_id}' has no active related tag adapter"),
+    pub fn site(&self, site_id: &str) -> Result<&dyn SiteAdapter> {
+        self.active
+            .iter()
+            .find(|adapter| adapter.descriptor().id.as_str() == site_id)
+            .map(|adapter| adapter.as_ref())
+            .ok_or_else(|| anyhow!("site '{site_id}' is not an active site"))
     }
-}
 
-pub async fn list_pools(
-    site_id: &str,
-    query: &str,
-    page: u32,
-    page_size: u16,
-    network: &NetworkPolicy,
-) -> Result<PoolPage> {
-    match site_id {
-        dreamland_site_yandere::SITE_ID => {
-            let config = dreamland_site_yandere::default_config();
-            dreamland_site_yandere::fetch_pools(&config.api_url, query, page, page_size, network)
-                .await
-        }
-        dreamland_site_konachan::SITE_ID => {
-            let config = dreamland_site_konachan::default_config();
-            dreamland_site_konachan::fetch_pools(&config.api_url, query, page, page_size, network)
-                .await
-        }
-        _ => bail!("site '{site_id}' has no active pool adapter"),
+    pub fn descriptors(&self) -> Vec<SiteDescriptor> {
+        self.active
+            .iter()
+            .map(|adapter| adapter.descriptor().clone())
+            .collect()
     }
-}
 
-pub async fn query_pool_posts(
-    site_id: &str,
-    pool_id: &str,
-    content_policy: ContentPolicy,
-    page: u32,
-    page_size: u16,
-    network: &NetworkPolicy,
-) -> Result<SitePage> {
-    match site_id {
-        dreamland_site_yandere::SITE_ID => {
-            let config = dreamland_site_yandere::default_config();
-            dreamland_site_yandere::query_pool_posts(
-                &config.api_url,
-                pool_id,
-                content_policy,
-                page,
-                page_size,
-                network,
-            )
+    pub fn skeleton_descriptors(&self) -> &[SiteDescriptor] {
+        &self.skeletons
+    }
+
+    pub fn all_descriptors(&self) -> Vec<SiteDescriptor> {
+        self.descriptors()
+            .into_iter()
+            .chain(self.skeletons.iter().cloned())
+            .collect()
+    }
+
+    pub fn is_active_browse_site(&self, site_id: &str) -> bool {
+        self.site(site_id)
+            .map(|adapter| adapter.descriptor().capabilities.browse)
+            .unwrap_or(false)
+    }
+
+    pub async fn query_posts(
+        &self,
+        site_id: &str,
+        request: &PostQueryRequest,
+        network: &NetworkPolicy,
+    ) -> Result<SitePage> {
+        self.site(site_id)?
+            .post_query()
+            .query_posts(request, network)
             .await
-        }
-        dreamland_site_konachan::SITE_ID => {
-            let config = dreamland_site_konachan::default_config();
-            dreamland_site_konachan::query_pool_posts(
-                &config.api_url,
-                pool_id,
-                content_policy,
-                page,
-                page_size,
-                network,
-            )
+            .map_err(site_error)
+    }
+
+    pub async fn lookup_post(
+        &self,
+        site_id: &str,
+        post_id: &str,
+        content_policy: ContentPolicy,
+        network: &NetworkPolicy,
+    ) -> Result<Post> {
+        let capability = self
+            .site(site_id)?
+            .post_lookup()
+            .ok_or_else(|| unsupported(site_id, "post lookup"))?;
+        capability
+            .lookup_post(post_id, content_policy, network)
             .await
-        }
-        _ => bail!("site '{site_id}' has no active pool adapter"),
+            .map_err(site_error)
+    }
+
+    pub async fn suggest_tags(
+        &self,
+        site_id: &str,
+        request: &TagSuggestionRequest,
+        network: &NetworkPolicy,
+    ) -> Result<Vec<TagSuggestion>> {
+        let capability = self
+            .site(site_id)?
+            .tag_suggestions()
+            .ok_or_else(|| unsupported(site_id, "tag suggestions"))?;
+        capability
+            .suggest_tags(request, network)
+            .await
+            .map_err(site_error)
+    }
+
+    pub async fn related_tags(
+        &self,
+        site_id: &str,
+        request: &RelatedTagRequest,
+        network: &NetworkPolicy,
+    ) -> Result<Vec<RelatedTag>> {
+        let capability = self
+            .site(site_id)?
+            .related_tags()
+            .ok_or_else(|| unsupported(site_id, "related tags"))?;
+        capability
+            .related_tags(request, network)
+            .await
+            .map_err(site_error)
+    }
+
+    pub async fn list_pools(
+        &self,
+        site_id: &str,
+        query: &str,
+        page: u32,
+        page_size: u16,
+        network: &NetworkPolicy,
+    ) -> Result<PoolPage> {
+        let capability = self
+            .site(site_id)?
+            .collections()
+            .ok_or_else(|| unsupported(site_id, "collections"))?;
+        capability
+            .list_pools(query, page, page_size, network)
+            .await
+            .map_err(site_error)
+    }
+
+    pub async fn query_pool_posts(
+        &self,
+        site_id: &str,
+        pool_id: &str,
+        content_policy: ContentPolicy,
+        page: u32,
+        page_size: u16,
+        network: &NetworkPolicy,
+    ) -> Result<SitePage> {
+        let capability = self
+            .site(site_id)?
+            .collections()
+            .ok_or_else(|| unsupported(site_id, "collection posts"))?;
+        capability
+            .query_pool_posts(pool_id, content_policy, page, page_size, network)
+            .await
+            .map_err(site_error)
+    }
+
+    pub fn pool_zip_url(&self, site_id: &str, pool_id: &str) -> Result<String> {
+        let capability = self
+            .site(site_id)?
+            .collection_download()
+            .ok_or_else(|| unsupported(site_id, "pool archive download"))?;
+        capability.pool_zip_url(pool_id).map_err(site_error)
+    }
+
+    pub async fn set_favorite(
+        &self,
+        site_id: &str,
+        post_id: &str,
+        favorite: bool,
+        session: &SiteSession,
+        network: &NetworkPolicy,
+    ) -> Result<()> {
+        ensure_session_site(site_id, session)?;
+        let capability = self
+            .site(site_id)?
+            .remote_favorites()
+            .ok_or_else(|| unsupported(site_id, "remote favorites"))?;
+        capability
+            .set_favorite(post_id, favorite, session, network)
+            .await
+            .map_err(site_error)
+    }
+
+    pub async fn current_user(
+        &self,
+        site_id: &str,
+        session: &SiteSession,
+        network: &NetworkPolicy,
+    ) -> Result<String> {
+        ensure_session_site(site_id, session)?;
+        let capability = self
+            .site(site_id)?
+            .current_user()
+            .ok_or_else(|| unsupported(site_id, "current-user lookup"))?;
+        capability
+            .current_user(session, network)
+            .await
+            .map_err(site_error)
+    }
+
+    pub async fn list_favorites(
+        &self,
+        site_id: &str,
+        session: &SiteSession,
+        content_policy: ContentPolicy,
+        page: u32,
+        page_size: u16,
+        network: &NetworkPolicy,
+    ) -> Result<SitePage> {
+        ensure_session_site(site_id, session)?;
+        let capability = self
+            .site(site_id)?
+            .remote_favorite_list()
+            .ok_or_else(|| unsupported(site_id, "remote favorite list"))?;
+        capability
+            .list_favorites(session, content_policy, page, page_size, network)
+            .await
+            .map_err(site_error)
+    }
+
+    pub fn auth_session(
+        &self,
+        site_id: &str,
+        cookies: &[BrowserCookie],
+    ) -> Result<Option<SiteSession>> {
+        self.site(site_id)?
+            .authentication()
+            .ok_or_else(|| unsupported(site_id, "authentication"))?
+            .session_from_cookies(cookies)
+            .map_err(site_error)
+    }
+
+    pub fn auth_login_url(&self, site_id: &str) -> Result<String> {
+        self.site(site_id)?
+            .authentication()
+            .ok_or_else(|| unsupported(site_id, "authentication"))?
+            .login_url()
+            .map_err(site_error)
+    }
+
+    pub fn resolve_media_url(
+        &self,
+        site_id: &str,
+        post: &Post,
+        variant: MediaVariant,
+    ) -> Option<String> {
+        self.site(site_id)
+            .ok()
+            .and_then(|adapter| adapter.media_resolution().resolve_media_url(post, variant))
+            .map(str::to_owned)
+    }
+
+    pub fn browser_url(&self, site_id: &str) -> Result<String> {
+        self.site(site_id)?
+            .browser_routes()
+            .browser_url()
+            .map_err(site_error)
+    }
+
+    pub fn browser_post_url(&self, site_id: &str, post_id: &str) -> Result<String> {
+        self.site(site_id)?
+            .browser_routes()
+            .browser_post_url(post_id)
+            .map_err(site_error)
+    }
+
+    pub fn browser_similar_url(&self, site_id: &str) -> Result<String> {
+        self.site(site_id)?
+            .browser_routes()
+            .browser_similar_url()
+            .map_err(site_error)
     }
 }
 
-pub fn pool_zip_url(site_id: &str, pool_id: &str) -> Result<String> {
-    if site_id != DEFAULT_SITE_ID {
-        bail!("site '{site_id}' has no active pool archive adapter");
+fn unsupported(site_id: &str, capability: &str) -> anyhow::Error {
+    anyhow::Error::new(SiteError::new(
+        SiteErrorCode::UnsupportedCapability,
+        format!("site '{site_id}' does not support {capability}"),
+        false,
+    ))
+}
+
+fn ensure_session_site(site_id: &str, session: &SiteSession) -> Result<()> {
+    if session.site().as_str() != site_id {
+        return Err(anyhow::Error::new(SiteError::new(
+            SiteErrorCode::InvalidRequest,
+            format!(
+                "session belongs to '{}' but was used for '{site_id}'",
+                session.site().as_str()
+            ),
+            false,
+        )));
     }
-    let config = dreamland_site_yandere::default_config();
-    dreamland_site_yandere::pool_zip_endpoint(&config.api_url, pool_id)
+    Ok(())
 }
 
-pub async fn set_favorite(
-    site_id: &str,
-    post_id: &str,
-    favorite: bool,
-    cookie_header: &str,
-    network: &NetworkPolicy,
-) -> Result<()> {
-    if site_id != DEFAULT_SITE_ID {
-        bail!("site '{site_id}' has no active favorite adapter");
-    }
-    let config = dreamland_site_yandere::default_config();
-    dreamland_site_yandere::set_favorite(&config.api_url, post_id, favorite, cookie_header, network)
-        .await
-}
-
-pub async fn current_user(
-    site_id: &str,
-    user_id: &str,
-    cookie_header: &str,
-    network: &NetworkPolicy,
-) -> Result<String> {
-    if site_id != DEFAULT_SITE_ID {
-        bail!("site '{site_id}' has no active auth adapter");
-    }
-    let config = dreamland_site_yandere::default_config();
-    dreamland_site_yandere::current_user(&config.api_url, user_id, cookie_header, network).await
-}
-
-pub async fn list_favorites(
-    site_id: &str,
-    username: &str,
-    cookie_header: &str,
-    content_policy: ContentPolicy,
-    page: u32,
-    page_size: u16,
-    network: &NetworkPolicy,
-) -> Result<SitePage> {
-    if site_id != DEFAULT_SITE_ID {
-        bail!("site '{site_id}' has no active favorite-list adapter");
-    }
-    let config = dreamland_site_yandere::default_config();
-    dreamland_site_yandere::list_favorites(
-        &config.api_url,
-        username,
-        cookie_header,
-        content_policy,
-        page,
-        page_size,
-        network,
-    )
-    .await
-}
-
-pub fn resolve_media_url<'a>(
-    site_id: &str,
-    post: &'a Post,
-    variant: MediaVariant,
-) -> Option<&'a str> {
-    match site_id {
-        dreamland_site_yandere::SITE_ID => dreamland_site_yandere::variant_url(post, variant),
-        dreamland_site_konachan::SITE_ID => dreamland_site_konachan::variant_url(post, variant),
-        _ => None,
-    }
-}
-
-pub fn browser_url(site_id: &str) -> Result<String> {
-    match site_id {
-        dreamland_site_yandere::SITE_ID => Ok(dreamland_site_yandere::default_config().browser_url),
-        dreamland_site_konachan::SITE_ID => {
-            Ok(dreamland_site_konachan::default_config().browser_url)
-        }
-        _ => bail!("site '{site_id}' has no active browser route"),
-    }
-}
-
-pub fn browser_post_url(site_id: &str, post_id: &str) -> Result<String> {
-    match site_id {
-        dreamland_site_yandere::SITE_ID => {
-            let config = dreamland_site_yandere::default_config();
-            dreamland_site_yandere::browser_post_url(&config.browser_url, post_id)
-        }
-        dreamland_site_konachan::SITE_ID => {
-            let config = dreamland_site_konachan::default_config();
-            dreamland_site_konachan::browser_post_url(&config.browser_url, post_id)
-        }
-        _ => bail!("site '{site_id}' has no active browser route"),
-    }
-}
-
-pub fn browser_similar_url(site_id: &str) -> Result<String> {
-    match site_id {
-        dreamland_site_konachan::SITE_ID => {
-            let config = dreamland_site_konachan::default_config();
-            dreamland_site_konachan::browser_similar_url(&config.browser_url)
-        }
-        _ => bail!("site '{site_id}' has no active similar-search browser route"),
-    }
-}
-
-pub fn descriptors() -> Vec<SiteDescriptor> {
-    vec![
-        dreamland_site_yandere::descriptor(),
-        dreamland_site_konachan::descriptor(),
-    ]
-}
-
-pub fn skeleton_descriptors() -> Vec<SiteDescriptor> {
-    vec![
-        dreamland_site_pixiv::descriptor(),
-        dreamland_site_twitter::descriptor(),
-    ]
-}
-
-/// The gate `src-tauri` must check before dispatching a browse/download
-/// command to a site adapter. With a single active site this looks
-/// redundant, but it is what stops the registry from being purely
-/// decorative once a second site is wired in -- adding a descriptor here
-/// does nothing on its own; a command still has to consult this first.
-pub fn is_active_browse_site(site_id: &str) -> bool {
-    descriptors()
-        .iter()
-        .any(|site| site.id.as_str() == site_id && site.capabilities.browse)
+fn site_error(error: SiteError) -> anyhow::Error {
+    anyhow::Error::new(error)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        browser_post_url, browser_similar_url, browser_url, descriptors, is_active_browse_site,
-    };
+    use super::{SiteError, SiteErrorCode, SiteRegistry};
 
     #[test]
-    fn registry_contains_yandere() {
-        let sites = descriptors();
-
-        assert_eq!(sites.len(), 2);
-        assert_eq!(sites[0].id.as_str(), "yandere");
-        assert_eq!(sites[1].id.as_str(), "konachan");
-        assert!(sites[1].capabilities.collections);
-        assert!(sites[1].capabilities.post_lookup);
-        assert!(!sites[1].capabilities.collection_downloads);
+    fn registry_contains_only_real_active_adapters() {
+        let registry = SiteRegistry::default();
+        registry.validate().unwrap();
+        assert_eq!(
+            registry
+                .descriptors()
+                .iter()
+                .map(|descriptor| descriptor.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["yandere", "konachan"]
+        );
+        assert!(registry.is_active_browse_site("yandere"));
+        assert!(registry.is_active_browse_site("konachan"));
+        assert!(!registry.is_active_browse_site("pixiv"));
     }
 
     #[test]
-    fn skeletons_are_not_active_sites() {
-        let sites = super::skeleton_descriptors();
-
-        assert_eq!(sites.len(), 2);
-        assert!(sites.iter().all(|site| {
-            !site.capabilities.browse
-                && !site.capabilities.post_search
-                && !site.capabilities.post_lookup
-        }));
+    fn registry_exposes_optional_capabilities_without_fake_methods() {
+        let registry = SiteRegistry::default();
+        let yandere = registry.site("yandere").unwrap();
+        let konachan = registry.site("konachan").unwrap();
+        assert!(yandere.remote_favorites().is_some());
+        assert!(yandere.collection_download().is_some());
+        assert!(konachan.post_lookup().is_some());
+        assert!(konachan.remote_favorites().is_none());
+        assert!(konachan.collection_download().is_none());
     }
 
     #[test]
-    fn only_registered_browse_capable_sites_pass_the_gate() {
-        assert!(is_active_browse_site("yandere"));
-        assert!(is_active_browse_site("konachan"));
-        assert!(!is_active_browse_site("pixiv"));
-        assert!(!is_active_browse_site("does-not-exist"));
+    fn registry_applies_toml_site_enablement() {
+        let registry = SiteRegistry::from_enabled([dreamland_site_yandere::SITE_ID]);
+        registry.validate().unwrap();
+        assert_eq!(registry.descriptors().len(), 1);
+        assert!(registry.is_active_browse_site("yandere"));
+        assert!(!registry.is_active_browse_site("konachan"));
     }
 
     #[test]
-    fn browser_routes_are_owned_by_the_site_adapters() {
-        assert_eq!(browser_url("yandere").unwrap(), "https://yande.re/post");
+    fn unsupported_capability_keeps_canonical_error_code() {
+        let error = super::unsupported("konachan", "favorites");
         assert_eq!(
-            browser_url("konachan").unwrap(),
-            "https://konachan.com/post"
+            error
+                .downcast_ref::<SiteError>()
+                .expect("registry should retain SiteError")
+                .code,
+            SiteErrorCode::UnsupportedCapability
         );
-        assert!(browser_url("pixiv").is_err());
-        assert_eq!(
-            browser_post_url("konachan", "407162").unwrap(),
-            "https://konachan.com/post/show/407162"
-        );
-        assert!(browser_post_url("konachan", "not-a-number").is_err());
-        assert_eq!(
-            browser_similar_url("konachan").unwrap(),
-            "https://konachan.com/post/similar"
-        );
-        assert!(browser_similar_url("yandere").is_err());
     }
 }

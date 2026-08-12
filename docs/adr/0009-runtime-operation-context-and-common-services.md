@@ -1,6 +1,6 @@
 # ADR 0009: Runtime operation context and common services
 
-- Status: Proposed
+- Status: Accepted design; incremental implementation
 - Date: 2026-08-11
 
 ## Context
@@ -17,7 +17,7 @@ Go's `context.Context` is useful here as a lifecycle idea, but not as a
 general dependency-injection bag. Auth, cache, logging, configuration, and
 HTTP clients have different ownership and security rules.
 
-## Decision proposed
+## Decision
 
 Adopt small, typed runtime services and an explicit operation context during
 the trait-contract migration:
@@ -50,10 +50,17 @@ The service boundaries are:
   and protocol settings remain in each concrete site adapter and are passed
   into an adapter at construction.
 
-The first mechanical step is to split runtime media/download behavior from
-the runtime crate root without changing its public API. Larger state and
-adapter migrations follow only when the corresponding typed boundary has at
-least two real consumers.
+The lifecycle is load → validate → apply → dispatch → persist → publish →
+finally. Ordered typed hooks may enforce common auth, cache, logging,
+cancellation, and error behavior at these boundaries. A hook receives an
+operation context and typed event, not a generic dependency bag. Site adapters
+may validate and consume their own extension section, but cannot bypass common
+hooks or access SQLite directly.
+
+The first mechanical steps are TOML site sections and the dedicated
+`dreamland-state` SQLite infrastructure crate. Larger state and adapter changes
+follow only when the corresponding typed boundary has at least two real
+consumers.
 
 ## Consequences
 
@@ -63,17 +70,18 @@ least two real consumers.
   Tauri commands or the frontend.
 - Cache and logging policies become testable ports rather than duplicated
   filesystem and HTTP concerns.
-- The migration adds no empty abstraction today: the current media split is
-  mechanical, while auth/cache/logging ports remain proposed until the
-  adapter registry and core traits are implemented.
+- The migration adds no generic dependency-injection container: current shared
+  HTTP retry and runtime queue/cache paths remain the concrete common behavior,
+  while typed hook ports are introduced only with a second real consumer.
 
 ## Migration order
 
 1. Define the actual core capability traits and `RequestContext`.
 2. Replace the `dreamland-sites` switchboard with a registry of adapters.
-3. Move Yande cookie interpretation and auth mutation behind site auth plus
+3. Add ordered runtime hook dispatch around the first two shared operations.
+4. Move Yande cookie interpretation and auth mutation behind site auth plus
    the runtime session store.
-4. Normalize site/runtime errors before the Tauri boundary.
-5. Wrap the existing detail cache, download staging, and logging in typed
+5. Normalize site/runtime errors before the Tauri boundary.
+6. Wrap the existing detail cache, download staging, and logging in typed
    runtime services.
-6. Split SQLite state into schema, queue/history, and repository modules.
+7. Split SQLite state into schema, queue/history, and repository modules.

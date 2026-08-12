@@ -4,8 +4,8 @@ use std::process::Command;
 use std::sync::Mutex;
 
 use dreamland_core::{
-    ContentPolicy, MediaVariant, NetworkPolicy, PoolPage, Post, PostQueryRequest, QuerySessionId,
-    SavedQuery, SiteId, SitePage, TagSuggestion, TagSuggestionRequest,
+    BrowserCookie, ContentPolicy, MediaVariant, NetworkPolicy, PoolPage, Post, PostQueryRequest,
+    QuerySessionId, SavedQuery, SiteId, SitePage, SiteSession, TagSuggestion, TagSuggestionRequest,
 };
 use dreamland_runtime::{
     AppConfig, ArchiveRecord, ArchiveRequest, DownloadRecord, DownloadRequest,
@@ -20,26 +20,24 @@ use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowB
 /// the selected site.
 struct RuntimeState {
     posts: Mutex<HashMap<String, Post>>,
-    auth_cookie: Mutex<Option<String>>,
+    auth_session: Mutex<Option<SiteSession>>,
     auth_username: Mutex<Option<String>>,
     sessions: dreamland_runtime::QuerySessionStore,
     downloads: dreamland_runtime::DownloadManager,
+    registry: dreamland_sites::SiteRegistry,
 }
 
 fn post_cache_key(site_id: &str, post_id: &str) -> String {
     format!("{site_id}:{post_id}")
 }
 
-fn parse_yande_user_id(value: &str) -> Option<String> {
-    let id = value.split(';').next()?.trim().parse::<u64>().ok()?;
-    (id > 0).then(|| id.to_string())
-}
-
 impl RuntimeState {
     fn new(config: &AppConfig) -> anyhow::Result<Self> {
+        let registry = dreamland_sites::SiteRegistry::from_enabled(config.enabled_site_ids());
+        registry.validate()?;
         Ok(Self {
             posts: Mutex::new(HashMap::new()),
-            auth_cookie: Mutex::new(None),
+            auth_session: Mutex::new(None),
             auth_username: Mutex::new(None),
             sessions: dreamland_runtime::QuerySessionStore::default(),
             downloads: dreamland_runtime::DownloadManager::open(
@@ -47,6 +45,7 @@ impl RuntimeState {
                 dreamland_runtime::default_cache_path(),
                 config.network.clone(),
             )?,
+            registry,
         })
     }
 }
@@ -91,10 +90,8 @@ impl From<&AppConfig> for AppConfigView {
 }
 
 #[tauri::command]
-fn list_sites() -> Vec<SiteDescriptor> {
-    let mut sites = dreamland_sites::descriptors();
-    sites.extend(dreamland_sites::skeleton_descriptors());
-    sites
+fn list_sites(state: State<'_, RuntimeState>) -> Vec<SiteDescriptor> {
+    state.registry.all_descriptors()
 }
 
 #[tauri::command]
@@ -115,6 +112,7 @@ fn save_config(
     let mut config =
         AppConfig::from_user_input(download_path).map_err(|error| error.to_string())?;
     config.images_per_page = current.images_per_page;
+    config.sites = current.sites;
     config.content_policy = content_policy;
     config.download_variant = download_variant;
     config.network = network.clone();
@@ -128,7 +126,20 @@ fn detect_proxy() -> dreamland_runtime::ProxyDetection {
     dreamland_runtime::detect_proxy()
 }
 
-fn yande_auth_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
+#[tauri::command]
+async fn clear_cache(state: State<'_, RuntimeState>) -> Result<(), String> {
+    state
+        .downloads
+        .clear_cache()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+fn yande_auth_window(
+    app: &AppHandle,
+    state: &RuntimeState,
+    visible: bool,
+) -> Result<WebviewWindow, String> {
     if let Some(window) = app.get_webview_window("yande-auth") {
         if visible {
             window.show().map_err(|error| error.to_string())?;
@@ -140,7 +151,10 @@ fn yande_auth_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, St
         app,
         "yande-auth",
         WebviewUrl::External(
-            "https://yande.re/user/login"
+            state
+                .registry
+                .auth_login_url(dreamland_sites::DEFAULT_SITE_ID)
+                .map_err(|error| error.to_string())?
                 .parse()
                 .map_err(|error| format!("invalid login URL: {error}"))?,
         ),
@@ -153,18 +167,25 @@ fn yande_auth_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, St
 }
 
 #[tauri::command]
-fn begin_auth(app: AppHandle) -> Result<(), String> {
-    yande_auth_window(&app, true).map(|_| ())
+fn begin_auth(app: AppHandle, state: State<'_, RuntimeState>) -> Result<(), String> {
+    yande_auth_window(&app, &state, true).map(|_| ())
 }
 
 #[tauri::command]
-fn open_site(app: AppHandle, site_id: String) -> Result<(), String> {
-    if !dreamland_sites::is_active_browse_site(&site_id) {
+fn open_site(
+    app: AppHandle,
+    state: State<'_, RuntimeState>,
+    site_id: String,
+) -> Result<(), String> {
+    if !state.registry.is_active_browse_site(&site_id) {
         return Err(format!(
             "'{site_id}' is not a registered, browse-capable site"
         ));
     }
-    let url = dreamland_sites::browser_url(&site_id).map_err(|error| error.to_string())?;
+    let url = state
+        .registry
+        .browser_url(&site_id)
+        .map_err(|error| error.to_string())?;
     let label = format!("site-{site_id}");
     if let Some(window) = app.get_webview_window(&label) {
         window.show().map_err(|error| error.to_string())?;
@@ -187,14 +208,21 @@ fn open_site(app: AppHandle, site_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn open_post(app: AppHandle, site_id: String, post_id: String) -> Result<(), String> {
-    if !dreamland_sites::is_active_browse_site(&site_id) {
+fn open_post(
+    app: AppHandle,
+    state: State<'_, RuntimeState>,
+    site_id: String,
+    post_id: String,
+) -> Result<(), String> {
+    if !state.registry.is_active_browse_site(&site_id) {
         return Err(format!(
             "'{site_id}' is not a registered, browse-capable site"
         ));
     }
-    let url =
-        dreamland_sites::browser_post_url(&site_id, &post_id).map_err(|error| error.to_string())?;
+    let url = state
+        .registry
+        .browser_post_url(&site_id, &post_id)
+        .map_err(|error| error.to_string())?;
     let label = format!("site-{site_id}-post-{post_id}");
     if let Some(window) = app.get_webview_window(&label) {
         window.show().map_err(|error| error.to_string())?;
@@ -217,15 +245,22 @@ fn open_post(app: AppHandle, site_id: String, post_id: String) -> Result<(), Str
 }
 
 #[tauri::command]
-fn open_similar_search(app: AppHandle, site_id: String) -> Result<(), String> {
-    let site = dreamland_sites::descriptors()
-        .into_iter()
-        .find(|site| site.id.as_str() == site_id)
-        .ok_or_else(|| format!("site '{site_id}' is not registered"))?;
-    if !site.capabilities.similar_search {
+fn open_similar_search(
+    app: AppHandle,
+    state: State<'_, RuntimeState>,
+    site_id: String,
+) -> Result<(), String> {
+    let site = state
+        .registry
+        .site(&site_id)
+        .map_err(|error| error.to_string())?;
+    if !site.descriptor().capabilities.similar_search {
         return Err(format!("site '{site_id}' does not support similar search"));
     }
-    let url = dreamland_sites::browser_similar_url(&site_id).map_err(|error| error.to_string())?;
+    let url = state
+        .registry
+        .browser_similar_url(&site_id)
+        .map_err(|error| error.to_string())?;
     let label = format!("site-{site_id}-similar");
     if let Some(window) = app.get_webview_window(&label) {
         window.show().map_err(|error| error.to_string())?;
@@ -249,7 +284,7 @@ fn open_similar_search(app: AppHandle, site_id: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn auth_status(app: AppHandle, state: State<'_, RuntimeState>) -> Result<AuthStatus, String> {
-    let window = yande_auth_window(&app, false)?;
+    let window = yande_auth_window(&app, &state, false)?;
     let cookies = window
         .cookies_for_url(
             "https://yande.re/"
@@ -257,40 +292,35 @@ async fn auth_status(app: AppHandle, state: State<'_, RuntimeState>) -> Result<A
                 .map_err(|error| format!("invalid yandere URL: {error}"))?,
         )
         .map_err(|error| error.to_string())?;
-    let user_id = cookies
+    let browser_cookies = cookies
         .iter()
-        .find(|cookie| cookie.name() == "user_id")
-        .and_then(|cookie| parse_yande_user_id(cookie.value()))
-        .or_else(|| {
-            cookies
-                .iter()
-                .find(|cookie| cookie.name() == "user_info")
-                .and_then(|cookie| parse_yande_user_id(cookie.value()))
-        });
-    let authenticated = user_id.is_some();
-    let cookie_header = cookies
-        .iter()
-        .map(|cookie| format!("{}={}", cookie.name(), cookie.value()))
-        .collect::<Vec<_>>()
-        .join("; ");
-    *state.auth_cookie.lock().expect("auth cookie lock poisoned") =
-        authenticated.then_some(cookie_header);
-    let cookie_for_lookup = state
-        .auth_cookie
+        .map(|cookie| BrowserCookie {
+            name: cookie.name().to_owned(),
+            value: cookie.value().to_owned(),
+        })
+        .collect::<Vec<_>>();
+    let session = state
+        .registry
+        .auth_session(dreamland_sites::DEFAULT_SITE_ID, &browser_cookies)
+        .map_err(|error| error.to_string())?;
+    let authenticated = session.is_some();
+    *state
+        .auth_session
         .lock()
-        .expect("auth cookie lock poisoned")
+        .expect("auth session lock poisoned") = session.clone();
+    let session_for_lookup = state
+        .auth_session
+        .lock()
+        .expect("auth session lock poisoned")
         .clone();
     let username = if authenticated {
-        if let (Some(user_id), Some(cookie_header)) = (user_id, cookie_for_lookup) {
+        if let Some(session) = session_for_lookup {
             let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
-            dreamland_sites::current_user(
-                dreamland_sites::DEFAULT_SITE_ID,
-                &user_id,
-                &cookie_header,
-                &config.network,
-            )
-            .await
-            .ok()
+            state
+                .registry
+                .current_user(dreamland_sites::DEFAULT_SITE_ID, &session, &config.network)
+                .await
+                .ok()
         } else {
             None
         }
@@ -309,7 +339,10 @@ async fn auth_status(app: AppHandle, state: State<'_, RuntimeState>) -> Result<A
 
 #[tauri::command]
 fn sign_out(app: AppHandle, state: State<'_, RuntimeState>) -> Result<(), String> {
-    *state.auth_cookie.lock().expect("auth cookie lock poisoned") = None;
+    *state
+        .auth_session
+        .lock()
+        .expect("auth session lock poisoned") = None;
     *state
         .auth_username
         .lock()
@@ -322,14 +355,16 @@ fn sign_out(app: AppHandle, state: State<'_, RuntimeState>) -> Result<(), String
 
 #[tauri::command]
 async fn list_pools(
-    _state: State<'_, RuntimeState>,
+    state: State<'_, RuntimeState>,
     site_id: String,
     query: String,
     page: u32,
     page_size: u16,
 ) -> Result<PoolPage, String> {
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
-    dreamland_sites::list_pools(&site_id, &query, page, page_size, &config.network)
+    state
+        .registry
+        .list_pools(&site_id, &query, page, page_size, &config.network)
         .await
         .map_err(|error| error.to_string())
 }
@@ -343,16 +378,18 @@ async fn query_pool_posts(
     page_size: u16,
 ) -> Result<SitePage, String> {
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
-    let page = dreamland_sites::query_pool_posts(
-        &site_id,
-        &pool_id,
-        config.content_policy,
-        page,
-        page_size,
-        &config.network,
-    )
-    .await
-    .map_err(|error| error.to_string())?;
+    let page = state
+        .registry
+        .query_pool_posts(
+            &site_id,
+            &pool_id,
+            config.content_policy,
+            page,
+            page_size,
+            &config.network,
+        )
+        .await
+        .map_err(|error| error.to_string())?;
     let mut posts = state.posts.lock().expect("post cache lock poisoned");
     posts.extend(page.posts.iter().map(|post| {
         (
@@ -369,14 +406,16 @@ async fn enqueue_pool_zip(
     pool_id: String,
     pool_name: String,
 ) -> Result<ArchiveRecord, String> {
-    let cookie = state
-        .auth_cookie
+    let session = state
+        .auth_session
         .lock()
-        .expect("auth cookie lock poisoned")
+        .expect("auth session lock poisoned")
         .clone()
         .ok_or_else(|| "yandere login is required to download a pool ZIP".to_owned())?;
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
-    let url = dreamland_sites::pool_zip_url(dreamland_sites::DEFAULT_SITE_ID, &pool_id)
+    let url = state
+        .registry
+        .pool_zip_url(dreamland_sites::DEFAULT_SITE_ID, &pool_id)
         .map_err(|error| error.to_string())?;
     state
         .downloads
@@ -386,7 +425,7 @@ async fn enqueue_pool_zip(
             pool_name,
             source_url: url,
             download_root: config.download_path,
-            cookie_header: cookie,
+            cookie_header: session.cookie_header().to_owned(),
         })
         .await
         .map_err(|error| error.to_string())
@@ -398,30 +437,25 @@ async fn list_favorites(
     page: u32,
     page_size: u16,
 ) -> Result<SitePage, String> {
-    let cookie = state
-        .auth_cookie
+    let session = state
+        .auth_session
         .lock()
-        .expect("auth cookie lock poisoned")
+        .expect("auth session lock poisoned")
         .clone()
         .ok_or_else(|| "yandere login is required to view favorites".to_owned())?;
-    let username = state
-        .auth_username
-        .lock()
-        .expect("auth username lock poisoned")
-        .clone()
-        .ok_or_else(|| "Refresh yandere login status before viewing favorites".to_owned())?;
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
-    let page = dreamland_sites::list_favorites(
-        dreamland_sites::DEFAULT_SITE_ID,
-        &username,
-        &cookie,
-        config.content_policy,
-        page,
-        page_size,
-        &config.network,
-    )
-    .await
-    .map_err(|error| error.to_string())?;
+    let page = state
+        .registry
+        .list_favorites(
+            dreamland_sites::DEFAULT_SITE_ID,
+            &session,
+            config.content_policy,
+            page,
+            page_size,
+            &config.network,
+        )
+        .await
+        .map_err(|error| error.to_string())?;
     let mut posts = state.posts.lock().expect("post cache lock poisoned");
     posts.extend(page.posts.iter().map(|post| {
         (
@@ -437,7 +471,7 @@ async fn list_saved_queries(
     state: State<'_, RuntimeState>,
     site_id: String,
 ) -> Result<Vec<SavedQuery>, String> {
-    if !dreamland_sites::is_active_browse_site(&site_id) {
+    if !state.registry.is_active_browse_site(&site_id) {
         return Err(format!(
             "'{site_id}' is not a registered, browse-capable site"
         ));
@@ -455,7 +489,7 @@ async fn save_saved_query(
     state: State<'_, RuntimeState>,
     saved: SavedQuery,
 ) -> Result<SavedQuery, String> {
-    if !dreamland_sites::is_active_browse_site(saved.site.as_str()) {
+    if !state.registry.is_active_browse_site(saved.site.as_str()) {
         return Err(format!(
             "'{}' is not a registered, browse-capable site",
             saved.site.as_str()
@@ -475,7 +509,7 @@ async fn delete_saved_query(
     site_id: String,
     id: String,
 ) -> Result<(), String> {
-    if !dreamland_sites::is_active_browse_site(&site_id) {
+    if !state.registry.is_active_browse_site(&site_id) {
         return Err(format!(
             "'{site_id}' is not a registered, browse-capable site"
         ));
@@ -495,7 +529,7 @@ async fn move_saved_query(
     id: String,
     direction: i8,
 ) -> Result<(), String> {
-    if !dreamland_sites::is_active_browse_site(&site_id) {
+    if !state.registry.is_active_browse_site(&site_id) {
         return Err(format!(
             "'{site_id}' is not a registered, browse-capable site"
         ));
@@ -514,22 +548,24 @@ async fn set_favorite(
     post_id: String,
     favorite: bool,
 ) -> Result<(), String> {
-    let cookie = state
-        .auth_cookie
+    let session = state
+        .auth_session
         .lock()
-        .expect("auth cookie lock poisoned")
+        .expect("auth session lock poisoned")
         .clone()
         .ok_or_else(|| "yandere login is required to change favorites".to_owned())?;
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
-    dreamland_sites::set_favorite(
-        dreamland_sites::DEFAULT_SITE_ID,
-        &post_id,
-        favorite,
-        &cookie,
-        &config.network,
-    )
-    .await
-    .map_err(|error| error.to_string())
+    state
+        .registry
+        .set_favorite(
+            dreamland_sites::DEFAULT_SITE_ID,
+            &post_id,
+            favorite,
+            &session,
+            &config.network,
+        )
+        .await
+        .map_err(|error| error.to_string())
 }
 
 async fn execute_query(
@@ -537,7 +573,7 @@ async fn execute_query(
     site_id: &str,
     request: PostQueryRequest,
 ) -> Result<SitePage, String> {
-    if !dreamland_sites::is_active_browse_site(site_id) {
+    if !state.registry.is_active_browse_site(site_id) {
         return Err(format!(
             "'{site_id}' is not a registered, browse-capable site"
         ));
@@ -557,9 +593,10 @@ async fn execute_session_query(
     replace_cache: bool,
 ) -> Result<SitePage, String> {
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
-    let result =
-        dreamland_sites::query_posts(session.site.as_str(), &session.request, &config.network)
-            .await;
+    let result = state
+        .registry
+        .query_posts(session.site.as_str(), &session.request, &config.network)
+        .await;
     let mut page = match result {
         Ok(page) => page,
         Err(error) => {
@@ -599,15 +636,10 @@ async fn lookup_post(
     post_id: String,
     content_policy: ContentPolicy,
 ) -> Result<Post, String> {
-    let site = dreamland_sites::descriptors()
-        .into_iter()
-        .find(|site| site.id.as_str() == site_id)
-        .ok_or_else(|| format!("site '{site_id}' is not registered"))?;
-    if !site.capabilities.post_lookup {
-        return Err(format!("site '{site_id}' does not support post lookup"));
-    }
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
-    let post = dreamland_sites::lookup_post(&site_id, &post_id, content_policy, &config.network)
+    let post = state
+        .registry
+        .lookup_post(&site_id, &post_id, content_policy, &config.network)
         .await
         .map_err(|error| error.to_string())?;
     state
@@ -620,22 +652,16 @@ async fn lookup_post(
 
 #[tauri::command]
 async fn load_detail_image(
-    app: AppHandle,
     state: State<'_, RuntimeState>,
     site_id: String,
     post_id: String,
 ) -> Result<String, String> {
-    if !dreamland_sites::is_active_browse_site(&site_id) {
+    if !state.registry.is_active_browse_site(&site_id) {
         let error = format!("'{site_id}' is not a registered, browse-capable site");
         dreamland_runtime::log_detail_failure(&site_id, &post_id, &error);
         return Err(error);
     }
-    let cache_root = app
-        .path()
-        .cache_dir()
-        .map_err(|error| error.to_string())?
-        .join("dreamland")
-        .join("detail");
+    let cache_root = dreamland_runtime::default_detail_cache_path();
     if let Some(path) =
         dreamland_runtime::find_cached_detail_image_at(&site_id, &post_id, &cache_root)
             .await
@@ -679,25 +705,21 @@ async fn load_detail_image(
 
 #[tauri::command]
 async fn related_tags(
+    state: State<'_, RuntimeState>,
     site_id: String,
     tags: Vec<String>,
     limit: u16,
 ) -> Result<Vec<dreamland_core::RelatedTag>, String> {
-    let site = dreamland_sites::descriptors()
-        .into_iter()
-        .find(|site| site.id.as_str() == site_id)
-        .ok_or_else(|| format!("site '{site_id}' is not registered"))?;
-    if !site.capabilities.related_tags {
-        return Err(format!("site '{site_id}' does not support related tags"));
-    }
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
-    dreamland_sites::related_tags(
-        &site_id,
-        &dreamland_core::RelatedTagRequest { tags, limit },
-        &config.network,
-    )
-    .await
-    .map_err(|error| error.to_string())
+    state
+        .registry
+        .related_tags(
+            &site_id,
+            &dreamland_core::RelatedTagRequest { tags, limit },
+            &config.network,
+        )
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -722,15 +744,20 @@ fn cancel_query(state: State<'_, RuntimeState>, session: QuerySessionId) -> Resu
 }
 
 #[tauri::command]
-async fn suggest_tags(input: TagSuggestionInput) -> Result<Vec<TagSuggestion>, String> {
-    if !dreamland_sites::is_active_browse_site(input.site.as_str()) {
+async fn suggest_tags(
+    state: State<'_, RuntimeState>,
+    input: TagSuggestionInput,
+) -> Result<Vec<TagSuggestion>, String> {
+    if !state.registry.is_active_browse_site(input.site.as_str()) {
         return Err(format!(
             "'{}' is not a registered, browse-capable site",
             input.site.as_str()
         ));
     }
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
-    dreamland_sites::suggest_tags(input.site.as_str(), &input.request, &config.network)
+    state
+        .registry
+        .suggest_tags(input.site.as_str(), &input.request, &config.network)
         .await
         .map_err(|error| error.to_string())
 }
@@ -742,7 +769,7 @@ async fn enqueue_download(
     post_id: String,
     variant: MediaVariant,
 ) -> Result<DownloadRecord, String> {
-    if !dreamland_sites::is_active_browse_site(&site_id) {
+    if !state.registry.is_active_browse_site(&site_id) {
         return Err(format!(
             "'{site_id}' is not a registered, browse-capable site"
         ));
@@ -755,12 +782,15 @@ async fn enqueue_download(
             .ok_or_else(|| "post not found; reload images before downloading".to_string())?
     };
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
-    let url = dreamland_sites::resolve_media_url(&site_id, &post, variant).ok_or_else(|| {
-        format!(
-            "requested {variant:?} variant is unavailable for post {}",
-            post.post.id
-        )
-    })?;
+    let url = state
+        .registry
+        .resolve_media_url(&site_id, &post, variant)
+        .ok_or_else(|| {
+            format!(
+                "requested {variant:?} variant is unavailable for post {}",
+                post.post.id
+            )
+        })?;
     state
         .downloads
         .enqueue(DownloadRequest {
@@ -879,13 +909,7 @@ pub fn run() {
         .manage(runtime_state)
         .setup(|app| {
             let downloads = app.state::<RuntimeState>().downloads.clone();
-            let detail_cache_root = app
-                .path()
-                .cache_dir()
-                .expect("Dreamland detail cache directory must be available")
-                .join("dreamland")
-                .join("detail");
-            downloads.set_detail_cache_root(detail_cache_root);
+            downloads.set_detail_cache_root(dreamland_runtime::default_detail_cache_path());
             tauri::async_runtime::spawn(downloads.worker());
             tauri::async_runtime::spawn(downloads.archive_worker());
             Ok(())
@@ -895,6 +919,7 @@ pub fn run() {
             load_config,
             save_config,
             detect_proxy,
+            clear_cache,
             begin_auth,
             open_site,
             open_post,
@@ -928,20 +953,4 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Dreamland");
-}
-
-#[cfg(test)]
-mod tests {
-    use super::parse_yande_user_id;
-
-    #[test]
-    fn parses_current_yande_user_info_cookie() {
-        assert_eq!(parse_yande_user_id("12345;20;1"), Some("12345".to_owned()));
-    }
-
-    #[test]
-    fn rejects_empty_and_anonymous_user_info() {
-        assert_eq!(parse_yande_user_id(""), None);
-        assert_eq!(parse_yande_user_id("0;0;0"), None);
-    }
 }

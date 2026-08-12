@@ -3,7 +3,7 @@ use tokio::io::AsyncWriteExt;
 
 const USER_AGENT: &str = concat!("Dreamland/", env!("CARGO_PKG_VERSION"));
 const DETAIL_IMAGE_EXTENSIONS: [&str; 7] = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "avif"];
-use crate::{default_cache_path, default_log_path, DownloadCancellation};
+use crate::{default_detail_cache_path, default_log_path, DownloadCancellation};
 
 fn log_detail_event(event: &str) {
     let path = default_log_path();
@@ -60,6 +60,7 @@ pub async fn download_image(
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn download_image_with_detail_cache(
     url: &str,
     site_id: &str,
@@ -163,6 +164,7 @@ async fn promote_cached_image(
     Ok(DownloadOutcome::Completed(final_path))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn download_archive(
     url: &str,
     site_id: &str,
@@ -268,7 +270,7 @@ pub async fn cache_detail_image_at(
         url,
         site_id,
         post_id,
-        &cache_root,
+        cache_root,
         &staging_root,
         network,
         &crate::DownloadCancellation::default(),
@@ -287,7 +289,7 @@ pub async fn cache_detail_image_at(
 }
 
 fn detail_cache_path() -> std::path::PathBuf {
-    default_cache_path().with_file_name("detail")
+    default_detail_cache_path()
 }
 
 async fn existing_image_path(
@@ -303,6 +305,7 @@ async fn existing_image_path(
     Ok(None)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn download_file(
     url: &str,
     site_id: &str,

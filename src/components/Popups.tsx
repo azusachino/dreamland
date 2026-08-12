@@ -167,10 +167,11 @@ interface SettingsDialogProps {
   onCancel: () => void;
   onSave: (downloadPath: string, contentPolicy: ContentPolicy, downloadVariant: MediaVariant, network: NetworkPolicy) => Promise<void>;
   onDetectProxy: () => Promise<{ detected: boolean; endpoint?: string | null; source?: string | null }>;
+  onClearCache: () => Promise<void>;
   formatError: (reason: unknown) => string;
 }
 
-export function SettingsDialog({ config, themeMode, onThemeChange, onCancel, onSave, onDetectProxy, formatError }: SettingsDialogProps) {
+export function SettingsDialog({ config, themeMode, onThemeChange, onCancel, onSave, onDetectProxy, onClearCache, formatError }: SettingsDialogProps) {
   const [downloadPath, setDownloadPath] = useState(config?.download_path ?? "");
   const [contentPolicy, setContentPolicy] = useState<ContentPolicy>(config?.content_policy ?? "SafeOnly");
   const [downloadVariant, setDownloadVariant] = useState<MediaVariant>(config?.download_variant ?? "Full");
@@ -183,6 +184,9 @@ export function SettingsDialog({ config, themeMode, onThemeChange, onCancel, onS
   const [proxyDetection, setProxyDetection] = useState<string | null>(null);
   const [detecting, setDetecting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [clearCacheOpen, setClearCacheOpen] = useState(false);
+  const [clearingCache, setClearingCache] = useState(false);
+  const [clearCacheError, setClearCacheError] = useState<string | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -204,15 +208,29 @@ export function SettingsDialog({ config, themeMode, onThemeChange, onCancel, onS
     }
   }
 
+  async function handleClearCache() {
+    setClearingCache(true);
+    setClearCacheError(null);
+    try {
+      await onClearCache();
+      setClearCacheOpen(false);
+    } catch (reason) {
+      setClearCacheError(formatError(reason));
+    } finally {
+      setClearingCache(false);
+    }
+  }
+
   return (
-    <Dialog open onClose={onCancel} fullWidth maxWidth="sm">
-      <form onSubmit={submit}>
-        <DialogTitle>
-          <p className="eyebrow">app preferences</p>
-          settings
-          <IconButton type="button" aria-label="close settings" onClick={onCancel} sx={{ position: "absolute", right: 12, top: 12 }}><Icon name="close" /></IconButton>
-        </DialogTitle>
-        <DialogContent dividers>
+    <>
+      <Dialog open onClose={onCancel} fullWidth maxWidth="sm">
+        <form onSubmit={submit}>
+          <DialogTitle>
+            <p className="eyebrow">app preferences</p>
+            settings
+            <IconButton type="button" aria-label="close settings" onClick={onCancel} sx={{ position: "absolute", right: 12, top: 12 }}><Icon name="close" /></IconButton>
+          </DialogTitle>
+          <DialogContent dividers>
           <div className="settings-section">
             <p className="section-label">appearance</p>
             <FormControl fullWidth>
@@ -240,8 +258,13 @@ export function SettingsDialog({ config, themeMode, onThemeChange, onCancel, onS
             </FormControl>
             <p className="helper-text">this controls which ratings appear in feeds and searches.</p>
           </div>
-          <div className="settings-section">
-            <p className="section-label">connection resilience</p>
+            <div className="settings-section">
+              <p className="section-label">local cache</p>
+              <p className="helper-text">remove temporary download files and detail-image previews. downloaded files, settings, login session, and history stay untouched.</p>
+              <Button variant="outlined" color="warning" type="button" onClick={() => { setClearCacheError(null); setClearCacheOpen(true); }}>clear local cache</Button>
+            </div>
+            <div className="settings-section">
+              <p className="section-label">connection resilience</p>
             <FormControl fullWidth>
               <InputLabel id="proxy-mode-label">proxy</InputLabel>
               <Select labelId="proxy-mode-label" label="proxy" value={proxyMode} onChange={(event) => setProxyMode(event.target.value as "Auto" | "Direct" | "Manual")}>
@@ -257,14 +280,26 @@ export function SettingsDialog({ config, themeMode, onThemeChange, onCancel, onS
             </div>
             <TextField label="maximum retry delay" type="number" slotProps={{ htmlInput: { min: 100 } }} value={maxRetryDelayMs} onChange={(event) => setMaxRetryDelayMs(Number(event.target.value))} fullWidth />
             <p className="helper-text">429 and temporary server responses retry with a bounded delay.</p>
-          </div>
+            </div>
+          </DialogContent>
+          <DialogActions>
+            <Button variant="text" type="button" onClick={onCancel}>cancel</Button>
+            <Button variant="contained" type="submit" disabled={saving}>{saving ? "saving…" : "save settings"}</Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+      <Dialog open={clearCacheOpen} onClose={() => !clearingCache && setClearCacheOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>clear local cache?</DialogTitle>
+        <DialogContent>
+          <p className="helper-text">this removes temporary download staging and cached detail images. it does not remove your configured download library, settings, login session, or download history.</p>
+          {clearCacheError && <Alert severity="error">couldn’t clear local cache: {clearCacheError}</Alert>}
         </DialogContent>
         <DialogActions>
-          <Button variant="text" type="button" onClick={onCancel}>cancel</Button>
-          <Button variant="contained" type="submit" disabled={saving}>{saving ? "saving…" : "save settings"}</Button>
+          <Button variant="text" type="button" disabled={clearingCache} onClick={() => setClearCacheOpen(false)}>cancel</Button>
+          <Button variant="contained" color="warning" type="button" disabled={clearingCache} onClick={() => void handleClearCache()}>{clearingCache ? "clearing…" : "clear cache"}</Button>
         </DialogActions>
-      </form>
-    </Dialog>
+      </Dialog>
+    </>
   );
 }
 

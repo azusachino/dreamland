@@ -16,7 +16,7 @@ Tauri command boundary
 Dreamland runtime
   ├── dreamland-sites composition root → selected SiteAdapter → shared/site protocol → remote HTTP
   ├── Auth/session bridge → browser flow + secret store
-  ├── SQLite LocalStateStore → saved queries, history, queue, cache metadata
+  ├── SQLite StateStore → saved queries, history, queue, cache metadata
   ├── Download worker → site media/archive resolution
   │                    → temporary local cache → atomic final rename
   └── filesystem opener → runtime-owned completed download path
@@ -29,7 +29,7 @@ Ownership is strict:
 | Rendering, selector, query editor, card/detail state | React | site adapter or filesystem |
 | Site HTTP, decoding, normalization, capability negotiation | SiteAdapter/runtime | React |
 | Auth cookies, tokens, session handles | browser bridge/secret store/runtime | React, ordinary TOML, SQLite rows |
-| Saved query definitions and query history | SQLite LocalStateStore | remote site |
+| Saved query definitions and query history | SQLite StateStore | remote site |
 | Remote favorites, pools, pool ZIP route | the selected site through capabilities | local saved-query state |
 | Queue state, metadata snapshots, terminal outcomes | SQLite + runtime worker | remote site or React |
 | Temp files and final paths | runtime download worker | React or site response JSON |
@@ -135,9 +135,10 @@ Anonymous → ChallengeStarted → BrowserComplete → Authenticated
 ```
 
 React receives only safe auth status and challenge metadata. The browser bridge
-imports declared cookie domains into the secret/session boundary. Favorite,
-favorite-list, and pool-ZIP operations ask the runtime for an internal session
-handle and never receive raw cookie material.
+imports declared cookie domains into the runtime-owned `SiteSession`. Favorite,
+favorite-list, and pool-ZIP operations pass that site-bound session through the
+capability ports; raw cookie material remains inside the runtime and download
+worker boundary.
 
 ## Feature-to-flow bindings
 
@@ -151,7 +152,7 @@ handle and never receive raw cookie material.
 | Pool browse | `RemoteCollectionCapability` | Yande pool metadata and ordered posts | pagination/session and common collection model |
 | Pool ZIP | `CollectionDownloadCapability` | Yande `/pool/zip/:id` and auth behavior | archive target, queue, path, history |
 | Single download | enqueue/download worker | media resolution and referer requirements | best quality selection, URL validation, atomic write |
-| Saved query | `LocalStateStore` | stored site expression remains opaque | pin/order/history and replay |
+| Saved query | `StateStore` | stored site expression remains opaque | pin/order/history and replay |
 | Settings | config commands + `SiteConfigSchema` | site extension fields | validation, secret references, persistence, capability refresh |
 
 Pools are not part of the required site core. Yande binds them by advertising
@@ -164,11 +165,15 @@ pool methods. The UI renders only advertised capabilities.
 SQLite stores:
 
 - `saved_queries`: complete site/query intent, name, pin, and order;
-- `query_history`: recent replayable intents, never raw continuation tokens;
 - `download_queue` / `download_history`: target, attempt state, path,
   checksum, error, and immutable normalized metadata snapshot;
-- `site_cache`: expiring normalized metadata/cache references, never remote
-  truth and never secret material.
+- `archive_queue` / `archive_history`: pool archive target, attempt state,
+  path, and terminal outcome.
+
+Query-session history remains an in-memory runtime concern in 0.1.0, and
+detail-image bytes remain in the XDG/platform cache directories. Neither is
+remote truth or secret material, but neither is represented as a SQLite table
+until its replay/eviction contract is implemented.
 
 The final file layout is:
 

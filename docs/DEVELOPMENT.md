@@ -26,22 +26,25 @@ Or use `make install`, `make doctor`, `make dev`, and `make check` inside
 - `uv run scripts/doctor.py` — check the local toolchain
 - `uv run scripts/check.py` — run the daily platform-aware checks
 - `cargo fmt --all -- --check` — check Rust formatting
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — lint Rust
 - `cargo test --workspace` — run Rust tests
 
 ## Architecture
 
 ```text
 React + TypeScript (src/) ── typed Tauri IPC ── commands (src-tauri/src/lib.rs)
-                                                   ├── Yandere adapter crate
+                                                   ├── site registry/composition
                                                    ├── runtime crate
-                                                   └── core crate
+                                                   └── site-neutral core ports
 ```
 
 The frontend calls `load_config`, `save_config`, `query_posts`,
 `continue_query`, `cancel_query`, `suggest_tags`, `enqueue_download`,
 `cancel_download`, `retry_download`, and `list_downloads`. Native filesystem,
 SQLite, and network access stays in Rust. Network settings are applied on the
-next operation without restarting the app.
+next operation without restarting the app. Site enablement is loaded from the
+TOML `[sites.<site-id>]` sections when the runtime builds its registry; the
+composition crate is the only place that registers concrete adapters.
 
 Download queue state is stored in the runtime-owned SQLite database under the
 platform data directory. Temporary `.part` files are written under the
@@ -61,6 +64,6 @@ Architecture rationale is recorded in [DECISIONS.md](DECISIONS.md) and
   Detect proxy, and choose Direct or Manual proxy if Auto is wrong. GET requests
   retry bounded 429/temporary responses and honor numeric `Retry-After` hints.
 - **Permission errors:** ensure the configured download directory is writable.
-- **Configuration reset:** remove `config.json` from the platform configuration
-  directory. The current implementation uses the legacy JSON location; TOML
-  migration remains planned.
+- **Configuration reset:** remove `config.toml` from the platform configuration
+  directory. Runtime settings are TOML-only; the cache action does not remove
+  configuration.

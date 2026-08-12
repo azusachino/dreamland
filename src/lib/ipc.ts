@@ -213,6 +213,10 @@ export function detectProxy(): Promise<ProxyDetection> {
   return invoke<ProxyDetection>("detect_proxy");
 }
 
+export function clearCache(): Promise<void> {
+  return invoke<void>("clear_cache");
+}
+
 export function beginAuth(): Promise<void> {
   return invoke<void>("begin_auth");
 }

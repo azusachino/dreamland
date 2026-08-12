@@ -1,7 +1,10 @@
 use anyhow::{bail, Context, Result};
 use dreamland_core::{
-    ContentPolicy, MediaVariant, NetworkPolicy, Pool, PoolPage, Post, PostQueryRequest,
-    SiteCapabilities, SiteDescriptor, SiteId, SitePage, TagSuggestion, TagSuggestionRequest,
+    BrowserRoutesCapability, CollectionCapability, ContentPolicy, MediaResolutionCapability,
+    MediaVariant, NetworkPolicy, Pool, PoolPage, Post, PostLookupCapability, PostQueryCapability,
+    PostQueryRequest, RelatedTagCapability, SiteAdapter, SiteCapabilities, SiteDescriptor,
+    SiteError, SiteErrorCode, SiteFuture, SiteId, SitePage, TagSuggestion, TagSuggestionCapability,
+    TagSuggestionRequest,
 };
 use serde::Deserialize;
 
@@ -44,6 +47,182 @@ pub fn descriptor() -> SiteDescriptor {
             collections: true,
             collection_downloads: false,
         },
+    }
+}
+
+#[derive(Clone)]
+pub struct Adapter {
+    config: SiteDefaults,
+    descriptor: SiteDescriptor,
+}
+
+impl Default for Adapter {
+    fn default() -> Self {
+        Self {
+            config: default_config(),
+            descriptor: descriptor(),
+        }
+    }
+}
+
+fn adapter_error(error: anyhow::Error) -> SiteError {
+    if let Some(site_error) = error.downcast_ref::<SiteError>() {
+        return site_error.clone();
+    }
+    if error.downcast_ref::<reqwest::Error>().is_some() {
+        return SiteError::new(SiteErrorCode::NetworkFailed, error.to_string(), true);
+    }
+    dreamland_moe::map_error_message(&error.to_string(), SITE_ID)
+}
+
+impl PostQueryCapability for Adapter {
+    fn query_posts<'a>(
+        &'a self,
+        request: &'a PostQueryRequest,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, SitePage> {
+        Box::pin(async move {
+            query_posts(&self.config.api_url, request, network)
+                .await
+                .map_err(adapter_error)
+        })
+    }
+}
+
+impl TagSuggestionCapability for Adapter {
+    fn suggest_tags<'a>(
+        &'a self,
+        request: &'a TagSuggestionRequest,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, Vec<TagSuggestion>> {
+        Box::pin(async move {
+            let endpoint = tag_endpoint(&self.config.api_url).map_err(adapter_error)?;
+            fetch_tag_suggestions(&endpoint, request, network)
+                .await
+                .map_err(adapter_error)
+        })
+    }
+}
+
+impl RelatedTagCapability for Adapter {
+    fn related_tags<'a>(
+        &'a self,
+        request: &'a dreamland_core::RelatedTagRequest,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, Vec<dreamland_core::RelatedTag>> {
+        Box::pin(async move {
+            let endpoint = related_tag_endpoint(&self.config.api_url).map_err(adapter_error)?;
+            fetch_related_tags(&endpoint, request, network)
+                .await
+                .map_err(adapter_error)
+        })
+    }
+}
+
+impl PostLookupCapability for Adapter {
+    fn lookup_post<'a>(
+        &'a self,
+        post_id: &'a str,
+        content_policy: ContentPolicy,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, Post> {
+        Box::pin(async move {
+            lookup_post(&self.config.api_url, post_id, content_policy, network)
+                .await
+                .map_err(adapter_error)
+        })
+    }
+}
+
+impl CollectionCapability for Adapter {
+    fn list_pools<'a>(
+        &'a self,
+        query: &'a str,
+        page: u32,
+        page_size: u16,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, PoolPage> {
+        Box::pin(async move {
+            fetch_pools(&self.config.api_url, query, page, page_size, network)
+                .await
+                .map_err(adapter_error)
+        })
+    }
+
+    fn query_pool_posts<'a>(
+        &'a self,
+        pool_id: &'a str,
+        content_policy: ContentPolicy,
+        page: u32,
+        page_size: u16,
+        network: &'a NetworkPolicy,
+    ) -> SiteFuture<'a, SitePage> {
+        Box::pin(async move {
+            query_pool_posts(
+                &self.config.api_url,
+                pool_id,
+                content_policy,
+                page,
+                page_size,
+                network,
+            )
+            .await
+            .map_err(adapter_error)
+        })
+    }
+}
+
+impl MediaResolutionCapability for Adapter {
+    fn resolve_media_url<'a>(&'a self, post: &'a Post, variant: MediaVariant) -> Option<&'a str> {
+        variant_url(post, variant)
+    }
+}
+
+impl BrowserRoutesCapability for Adapter {
+    fn browser_url(&self) -> Result<String, SiteError> {
+        Ok(self.config.browser_url.clone())
+    }
+
+    fn browser_post_url(&self, post_id: &str) -> Result<String, SiteError> {
+        browser_post_url(&self.config.browser_url, post_id).map_err(adapter_error)
+    }
+
+    fn browser_similar_url(&self) -> Result<String, SiteError> {
+        browser_similar_url(&self.config.browser_url).map_err(adapter_error)
+    }
+}
+
+impl SiteAdapter for Adapter {
+    fn descriptor(&self) -> &SiteDescriptor {
+        &self.descriptor
+    }
+
+    fn post_query(&self) -> &dyn PostQueryCapability {
+        self
+    }
+
+    fn tag_suggestions(&self) -> Option<&dyn TagSuggestionCapability> {
+        Some(self)
+    }
+
+    fn related_tags(&self) -> Option<&dyn RelatedTagCapability> {
+        Some(self)
+    }
+
+    fn post_lookup(&self) -> Option<&dyn PostLookupCapability> {
+        Some(self)
+    }
+
+    fn collections(&self) -> Option<&dyn CollectionCapability> {
+        Some(self)
+    }
+
+    fn media_resolution(&self) -> &dyn MediaResolutionCapability {
+        self
+    }
+
+    fn browser_routes(&self) -> &dyn BrowserRoutesCapability {
+        self
     }
 }
 

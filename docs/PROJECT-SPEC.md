@@ -10,6 +10,7 @@ site set, API pagination, settings, and image-download behavior.
 - Check Rust: `cargo check --workspace`
 - Test Rust: `cargo test --workspace`
 - Format Rust: `cargo fmt --all -- --check`
+- Lint Rust: `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - Check TypeScript: `bun run typecheck`
 - Check frontend: `bun run build`
 - Run desktop app: `bun run tauri:dev`
