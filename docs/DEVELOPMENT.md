@@ -61,6 +61,6 @@ Architecture rationale is recorded in [DECISIONS.md](DECISIONS.md) and
   Detect proxy, and choose Direct or Manual proxy if Auto is wrong. GET requests
   retry bounded 429/temporary responses and honor numeric `Retry-After` hints.
 - **Permission errors:** ensure the configured download directory is writable.
-- **Configuration reset:** remove `config.json` from the platform configuration
-  directory. The current implementation uses the legacy JSON location; TOML
-  migration remains planned.
+- **Configuration reset:** remove `config.toml` from the platform configuration
+  directory. Runtime settings are TOML-only; the cache action does not remove
+  configuration.

@@ -56,7 +56,7 @@ it. Before calling v0.1.0 complete, Dreamland should have:
 - Yande day/week/month popular browsing (Y-04);
 - browser-session login and remote favorite add/remove/list (Y-05/Y-06/Y-07);
 - Yande pool browse and pool ZIP download (Y-09);
-- TOML runtime configuration with the legacy JSON fallback;
+- TOML runtime configuration with explicit per-site sections;
 - Rust tests for site normalization, command serialization, configuration,
   and safe downloads;
 - passing daily checks on macOS and a native Windows validation run;
@@ -78,7 +78,7 @@ registry plumbing:
   popular browsing, auth, remote favorites, and pool/ZIP;
 - represent site capabilities explicitly, especially pagination and search,
   instead of assuming every site behaves like yande.re;
-- move user configuration from JSON to TOML with a legacy JSON fallback;
+- keep user configuration in TOML with explicit per-site sections;
 - keep site requests, validation, persistence, and downloads in Rust;
 - expose site-neutral commands to React.
 

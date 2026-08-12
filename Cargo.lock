@@ -734,6 +734,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "dreamland-local-state"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+]
+
+[[package]]
 name = "dreamland-moe"
 version = "0.1.0"
 dependencies = [
@@ -752,11 +759,13 @@ dependencies = [
  "anyhow",
  "dirs 5.0.1",
  "dreamland-core",
+ "dreamland-local-state",
  "reqwest 0.11.27",
  "rusqlite",
  "serde",
  "serde_json",
  "tokio",
+ "toml 0.8.2",
  "uuid",
 ]
 

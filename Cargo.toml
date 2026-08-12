@@ -7,6 +7,7 @@ members = [
   "crates/dreamland-site-twitter",
   "crates/dreamland-site-konachan",
   "crates/dreamland-site-yandere",
+  "crates/dreamland-local-state",
   "crates/dreamland-runtime",
   "src-tauri",
 ]

@@ -1,6 +1,7 @@
 use anyhow::bail;
 use dreamland_core::{ContentPolicy, MediaVariant, NetworkPolicy, ProxyMode};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -14,6 +15,18 @@ pub struct AppConfig {
     pub download_variant: MediaVariant,
     #[serde(default)]
     pub network: NetworkPolicy,
+    #[serde(default = "default_site_configs")]
+    pub sites: BTreeMap<String, SiteConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SiteConfig {
+    #[serde(default = "default_site_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_extension_version")]
+    pub extension_version: u32,
+    #[serde(default)]
+    pub extension: BTreeMap<String, toml::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -29,6 +42,31 @@ fn default_images_per_page() -> usize {
 
 fn default_download_variant() -> MediaVariant {
     MediaVariant::Full
+}
+
+fn default_site_enabled() -> bool {
+    true
+}
+
+fn default_extension_version() -> u32 {
+    1
+}
+
+fn default_site_config(enabled: bool) -> SiteConfig {
+    SiteConfig {
+        enabled,
+        extension_version: 1,
+        extension: BTreeMap::new(),
+    }
+}
+
+fn default_site_configs() -> BTreeMap<String, SiteConfig> {
+    BTreeMap::from([
+        ("konachan".to_owned(), default_site_config(true)),
+        ("pixiv".to_owned(), default_site_config(false)),
+        ("twitter".to_owned(), default_site_config(false)),
+        ("yandere".to_owned(), default_site_config(true)),
+    ])
 }
 
 fn default_download_path() -> PathBuf {
@@ -48,16 +86,17 @@ impl AppConfig {
             content_policy: ContentPolicy::default(),
             download_variant: default_download_variant(),
             network: NetworkPolicy::default(),
+            sites: default_site_configs(),
         })
     }
 
-    /// Load the saved app config, or build the app-wide defaults.
-    /// Site endpoints and other site-specific settings belong to the site
-    /// adapter, not this shared runtime config.
+    /// Load TOML settings or build the app-wide defaults.
+    /// Site endpoints remain owned by the adapter; `[sites.<id>]` stores only
+    /// non-secret user configuration and versioned extension values.
     pub fn load_or_default() -> anyhow::Result<Self> {
-        let config_path = Self::config_dir().join("config.json");
+        let config_path = Self::config_dir().join("config.toml");
         if config_path.exists() {
-            let mut config: Self = serde_json::from_str(&std::fs::read_to_string(config_path)?)?;
+            let mut config: Self = toml::from_str(&std::fs::read_to_string(config_path)?)?;
             config.download_path =
                 expand_home_path(config.download_path.to_string_lossy().into_owned())?;
             config.validate()?;
@@ -69,6 +108,7 @@ impl AppConfig {
                 content_policy: ContentPolicy::default(),
                 download_variant: default_download_variant(),
                 network: NetworkPolicy::default(),
+                sites: default_site_configs(),
             })
         }
     }
@@ -78,8 +118,8 @@ impl AppConfig {
         let config_dir = Self::config_dir();
         std::fs::create_dir_all(&config_dir)?;
         std::fs::write(
-            config_dir.join("config.json"),
-            serde_json::to_string_pretty(self)?,
+            config_dir.join("config.toml"),
+            toml::to_string_pretty(self)?,
         )?;
         Ok(())
     }
@@ -87,6 +127,14 @@ impl AppConfig {
     fn validate(&self) -> anyhow::Result<()> {
         if self.download_path.as_os_str().is_empty() {
             bail!("download path cannot be empty");
+        }
+        for (site_id, site) in &self.sites {
+            if site_id.trim().is_empty() {
+                bail!("site config id cannot be empty");
+            }
+            if site.extension_version == 0 {
+                bail!("site config extension version must be positive: {site_id}");
+            }
         }
         validate_network_policy(&self.network)
     }
@@ -229,6 +277,18 @@ mod tests {
     #[test]
     fn user_input_rejects_empty_paths() {
         assert!(AppConfig::from_user_input(" ".to_string()).is_err());
+    }
+
+    #[test]
+    fn config_serializes_common_and_site_sections_as_toml() {
+        let config = AppConfig::from_user_input("~/Downloads/dreamland".to_string()).unwrap();
+        let encoded = toml::to_string_pretty(&config).unwrap();
+        let decoded: AppConfig = toml::from_str(&encoded).unwrap();
+
+        assert!(encoded.contains("[network]"));
+        assert!(encoded.contains("[sites.yandere]"));
+        assert!(decoded.sites["yandere"].enabled);
+        assert!(!decoded.sites["pixiv"].enabled);
     }
 
     #[test]

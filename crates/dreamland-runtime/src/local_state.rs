@@ -113,143 +113,22 @@ impl DownloadCancellation {
 
 #[derive(Clone)]
 pub struct LocalStateStore {
-    path: Arc<PathBuf>,
+    repository: dreamland_local_state::SqliteStateRepository,
 }
 
 impl LocalStateStore {
     pub fn open(path: impl Into<PathBuf>) -> Result<Self> {
-        let path = path.into();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let store = Self {
-            path: Arc::new(path),
-        };
-        store.migrate()?;
-        Ok(store)
+        Ok(Self {
+            repository: dreamland_local_state::SqliteStateRepository::open(path)?,
+        })
     }
 
     pub fn path(&self) -> &Path {
-        self.path.as_ref()
+        self.repository.path()
     }
 
     fn connection(&self) -> Result<Connection> {
-        let connection = Connection::open(self.path())?;
-        connection.busy_timeout(std::time::Duration::from_secs(5))?;
-        Ok(connection)
-    }
-
-    fn migrate(&self) -> Result<()> {
-        let connection = self.connection()?;
-        let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        if version < 1 {
-            connection.execute_batch(
-                "
-                CREATE TABLE IF NOT EXISTS download_queue (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    site_id TEXT NOT NULL,
-                    post_id TEXT NOT NULL,
-                    variant TEXT NOT NULL,
-                    source_url TEXT NOT NULL,
-                    download_root TEXT NOT NULL,
-                    metadata_json TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    target_path TEXT,
-                    error TEXT,
-                    attempts INTEGER NOT NULL DEFAULT 0,
-                    bytes_downloaded INTEGER NOT NULL DEFAULT 0,
-                    total_bytes INTEGER,
-                    created_at_ms INTEGER NOT NULL,
-                    updated_at_ms INTEGER NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS download_history (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    site_id TEXT NOT NULL,
-                    post_id TEXT NOT NULL,
-                    variant TEXT NOT NULL,
-                    source_url TEXT NOT NULL,
-                    download_root TEXT NOT NULL,
-                    metadata_json TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    target_path TEXT,
-                    error TEXT,
-                    attempts INTEGER NOT NULL,
-                    bytes_downloaded INTEGER NOT NULL,
-                    total_bytes INTEGER,
-                    created_at_ms INTEGER NOT NULL,
-                    updated_at_ms INTEGER NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_download_queue_order
-                    ON download_queue (created_at_ms, id);
-                CREATE INDEX IF NOT EXISTS idx_download_history_updated
-                    ON download_history (updated_at_ms DESC);
-                PRAGMA user_version = 1;
-                ",
-            )?;
-        }
-        if version < 2 {
-            connection.execute_batch(
-                "
-                CREATE TABLE IF NOT EXISTS saved_queries (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    site_id TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    query_json TEXT NOT NULL,
-                    pinned INTEGER NOT NULL DEFAULT 0,
-                    position INTEGER NOT NULL DEFAULT 0,
-                    created_at_ms INTEGER NOT NULL,
-                    updated_at_ms INTEGER NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_saved_queries_order
-                    ON saved_queries (pinned DESC, position ASC, updated_at_ms DESC);
-                PRAGMA user_version = 2;
-                ",
-            )?;
-        }
-        if version < 3 {
-            connection.execute_batch(
-                "
-                CREATE TABLE IF NOT EXISTS archive_queue (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    site_id TEXT NOT NULL,
-                    pool_id TEXT NOT NULL,
-                    pool_name TEXT NOT NULL,
-                    source_url TEXT NOT NULL,
-                    download_root TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    target_path TEXT,
-                    error TEXT,
-                    attempts INTEGER NOT NULL DEFAULT 0,
-                    bytes_downloaded INTEGER NOT NULL DEFAULT 0,
-                    total_bytes INTEGER,
-                    created_at_ms INTEGER NOT NULL,
-                    updated_at_ms INTEGER NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS archive_history (
-                    id TEXT PRIMARY KEY NOT NULL,
-                    site_id TEXT NOT NULL,
-                    pool_id TEXT NOT NULL,
-                    pool_name TEXT NOT NULL,
-                    source_url TEXT NOT NULL,
-                    download_root TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    target_path TEXT,
-                    error TEXT,
-                    attempts INTEGER NOT NULL,
-                    bytes_downloaded INTEGER NOT NULL,
-                    total_bytes INTEGER,
-                    created_at_ms INTEGER NOT NULL,
-                    updated_at_ms INTEGER NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_archive_queue_order
-                    ON archive_queue (created_at_ms, id);
-                CREATE INDEX IF NOT EXISTS idx_archive_history_updated
-                    ON archive_history (updated_at_ms DESC);
-                PRAGMA user_version = 3;
-                ",
-            )?;
-        }
-        Ok(())
+        Ok(self.repository.connection()?)
     }
 
     pub fn enqueue(&self, request: DownloadRequest) -> Result<DownloadRecord> {

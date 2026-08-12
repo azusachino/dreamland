@@ -164,11 +164,15 @@ pool methods. The UI renders only advertised capabilities.
 SQLite stores:
 
 - `saved_queries`: complete site/query intent, name, pin, and order;
-- `query_history`: recent replayable intents, never raw continuation tokens;
 - `download_queue` / `download_history`: target, attempt state, path,
   checksum, error, and immutable normalized metadata snapshot;
-- `site_cache`: expiring normalized metadata/cache references, never remote
-  truth and never secret material.
+- `archive_queue` / `archive_history`: pool archive target, attempt state,
+  path, and terminal outcome.
+
+Query-session history remains an in-memory runtime concern in 0.1.0, and
+detail-image bytes remain in the XDG/platform cache directories. Neither is
+remote truth or secret material, but neither is represented as a SQLite table
+until its replay/eviction contract is implemented.
 
 The final file layout is:
 

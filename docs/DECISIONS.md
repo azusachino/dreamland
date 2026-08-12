@@ -13,7 +13,7 @@ current index; it deliberately does not duplicate their full rationale.
 | [0002](adr/0002-frontend-stack.md) | React, TypeScript, Vite, Bun, Tailwind CSS, and TanStack Query |
 | [0003](adr/0003-rust-workspace-boundaries.md) | Cargo workspace with isolated core, shared protocol, runtime, site adapter, and Tauri shell crates |
 | [0004](adr/0004-site-runtime-boundary.md) | Rust-owned site/runtime boundary; `yandere` is one site ID |
-| [0005](adr/0005-toml-runtime-configuration.md) | TOML runtime settings with a legacy JSON fallback (accepted design; migration remains pending) |
+| [0005](adr/0005-toml-runtime-configuration.md) | TOML runtime settings with per-site sections |
 | [0008](adr/0008-frontend-visual-language.md) | Material 3 Expressive content system with restrained Liquid Glass shell and opaque cross-platform fallback |
 
 ## Proposed, not yet accepted
@@ -27,10 +27,10 @@ current index; it deliberately does not duplicate their full rationale.
   list, not two). The ADR's own status is still "proposed research
   hypothesis," pending the site-wide matrix review.
 - [ADR 0009](adr/0009-runtime-operation-context-and-common-services.md)
-  proposes an explicit lifecycle context plus typed runtime services for
-  auth, cache, logging, and configuration. It deliberately does not add a
-  generic Go-style dependency bag or claim that the current switchboard is
-  already a trait registry.
+  defines an explicit lifecycle context plus typed runtime services for auth,
+  cache, logging, configuration, and persistence. It deliberately does not
+  add a generic Go-style dependency bag or claim that the current switchboard
+  is already a trait registry.
 
 ## Pending gates
 

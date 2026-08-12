@@ -919,8 +919,8 @@ The minimum SQLite ownership boundary is:
 | --- | --- | --- |
 | `saved_queries` | Named/pinned site queries and display order | Dreamland |
 | `download_history` | Queue outcome, path, checksum, error state, and immutable post metadata snapshot | Dreamland |
-| `query_history` | Recent site queries and replayable intent | Dreamland |
-| `site_cache` | Expiring normalized metadata/cache references | Dreamland, never remote truth |
+| `download_queue` | Durable pending and in-progress image jobs | Dreamland |
+| `archive_queue` / `archive_history` | Durable pool archive jobs and terminal outcomes | Dreamland |
 
 Rules:
 
@@ -932,6 +932,9 @@ Rules:
 - Download history records the local outcome and path; it is not a site
   feature and does not require authentication. Its tag snapshot supports
   local tag/account search and remains useful after the remote post changes.
+- Query-session history and detail-image cache are runtime concerns, not
+  SQLite tables in 0.1.0. Query sessions are replayable in memory and detail
+  images use the XDG/platform cache directories documented by the runtime.
 - Local rows contain no cookies, tokens, signed URLs, or site secrets.
 
 The intended site mapping is:
@@ -1158,7 +1161,7 @@ The site owns a versioned non-secret extension schema:
 pub struct SiteConfig {
     pub enabled: bool,
     pub extension_version: u32,
-    pub extension: serde_json::Value,
+    pub extension: toml::Table,
 }
 
 pub struct RuntimeConfig {
@@ -1209,7 +1212,7 @@ pub enum LogLevel {
 pub struct SiteConfigInput {
     pub enabled: bool,
     pub extension_version: u32,
-    pub extension: serde_json::Value,
+    pub extension: toml::Table,
     pub secret_refs: std::collections::BTreeMap<String, SecretRef>,
 }
 
@@ -1251,7 +1254,8 @@ Site extensions may describe endpoint mirrors, categories, page limits, or
 site-specific query controls. Secret fields resolve through the secret
 store and are never returned in SiteConfig wire responses.
 
-The lifecycle is load -> validate -> apply -> persist. Validation checks the
+The runtime TOML file uses common top-level settings plus
+`[sites.<site-id>]` sections. The lifecycle is load -> validate -> apply -> persist. Validation checks the
 schema version, field kinds, required fields, URL allowlists, and secret
 references before the registry applies a new configuration. Applying a
 configuration refreshes effective capabilities and invalidates affected query

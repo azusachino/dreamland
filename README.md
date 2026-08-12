@@ -37,7 +37,7 @@ created only when the corresponding feature needs them.
 
 | Data | Linux default | macOS / Windows | Cleanup policy |
 | --- | --- | --- | --- |
-| Settings | `$XDG_CONFIG_HOME/dreamland/config.json` (`~/.config` fallback) | platform config directory / `dreamland/config.json` | kept by cache cleanup |
+| Settings | `$XDG_CONFIG_HOME/dreamland/config.toml` (`~/.config` fallback) | platform config directory / `dreamland/config.toml` | kept by cache cleanup |
 | Queue and history | `$XDG_DATA_HOME/dreamland/state.sqlite3` (`~/.local/share` fallback) | platform local-data directory / `dreamland/state.sqlite3` | kept by cache cleanup |
 | Download staging | `$XDG_CACHE_HOME/dreamland/downloads` (`~/.cache` fallback) | platform cache directory / `dreamland/downloads` | removed by **Settings → clear local cache** |
 | Detail-image cache | `$XDG_CACHE_HOME/dreamland/detail` | platform cache directory / `dreamland/detail` | removed by **Settings → clear local cache** |
@@ -50,6 +50,12 @@ archive is running, then removes only temporary staging and detail previews.
 It does not reset settings, the SQLite queue/history, the configured download
 library, or the site login WebView session.
 
+The settings file is TOML. Common settings are top-level fields and each site
+gets its own `[sites.<site-id>]` section for non-secret enablement and
+versioned extensions. Site adapters own their bundled API/browser endpoints;
+credentials and cookies never enter TOML. See the [local state contract](docs/LOCAL-STATE.md)
+for the persistence and lifecycle boundaries.
+
 ## Architecture
 
 ```text
@@ -58,7 +64,8 @@ React + TypeScript
         ▼
 src-tauri/                  desktop commands and window lifecycle
         │
-        ├── dreamland-runtime       config, persistence, downloads
+        ├── dreamland-runtime       config, persistence services, downloads
+        ├── dreamland-local-state   SQLite schema, repository infrastructure
         ├── dreamland-core          site-neutral domain contracts
         ├── dreamland-moe           shared Moebooru wire/protocol behavior
         ├── dreamland-sites          composition root and site registry
