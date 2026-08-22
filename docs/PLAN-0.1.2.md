@@ -1,6 +1,8 @@
 # Dreamland 0.1.2 plan
 
-Status: draft. This is a quality and learning milestone, not a promise to add
+Status: active. Transition, download-state, and isolated-playground slices are
+implemented; desktop/WebView acceptance and the final keep/remove decision are
+still open. This is a quality and learning milestone, not a promise to add
 every experiment described here.
 
 ## Intention
