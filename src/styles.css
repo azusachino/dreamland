@@ -652,6 +652,10 @@ select:focus-visible {
   grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
 }
 
+.content-view {
+  animation: content-view-in var(--motion-standard) var(--ease) both;
+}
+
 .skeleton-card {
   cursor: default;
 }
@@ -696,6 +700,18 @@ select:focus-visible {
   transition: border-color var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease), transform var(--motion-fast) var(--ease);
 }
 
+.gallery-grid > .card {
+  animation: card-in var(--motion-standard) var(--ease) both;
+}
+
+.gallery-grid > .card:nth-child(2) { animation-delay: 35ms; }
+.gallery-grid > .card:nth-child(3) { animation-delay: 70ms; }
+.gallery-grid > .card:nth-child(4) { animation-delay: 105ms; }
+.gallery-grid > .card:nth-child(5) { animation-delay: 140ms; }
+.gallery-grid > .card:nth-child(6) { animation-delay: 175ms; }
+.gallery-grid > .card:nth-child(7) { animation-delay: 210ms; }
+.gallery-grid > .card:nth-child(8) { animation-delay: 245ms; }
+
 .card.selected {
   border-color: var(--primary);
   box-shadow: 0 0 0 0.18rem rgb(197 192 255 / 18%);
@@ -704,7 +720,11 @@ select:focus-visible {
 .card:hover {
   border-color: var(--outline-strong);
   box-shadow: var(--shadow);
-  transform: translateY(-0.18rem);
+  transform: translateY(-0.3rem) scale(1.006);
+}
+
+.card:active {
+  transform: translateY(-0.08rem) scale(0.998);
 }
 
 .preview {
@@ -723,7 +743,7 @@ select:focus-visible {
 }
 
 .card:hover .preview img {
-  transform: scale(1.025);
+  transform: scale(1.045);
 }
 
 .missing-preview,
@@ -915,6 +935,7 @@ select:focus-visible {
 
 .detail-overlay {
   align-items: center;
+  animation: detail-overlay-in var(--motion-standard) var(--ease) both;
   background: var(--detail-overlay);
   -webkit-backdrop-filter: blur(0.75rem);
   backdrop-filter: blur(0.75rem);
@@ -1539,6 +1560,21 @@ select:focus-visible {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+@keyframes content-view-in {
+  from { opacity: 0; transform: translateY(0.45rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(0.45rem) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes detail-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 @keyframes shimmer {
   from { transform: translateX(-100%); }
   to { transform: translateX(100%); }
@@ -1686,6 +1722,7 @@ select:focus-visible {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;

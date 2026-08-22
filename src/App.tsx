@@ -1234,6 +1234,7 @@ function App() {
             isRunnable={savedQueryIsRunnable}
             description={savedQueryDescription}
           />
+          <div key={location.key} className="content-view">
           <section className="content-heading">
             <div>
               <h2>{title}</h2>
@@ -1445,6 +1446,7 @@ function App() {
               }}
             />
           )}
+          </div>
         </main>
 
         {selectedPost && (
