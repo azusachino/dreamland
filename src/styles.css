@@ -1010,6 +1010,33 @@ select:focus-visible {
   width: 100%;
 }
 
+.playground-stage-note {
+  background: var(--detail-control-bg);
+  border: 1px solid var(--detail-control-border);
+  border-radius: 0.75rem;
+  color: var(--detail-stage-ink);
+  display: grid;
+  gap: 0.12rem;
+  left: 0.8rem;
+  padding: 0.45rem 0.65rem;
+  pointer-events: none;
+  position: absolute;
+  top: 0.8rem;
+  z-index: 1;
+}
+
+.playground-stage-note span {
+  color: var(--detail-stage-muted);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.playground-stage-note strong {
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
 .playground-empty,
 .playground-fallback {
   align-items: center;

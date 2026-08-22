@@ -14,10 +14,12 @@ into a kept cluster when complete.
 ## Implementation
 
 - A lazy-loaded `DownloadPlayground` owns one Three.js canvas.
-- It uses geometry only; full-size originals and remote image textures never
-  enter the experiment.
-- Progress changes object scale, active objects drift gently, and completed
-  objects settle into a cluster.
+- It uses small local canvas textures as state cards; full-size originals and
+  remote image textures never enter the experiment.
+- Progress changes card scale, active cards drift gently, and completed cards
+  settle into a kept cluster.
+- Thin links from the center to each card make the active-to-kept relationship
+  legible without adding a second interaction model.
 - Visibility pauses the animation loop; reduced motion renders a static frame.
 - WebGL setup failures expose a normal download-panel fallback.
 - A context loss after setup stops rendering and uses the same fallback rather
@@ -61,11 +63,11 @@ navigation state, and non-WebGL recovery action rendered coherently. This
 verifies both browser-level branches, not native WebView2/WKWebView parity or
 populated live-node interaction; browser IPC has no download fixtures here.
 
-The local preview fixture was also captured with four nodes. Halos, state
-legend, relative node size, and the kept-cluster arrangement read clearly at
-desktop size; the native node controls provide a keyboard-verifiable path for
-the same selection state, while the screenshot-only probe did not exercise
-pointer selection.
+The local preview fixture was also captured with four nodes. The local status
+cards, halos, links, state legend, relative node size, and kept-cluster
+arrangement read clearly at desktop size; the native node controls provide a
+keyboard-verifiable path for the same selection state, while the
+screenshot-only probe did not exercise pointer selection.
 
 ## What failed
 

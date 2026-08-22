@@ -2,14 +2,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@mui/material";
 import {
   BufferGeometry,
+  CanvasTexture,
   Group,
-  IcosahedronGeometry,
+  LineBasicMaterial,
+  LineSegments,
   Mesh,
   MeshBasicMaterial,
   PerspectiveCamera,
+  PlaneGeometry,
   Raycaster,
   RingGeometry,
   Scene,
+  SRGBColorSpace,
   Vector2,
   Vector3,
   WebGLRenderer,
@@ -72,6 +76,7 @@ interface PlaygroundNode {
   id: string;
   mesh: Mesh<BufferGeometry, MeshBasicMaterial>;
   halo: Mesh<BufferGeometry, MeshBasicMaterial>;
+  texture: CanvasTexture;
   phase: number;
 }
 
@@ -88,6 +93,88 @@ function nodeColor(record: DownloadRecord): number {
   if (record.status === "Completed") return 0xa7d2b7;
   if (record.status === "Running") return 0xb7cbd0;
   return 0x7f8b93;
+}
+
+function roundedRect(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+  const right = x + width;
+  const bottom = y + height;
+  context.beginPath();
+  context.moveTo(x + radius, y);
+  context.lineTo(right - radius, y);
+  context.quadraticCurveTo(right, y, right, y + radius);
+  context.lineTo(right, bottom - radius);
+  context.quadraticCurveTo(right, bottom, right - radius, bottom);
+  context.lineTo(x + radius, bottom);
+  context.quadraticCurveTo(x, bottom, x, bottom - radius);
+  context.lineTo(x, y + radius);
+  context.quadraticCurveTo(x, y, x + radius, y);
+  context.closePath();
+}
+
+function createNodeTexture(record: DownloadRecord): CanvasTexture {
+  const textureCanvas = document.createElement("canvas");
+  textureCanvas.width = 256;
+  textureCanvas.height = 176;
+  const context = textureCanvas.getContext("2d");
+  if (!context) return new CanvasTexture(textureCanvas);
+
+  const seed = [...record.post_id].reduce((value, character) => value + character.charCodeAt(0), 0);
+  const accent = ["#f1c7a8", "#b9d9d0", "#c8c3ed", "#e6c9dc"][seed % 4];
+  const background = record.status === "Completed" ? "#17332f" : record.status === "Running" ? "#1d3038" : "#27303b";
+  const label = record.status === "Completed" ? "kept" : record.status === "Running" ? "in motion" : "waiting";
+
+  context.fillStyle = background;
+  context.fillRect(0, 0, textureCanvas.width, textureCanvas.height);
+  context.globalAlpha = 0.16;
+  context.fillStyle = accent;
+  context.beginPath();
+  context.arc(202, 42, 48 + (seed % 3) * 10, 0, Math.PI * 2);
+  context.fill();
+  context.globalAlpha = 1;
+
+  roundedRect(context, 16, 16, 224, 144, 18);
+  context.strokeStyle = accent;
+  context.lineWidth = 2;
+  context.globalAlpha = 0.6;
+  context.stroke();
+  context.globalAlpha = 1;
+  context.fillStyle = accent;
+  context.beginPath();
+  context.arc(48, 56, 16, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = background;
+  context.beginPath();
+  context.arc(48, 56, 6, 0, Math.PI * 2);
+  context.fill();
+
+  context.fillStyle = "#f5f3ed";
+  context.font = "700 22px system-ui, sans-serif";
+  context.fillText(label, 76, 54);
+  context.fillStyle = accent;
+  context.font = "500 14px system-ui, sans-serif";
+  context.globalAlpha = 0.87;
+  context.fillText(`post ${record.post_id}`, 28, 104);
+  context.globalAlpha = 1;
+
+  roundedRect(context, 28, 124, 200, 10, 5);
+  context.fillStyle = "rgba(255, 255, 255, 0.12)";
+  context.fill();
+  if (record.total_bytes && record.total_bytes > 0) {
+    roundedRect(context, 28, 124, 200 * progress(record), 10, 5);
+    context.fillStyle = accent;
+    context.fill();
+  } else {
+    context.fillStyle = accent;
+    for (let index = 0; index < 3; index += 1) {
+      context.beginPath();
+      context.arc(38 + index * 13, 129, 3, 0, Math.PI * 2);
+      context.fill();
+    }
+  }
+
+  const texture = new CanvasTexture(textureCanvas);
+  texture.colorSpace = SRGBColorSpace;
+  return texture;
 }
 
 function nodePosition(index: number, completed: boolean): Vector3 {
@@ -151,8 +238,9 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
     const group = new Group();
     scene.add(group);
     const nodes: PlaygroundNode[] = visibleRecords.map((record, index) => {
+      const texture = createNodeTexture(record);
       const material = new MeshBasicMaterial({
-        color: nodeColor(record),
+        map: texture,
         transparent: true,
         opacity: record.status === "Completed" ? 0.92 : 0.78,
       });
@@ -161,15 +249,24 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
         transparent: true,
         opacity: 0.2,
       });
-      const mesh = new Mesh(new IcosahedronGeometry(record.status === "Completed" ? 0.4 : 0.32, 1), material);
-      const halo = new Mesh(new RingGeometry(0.44, 0.5, 32), haloMaterial);
+      const mesh = new Mesh(new PlaneGeometry(1.5, 1.03), material);
+      const halo = new Mesh(new RingGeometry(0.68, 0.74, 32), haloMaterial);
       mesh.position.copy(nodePosition(index, record.status === "Completed"));
       halo.position.copy(mesh.position);
-      halo.position.z -= 0.03;
+      halo.position.z -= 0.08;
       group.add(halo);
       group.add(mesh);
-      return { id: record.id, mesh, halo, phase: index * 0.8 };
+      return { id: record.id, mesh, halo, texture, phase: index * 0.8 };
     });
+    const linkGeometry = new BufferGeometry().setFromPoints(
+      nodes.flatMap((node) => [
+        new Vector3(0, 0, -0.12),
+        new Vector3(node.mesh.position.x, node.mesh.position.y, -0.12),
+      ]),
+    );
+    const linkMaterial = new LineBasicMaterial({ color: 0xb7cbd0, transparent: true, opacity: 0.18 });
+    const links = new LineSegments(linkGeometry, linkMaterial);
+    group.add(links);
     const raycaster = new Raycaster();
     const pointer = new Vector2();
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -177,6 +274,8 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
     const frameInterval = 1000 / 30;
     let lastFrame = -Infinity;
     let visible = !document.hidden;
+    let disposed = false;
+    let resizeObserver: ResizeObserver | null = null;
 
     function resize() {
       const width = Math.max(1, targetCanvas.clientWidth);
@@ -189,6 +288,7 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
     }
 
     function render(time = 0) {
+      if (disposed) return;
       if (time - lastFrame < frameInterval) return;
       lastFrame = time;
       resize();
@@ -199,13 +299,14 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
         if (!record) continue;
         const amount = progress(record);
         const selected = selectedIdRef.current === node.id;
-        const scale = (0.75 + amount * 0.45) * (selected ? 1.2 : 1);
+        const scale = (0.86 + amount * 0.24) * (selected ? 1.12 : 1);
         node.mesh.scale.setScalar(scale);
         node.mesh.material.opacity = selected ? 1 : record.status === "Completed" ? 0.92 : 0.78;
         node.halo.scale.setScalar((1.1 + amount * 0.25) * (selected ? 1.15 : 1));
         node.halo.material.opacity = selected ? 0.42 : 0.2;
-        node.mesh.rotation.x = seconds * 0.18 + node.phase;
-        node.mesh.rotation.y = seconds * 0.24 + node.phase;
+        node.mesh.rotation.x = Math.sin(seconds * 0.45 + node.phase) * 0.045;
+        node.mesh.rotation.y = Math.cos(seconds * 0.38 + node.phase) * 0.08;
+        node.mesh.rotation.z = Math.sin(seconds * 0.25 + node.phase) * 0.035;
         node.mesh.position.z = record.status === "Completed" ? 0 : Math.sin(seconds * 1.4 + node.phase) * 0.08;
         node.halo.position.z = node.mesh.position.z - 0.03;
       }
@@ -213,6 +314,7 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
     }
 
     function setLoop() {
+      if (disposed) return;
       if (!visible || reducedMotion.matches || !hasActiveRecords) {
         renderer.setAnimationLoop(null);
         render();
@@ -242,11 +344,33 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
 
     function handleContextLost(event: Event) {
       event.preventDefault();
-      renderer.setAnimationLoop(null);
+      dispose();
       setWebglUnavailable(true);
     }
 
-    const resizeObserver = new ResizeObserver(() => {
+    function dispose() {
+      if (disposed) return;
+      disposed = true;
+      renderer.setAnimationLoop(null);
+      resizeObserver?.disconnect();
+      document.removeEventListener("visibilitychange", handleVisibility);
+      reducedMotion.removeEventListener("change", handleMotionPreference);
+      targetCanvas.removeEventListener("pointerdown", handlePointerDown);
+      targetCanvas.removeEventListener("webglcontextlost", handleContextLost);
+      renderRef.current = null;
+      for (const node of nodes) {
+        node.mesh.geometry.dispose();
+        node.mesh.material.dispose();
+        node.texture.dispose();
+        node.halo.geometry.dispose();
+        node.halo.material.dispose();
+      }
+      links.geometry.dispose();
+      links.material.dispose();
+      renderer.dispose();
+    }
+
+    resizeObserver = new ResizeObserver(() => {
       const previousWidth = targetCanvas.width;
       const previousHeight = targetCanvas.height;
       resize();
@@ -263,24 +387,13 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
     setLoop();
 
     return () => {
-      renderer.setAnimationLoop(null);
-      resizeObserver.disconnect();
-      document.removeEventListener("visibilitychange", handleVisibility);
-      reducedMotion.removeEventListener("change", handleMotionPreference);
-      targetCanvas.removeEventListener("pointerdown", handlePointerDown);
-      targetCanvas.removeEventListener("webglcontextlost", handleContextLost);
-      renderRef.current = null;
-      for (const node of nodes) {
-        node.mesh.geometry.dispose();
-        node.mesh.material.dispose();
-        node.halo.geometry.dispose();
-        node.halo.material.dispose();
-      }
-      renderer.dispose();
+      dispose();
     };
   }, [sceneKey]);
 
   const selected = visibleRecords.find((record) => record.id === selectedId);
+  const activeCount = visibleRecords.filter((record) => record.status === "Queued" || record.status === "Running").length;
+  const keptCount = visibleRecords.filter((record) => record.status === "Completed").length;
 
   return (
     <section className="workspace-panel playground-panel shell-surface" aria-label="download constellation playground">
@@ -299,6 +412,10 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
       </div>
       <p className="helper-text">{demoMode ? "preview data only — this does not enter the queue or history." : "a small WebGL study: work grows as it progresses, then settles into a kept cluster."}</p>
       <div className="playground-stage">
+        <div className="playground-stage-note" aria-hidden="true">
+          <span>{demoMode ? "preview orbit" : "live orbit"}</span>
+          <strong>{activeCount > 0 ? `${activeCount} in motion` : keptCount > 0 ? "everything held" : "waiting for work"}</strong>
+        </div>
         {webglUnavailable ? (
           <div className="playground-fallback" role="status">
             <strong>WebGL is unavailable here.</strong>
