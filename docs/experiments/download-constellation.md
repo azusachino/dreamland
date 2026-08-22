@@ -65,9 +65,11 @@ populated live-node interaction; browser IPC has no download fixtures here.
 
 The local preview fixture was also captured with four nodes. The local status
 cards, halos, links, state legend, relative node size, and kept-cluster
-arrangement read clearly at desktop size; the native node controls provide a
-keyboard-verifiable path for the same selection state, while the
-screenshot-only probe did not exercise pointer selection.
+arrangement read clearly at desktop size. `agent-browser` verified both click
+and keyboard selection, the live caption update, the WebGL fallback, and a
+playground → Downloads → playground remount sequence. Native node controls
+remain the accessibility path for the same selection state in WKWebView and
+WebView2; those native checks are still pending.
 
 ## What failed
 

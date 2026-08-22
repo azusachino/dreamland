@@ -8,12 +8,13 @@ Date: 2026-08-22
 | Rust formatting/lint/tests | `make check` | pass |
 | macOS native packaging | `make build` | pass; arm64 app and DMG produced |
 | macOS packaged launch | `open target/release/bundle/macos/Dreamland.app` | pass; native process started; screen capture and assistive-access queries are unavailable in this environment |
-| Headless WebGL route | Chrome capture of `#/playground?demo=1` | pass; populated canvas rendered |
-| Headless non-WebGL route | Chrome capture with GPU disabled | pass; fallback rendered |
-| reduced motion | source contract plus CSS gate | implemented; native visual check pending |
+| Headless WebGL route | `agent-browser` open/snapshot plus Chrome capture of `#/playground?demo=1` | pass; populated canvas and accessible node controls rendered |
+| Headless non-WebGL route | `agent-browser --args '--disable-gpu,--disable-software-rasterizer'` | pass; fallback rendered and remained actionable |
+| reduced motion | `agent-browser set media dark reduced-motion` and reload | pass at browser behavior level; native visual check pending |
 | opaque surfaces | `--glass-fallback` and forced non-WebGL capture | pass at browser level |
-| WebGL context loss | renderer stops, disposes its scene/listeners, and existing Downloads fallback is shown | teardown path implemented; native event injection pending |
-| playground keyboard path | native node controls plus live Downloads handoff | implemented; native window check pending |
+| WebGL context loss | `agent-browser eval` dispatch of `webglcontextlost`, fallback text, and canvas count | pass in browser; native event injection pending |
+| playground keyboard path | `agent-browser focus` + `press Enter` on a node button | pass; `aria-pressed=true` and live caption updated; native window check pending |
+| repeated playground lifecycle | `agent-browser` route sequence playground → downloads → playground | pass; canvas remounted on both entries; native leak check pending |
 | bundle isolation | production build output | pass; normal entry remains ~76 kB minified while the ~518 kB / ~131 kB gzip playground chunk stays lazy; known warning accepted for the isolated experiment |
 | macOS WKWebView interaction | native window pointer/keyboard pass | pending; no capturable display in this environment |
 | Windows WebView2 interaction | native window pass | pending; no Windows runner available |
@@ -31,3 +32,20 @@ The CI workflow now defines a `macos-latest`/`windows-latest` desktop matrix
 that runs the repository checks and native Tauri packaging. It is a future
 machine-verification path; this branch has not pushed or observed that remote
 run yet.
+
+## Browser interaction receipt
+
+On 2026-08-22, the local Vite surface was exercised with the workstation's
+`agent-browser` CLI through `bunx` (no project dependency was added). The
+accessibility snapshot exposed the playground controls and four preview nodes.
+Clicking the first node changed the live caption to `preview · running ·
+example data only.`; focusing the second node and pressing Enter set
+`aria-pressed=true` and changed the caption to the queued state.
+
+Dispatching a cancelable `webglcontextlost` event returned the expected
+prevented result, rendered the existing WebGL fallback, and reduced the stage
+canvas count to zero. A fresh route entry rebuilt one canvas; leaving for
+Downloads and returning rebuilt one canvas again. A forced software-disabled
+session rendered the same fallback, and reduced-motion emulation preserved
+the preview orbit summary. These checks prove browser lifecycle and
+interaction behavior; they do not prove WKWebView or WebView2 parity.
