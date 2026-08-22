@@ -71,7 +71,9 @@ pointer selection.
 
 Runtime visual evidence is still pending on macOS and Windows. The current
 headless environment can verify compilation and cleanup paths, but cannot prove
-that the constellation feels useful at a real desktop window size.
+that the constellation feels useful at a real desktop window size. The
+packaged macOS process starts successfully, but screen capture and assistive
+access are unavailable here, so launchability is the only native receipt.
 
 ## Decision
 
