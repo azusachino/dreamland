@@ -344,6 +344,36 @@ function isActiveDownload(status: DownloadStatus): boolean {
   return status === "Queued" || status === "Running";
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  const lastUnit = units[units.length - 1];
+  let value = bytes;
+  let unit = units[0];
+  for (const nextUnit of units) {
+    value /= 1024;
+    unit = nextUnit;
+    if (value < 1024 || nextUnit === lastUnit) break;
+  }
+  return `${value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2)} ${unit}`;
+}
+
+type ProgressRecord = Pick<DownloadRecord, "bytes_downloaded" | "total_bytes">;
+
+function progressPercent(record: ProgressRecord): number | null {
+  if (record.total_bytes === null || record.total_bytes <= 0) return null;
+  return Math.min(100, (record.bytes_downloaded / record.total_bytes) * 100);
+}
+
+function overallProgress(records: ProgressRecord[]): ProgressRecord {
+  return {
+    bytes_downloaded: records.reduce((total, record) => total + record.bytes_downloaded, 0),
+    total_bytes: records.every((record) => record.total_bytes !== null)
+      ? records.reduce((total, record) => total + (record.total_bytes ?? 0), 0)
+      : null,
+  };
+}
+
 function App() {
   const queryClient = useQueryClient();
   const location = useLocation();
@@ -1759,6 +1789,8 @@ function DownloadPanel({ records, archives, loading, historyHasNext, historyLoad
   const history = records.filter((record) => !isActiveDownload(record.status));
   const activeArchives = archives.filter((record) => isActiveDownload(record.status));
   const archiveHistory = archives.filter((record) => !isActiveDownload(record.status));
+  const activeRecords = [...active, ...activeArchives];
+  const totalProgress = overallProgress(activeRecords);
   const groups = new Map<string, DownloadRecord[]>();
   for (const record of history) {
     const date = new Date(record.created_at_ms);
@@ -1772,6 +1804,12 @@ function DownloadPanel({ records, archives, loading, historyHasNext, historyLoad
         <div><p className="eyebrow">local state</p><h2>downloads</h2></div>
       </div>
       <p className="helper-text">{active.length + activeArchives.length ? `${active.length + activeArchives.length} item${active.length + activeArchives.length === 1 ? "" : "s"} in progress` : "nothing is downloading"}</p>
+      {activeRecords.length > 0 && <DownloadProgress
+        bytesDownloaded={totalProgress.bytes_downloaded}
+        totalBytes={totalProgress.total_bytes}
+        status="Running"
+        label="overall progress"
+      />}
       {loading && records.length === 0 && archives.length === 0 ? (
         <RowSkeleton count={6} />
       ) : records.length === 0 && archives.length === 0 ? (
@@ -1813,6 +1851,42 @@ function DownloadPanel({ records, archives, loading, historyHasNext, historyLoad
   );
 }
 
+interface DownloadProgressProps {
+  bytesDownloaded: number;
+  totalBytes: number | null;
+  status: DownloadStatus;
+  label: string;
+}
+
+function DownloadProgress({ bytesDownloaded, totalBytes, status, label }: DownloadProgressProps) {
+  const percent = progressPercent({ bytes_downloaded: bytesDownloaded, total_bytes: totalBytes });
+  const shouldShow = status === "Queued" || percent !== null || bytesDownloaded > 0;
+  if (!shouldShow) return null;
+  const indeterminate = status === "Running" && percent === null;
+  const waiting = status === "Queued" && percent === null;
+  const detail = percent === null
+    ? status === "Queued" ? "waiting" : "size unknown"
+    : `${formatBytes(bytesDownloaded)} of ${formatBytes(totalBytes!)}`;
+  return (
+    <div className="download-progress" aria-label={label}>
+      <div className="download-progress-meta">
+        <span>{percent === null ? detail : `${Math.round(percent)}%`}</span>
+        {percent !== null && <span>{detail}</span>}
+      </div>
+      <div
+        className={`download-progress-track${indeterminate ? " is-indeterminate" : ""}${waiting ? " is-waiting" : ""}`}
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={percent === null ? undefined : 100}
+        aria-valuenow={percent ?? undefined}
+      >
+        <span style={percent === null ? undefined : { width: `${percent}%` }} />
+      </div>
+    </div>
+  );
+}
+
 interface DownloadRowProps {
   record: DownloadRecord;
   onCancel: (id: string) => Promise<void>;
@@ -1831,6 +1905,12 @@ function DownloadRow({ record, onCancel, onRetry, onOpen }: DownloadRowProps) {
         <span className={`download-status status-${record.status.toLowerCase()}`}>{downloadStatusLabel(record.status)}</span>
       </div>
       <p>{record.variant} quality · attempt {record.attempts || 1}</p>
+      <DownloadProgress
+        bytesDownloaded={record.bytes_downloaded}
+        totalBytes={record.total_bytes}
+        status={record.status}
+        label={`post ${record.post_id} progress`}
+      />
       {record.error && <p className="download-error">{record.error}</p>}
       {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
       {(canCancel || canRetry || canOpen) && <div className="download-row-actions">
@@ -1858,6 +1938,12 @@ function ArchiveRow({ record, onCancel, onOpen }: ArchiveRowProps) {
         <span className={`download-status status-${record.status.toLowerCase()}`}>{downloadStatusLabel(record.status)}</span>
       </div>
       <p>pool zip · {record.pool_id} · attempt {record.attempts || 1}</p>
+      <DownloadProgress
+        bytesDownloaded={record.bytes_downloaded}
+        totalBytes={record.total_bytes}
+        status={record.status}
+        label={`${record.pool_name} progress`}
+      />
       {record.error && <p className="download-error">{record.error}</p>}
       {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
       {(canCancel || canOpen) && <div className="download-row-actions">
