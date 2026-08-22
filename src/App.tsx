@@ -1902,7 +1902,7 @@ function DownloadRow({ record, onCancel, onRetry, onOpen }: DownloadRowProps) {
     <article className="download-row">
       <div className="download-row-heading">
         <strong>#{record.post_id}</strong>
-        <span className={`download-status status-${record.status.toLowerCase()}`}>{downloadStatusLabel(record.status)}</span>
+        <span key={record.status} className={`download-status status-${record.status.toLowerCase()}`}>{downloadStatusLabel(record.status)}</span>
       </div>
       <p>{record.variant} quality · attempt {record.attempts || 1}</p>
       <DownloadProgress
@@ -1935,7 +1935,7 @@ function ArchiveRow({ record, onCancel, onOpen }: ArchiveRowProps) {
     <article className="download-row archive-row">
       <div className="download-row-heading">
         <strong>{record.pool_name}</strong>
-        <span className={`download-status status-${record.status.toLowerCase()}`}>{downloadStatusLabel(record.status)}</span>
+        <span key={record.status} className={`download-status status-${record.status.toLowerCase()}`}>{downloadStatusLabel(record.status)}</span>
       </div>
       <p>pool zip · {record.pool_id} · attempt {record.attempts || 1}</p>
       <DownloadProgress

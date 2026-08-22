@@ -1126,6 +1126,7 @@ select:focus-visible {
 }
 
 .download-status {
+  animation: status-pop var(--motion-standard) var(--ease) both;
   border-radius: 999px;
   font-size: 0.62rem;
   padding: 0.28rem 0.48rem;
@@ -1534,6 +1535,11 @@ select:focus-visible {
 @keyframes progress-indeterminate {
   from { transform: translateX(-120%); }
   to { transform: translateX(320%); }
+}
+
+@keyframes status-pop {
+  from { filter: blur(0.18rem); opacity: 0; transform: translateY(0.12rem) scale(0.94); }
+  to { filter: blur(0); opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @media (max-width: 980px) {
