@@ -25,7 +25,10 @@
       "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' https: data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:1420",
       "assetProtocol": {
         "enable": true,
-        "scope": ["$CACHE/dreamland/detail/**"]
+        "scope": [
+          "$CACHE/dreamland/detail/**/*",
+          "$HOME/.cache/dreamland/detail/**/*"
+        ]
       }
     }
   },
