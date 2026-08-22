@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -84,6 +84,7 @@ import { AdvancedQueryDialog as PopupAdvancedQueryDialog, ErrorState as PopupErr
 import { isPoolPath, isPostPath, pathForView, poolPath, popularPath, postPath, searchPath, viewFromPath } from "./navigation";
 
 import type { ViewMode } from "./view-model";
+const DownloadPlayground = lazy(() => import("./components/DownloadPlayground"));
 type PopularPeriod = "Day" | "Week" | "Month";
 type ToastTone = "success" | "info" | "error";
 type ThemeMode = "system" | "light" | "dark";
@@ -728,6 +729,8 @@ function App() {
       ? "popular"
       : view === "downloads"
       ? "downloads"
+      : view === "playground"
+      ? "playground"
       : view === "pools"
       ? "pools"
       : view === "favorites"
@@ -743,6 +746,8 @@ function App() {
       ? `most popular this ${popularPeriod.toLowerCase()} · ${popularWindow(popularAnchorDate, popularPeriod).join(" to ")} · score-ranked`
       : view === "downloads"
       ? "local download history and active work"
+      : view === "playground"
+      ? "an experimental view of work becoming something kept"
       : view === "pools"
       ? `ordered public collections from ${activeSite?.name ?? "the active site"}`
       : view === "favorites"
@@ -1386,6 +1391,10 @@ function App() {
                 await archivesQuery.refetch();
               }}
             />
+          ) : view === "playground" ? (
+            <Suspense fallback={<div className="loading-line" role="status"><span />loading playground…</div>}>
+              <DownloadPlayground records={downloadRecords} onOpenDownloads={() => changeView("downloads")} />
+            </Suspense>
           ) : view === "pools" ? (
             <PoolPanel
               pools={pools}

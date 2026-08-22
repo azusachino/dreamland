@@ -970,6 +970,53 @@ select:focus-visible {
   min-height: 20rem;
 }
 
+.playground-panel {
+  min-height: 0;
+}
+
+.playground-stage {
+  background:
+    radial-gradient(circle at 50% 45%, rgb(183 203 208 / 12%), transparent 35%),
+    radial-gradient(circle at 18% 25%, rgb(177 206 197 / 10%), transparent 28%),
+    var(--detail-stage);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  min-height: 28rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.playground-stage canvas {
+  cursor: pointer;
+  display: block;
+  height: 28rem;
+  width: 100%;
+}
+
+.playground-empty,
+.playground-fallback {
+  align-items: center;
+  color: var(--detail-stage-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  inset: 0;
+  justify-content: center;
+  padding: 1.5rem;
+  position: absolute;
+  text-align: center;
+}
+
+.playground-fallback strong {
+  color: var(--detail-stage-ink);
+}
+
+.playground-caption {
+  color: var(--ink-subtle);
+  font-size: 0.72rem;
+  min-height: 1.1rem;
+}
+
 .collection-list {
   display: grid;
   gap: 0.65rem;

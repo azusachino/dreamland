@@ -7,6 +7,7 @@ const viewPaths: Record<ViewMode, string> = {
   downloads: "/downloads",
   pools: "/pools",
   favorites: "/favorites",
+  playground: "/playground",
 };
 
 interface ViewPathOptions {

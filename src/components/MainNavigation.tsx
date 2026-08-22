@@ -10,7 +10,7 @@ interface MainNavigationProps {
   supportsFavorites: boolean;
   siteName: string;
   safeOnly: boolean;
-  onChangeView: (view: "latest" | "popular" | "downloads" | "pools" | "favorites") => void;
+  onChangeView: (view: "latest" | "popular" | "downloads" | "pools" | "favorites" | "playground") => void;
   onOpenSavedQuery: (saved: SavedQuery) => void;
   onEditSavedQuery: (saved: SavedQuery) => void;
   onMoveSavedQuery: (saved: SavedQuery, direction: -1 | 1) => void;
@@ -61,6 +61,7 @@ export function MainNavigation({ view, savedQueries, selectedSavedQueryId, suppo
       {supportsPools && <NavButton active={view === "pools"} label="pools" icon="book" onClick={() => onChangeView("pools")} />}
       {supportsFavorites && <NavButton active={view === "favorites"} label="favorites" icon="heart" onClick={() => onChangeView("favorites")} />}
       <NavButton active={view === "downloads"} label="downloads" icon="download" onClick={() => onChangeView("downloads")} />
+      <NavButton active={view === "playground"} label="playground" icon="sparkle" onClick={() => onChangeView("playground")} />
       <span className="view-status">
         <span className="connection-dot" aria-hidden="true" />
         <span>{safeOnly ? `${siteName} · safe mode` : `${siteName} connected`}</span>

@@ -1,4 +1,5 @@
 import AccessTimeRounded from "@mui/icons-material/AccessTimeRounded";
+import AutoAwesomeRounded from "@mui/icons-material/AutoAwesomeRounded";
 import ArrowBackRounded from "@mui/icons-material/ArrowBackRounded";
 import ArrowForwardRounded from "@mui/icons-material/ArrowForwardRounded";
 import CheckRounded from "@mui/icons-material/CheckRounded";
@@ -13,7 +14,7 @@ import SearchRounded from "@mui/icons-material/SearchRounded";
 import SettingsRounded from "@mui/icons-material/SettingsRounded";
 import TrendingUpRounded from "@mui/icons-material/TrendingUpRounded";
 
-export type IconName = "clock" | "trend" | "download" | "book" | "heart" | "heartFilled" | "search" | "refresh" | "settings" | "close" | "back" | "forward" | "check" | "chevron";
+export type IconName = "clock" | "trend" | "download" | "book" | "heart" | "heartFilled" | "search" | "refresh" | "settings" | "close" | "back" | "forward" | "check" | "chevron" | "sparkle";
 
 export function Icon({ name }: { name: IconName }) {
   const icons = {
@@ -31,6 +32,7 @@ export function Icon({ name }: { name: IconName }) {
     forward: ArrowForwardRounded,
     check: CheckRounded,
     chevron: ExpandMoreRounded,
+    sparkle: AutoAwesomeRounded,
   } as const;
   const Component = icons[name];
   return <Component className="icon" aria-hidden="true" />;
