@@ -46,6 +46,11 @@ The experiment has a narrow ownership boundary: it reads download records and
 returns to the existing Downloads surface. It does not alter queue semantics,
 IPC, cache paths, or post detail behavior.
 
+The `/playground` route was also captured at 1440×1000 in headless Chrome with
+WebGL disabled. The shell, selected navigation state, empty state, and
+non-WebGL recovery action rendered coherently. This verifies the browser-level
+fallback path, not native WebView2/WKWebView parity.
+
 ## What failed
 
 Runtime visual evidence is still pending on macOS and Windows. The current

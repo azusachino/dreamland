@@ -24,6 +24,8 @@ Date: 2026-08-22
   available.
 - `make check` passed after the final transition changes on 2026-08-22.
 - The normal feed path uses no Three.js import; the experiment is a lazy route.
+- Headless Chrome captured the `/playground` route at 1440×1000 with the
+  forced non-WebGL fallback; shell hierarchy and recovery action were legible.
 
 ## Open runtime receipt
 
