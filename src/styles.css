@@ -32,6 +32,11 @@
   --radius-lg: 1.45rem;
   --shadow: 0 1.2rem 3rem rgb(0 0 0 / 24%);
   --ease: cubic-bezier(0.2, 0, 0, 1);
+  --motion-fast: 150ms;
+  --motion-standard: 220ms;
+  --motion-emphasis: 360ms;
+  --motion-loading: 1.2s;
+  --motion-shimmer: 1.8s;
 }
 
 @media (prefers-color-scheme: light) {
@@ -634,7 +639,7 @@ select:focus-visible {
 }
 
 .loading-line span {
-  animation: pulse 1.2s infinite var(--ease);
+  animation: pulse var(--motion-loading) infinite var(--ease);
   background: var(--primary);
   border-radius: 50%;
   height: 0.55rem;
@@ -688,7 +693,7 @@ select:focus-visible {
   border-radius: var(--radius-md);
   cursor: pointer;
   overflow: hidden;
-  transition: border-color 180ms var(--ease), box-shadow 180ms var(--ease), transform 180ms var(--ease);
+  transition: border-color var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease), transform var(--motion-fast) var(--ease);
 }
 
 .card.selected {
@@ -713,7 +718,7 @@ select:focus-visible {
   display: block;
   height: 100%;
   object-fit: cover;
-  transition: transform 300ms var(--ease);
+  transition: transform var(--motion-emphasis) var(--ease);
   width: 100%;
 }
 
@@ -983,7 +988,7 @@ select:focus-visible {
 }
 
 .load-more span {
-  animation: pulse 1.2s infinite var(--ease);
+  animation: pulse var(--motion-loading) infinite var(--ease);
   background: var(--primary);
   border-radius: 50%;
   height: 0.55rem;
@@ -1124,6 +1129,7 @@ select:focus-visible {
   border-radius: 999px;
   font-size: 0.62rem;
   padding: 0.28rem 0.48rem;
+  transition: background-color var(--motion-standard) var(--ease), color var(--motion-standard) var(--ease);
 }
 
 .status-queued,
@@ -1249,7 +1255,7 @@ select:focus-visible {
   opacity: 0;
   object-fit: contain;
   position: absolute;
-  transition: opacity 220ms var(--ease);
+  transition: opacity var(--motion-standard) var(--ease);
   width: 100%;
 }
 
@@ -1276,7 +1282,7 @@ select:focus-visible {
 }
 
 .detail-image-loading::before {
-  animation: shimmer 1.8s ease-in-out infinite;
+  animation: shimmer var(--motion-shimmer) ease-in-out infinite;
   background: linear-gradient(110deg, transparent 20%, rgb(255 255 255 / 6%) 45%, transparent 70%);
   content: "";
   inset: 0;
