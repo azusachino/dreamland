@@ -328,7 +328,7 @@ export function ErrorState({ message, onRetry, onOpenSite, siteName }: ErrorStat
 
 export function Toast({ state, onClose }: { state: ToastState; onClose: () => void }) {
   return (
-    <Snackbar open onClose={onClose} autoHideDuration={5000} anchorOrigin={{ vertical: "top", horizontal: "right" }}>
+    <Snackbar className="toast" open onClose={onClose} autoHideDuration={5000} anchorOrigin={{ vertical: "top", horizontal: "right" }}>
       <Alert onClose={onClose} severity={state.tone} variant="filled" sx={{ width: "100%" }}>
         <strong>{state.title}</strong><div>{state.message}</div>
       </Alert>

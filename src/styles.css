@@ -778,6 +778,7 @@ select:focus-visible {
   position: absolute !important;
   right: 0.65rem;
   top: 0.55rem;
+  transition: background-color var(--motion-standard) var(--ease), border-color var(--motion-standard) var(--ease), color var(--motion-standard) var(--ease), transform var(--motion-fast) var(--ease) !important;
   width: 2.1rem;
   z-index: 1;
 }
@@ -792,6 +793,14 @@ select:focus-visible {
 .card-favorite.Mui-disabled {
   color: #fff !important;
   opacity: 0.55;
+}
+
+.card-favorite:active {
+  transform: scale(0.9);
+}
+
+.card-favorite.is-favorited {
+  animation: favorite-pop var(--motion-standard) var(--ease) both;
 }
 
 .selection-toggle {
@@ -1635,6 +1644,21 @@ select:focus-visible {
 @keyframes status-pop {
   from { filter: blur(0.18rem); opacity: 0; transform: translateY(0.12rem) scale(0.94); }
   to { filter: blur(0); opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes favorite-pop {
+  0% { transform: scale(0.88); }
+  65% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+.toast {
+  animation: toast-in var(--motion-standard) var(--ease) both;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-0.5rem); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @media (max-width: 980px) {
