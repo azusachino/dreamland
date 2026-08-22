@@ -219,6 +219,10 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
       setLoop();
     }
 
+    function handleMotionPreference() {
+      setLoop();
+    }
+
     function handlePointerDown(event: PointerEvent) {
       const bounds = targetCanvas.getBoundingClientRect();
       pointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
@@ -231,9 +235,17 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
       render(lastFrame + frameInterval);
     }
 
-    const resizeObserver = new ResizeObserver(resize);
+    const resizeObserver = new ResizeObserver(() => {
+      const previousWidth = targetCanvas.width;
+      const previousHeight = targetCanvas.height;
+      resize();
+      if (targetCanvas.width !== previousWidth || targetCanvas.height !== previousHeight) {
+        render(lastFrame + frameInterval);
+      }
+    });
     resizeObserver.observe(targetCanvas);
     document.addEventListener("visibilitychange", handleVisibility);
+    reducedMotion.addEventListener("change", handleMotionPreference);
     targetCanvas.addEventListener("pointerdown", handlePointerDown);
     setLoop();
 
@@ -241,6 +253,7 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
       renderer.setAnimationLoop(null);
       resizeObserver.disconnect();
       document.removeEventListener("visibilitychange", handleVisibility);
+      reducedMotion.removeEventListener("change", handleMotionPreference);
       targetCanvas.removeEventListener("pointerdown", handlePointerDown);
       for (const node of nodes) {
         node.mesh.geometry.dispose();
