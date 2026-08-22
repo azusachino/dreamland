@@ -716,7 +716,7 @@ function App() {
     : -1;
   const canGoPrevious = selectedPreviewIndex > 0;
   const canGoNext = selectedPreviewIndex >= 0 && selectedPreviewIndex < previewPosts.length - 1;
-  const loading = configQuery.isPending || sitesQuery.isPending || imagesQuery.isPending;
+  const loading = configQuery.isPending || sitesQuery.isPending || (isBrowseView && imagesQuery.isPending);
   const browseLoading = loading && images.length === 0;
   const loadingMore = imagesQuery.isFetchingNextPage;
   const downloadRecords = useMemo(() => {
