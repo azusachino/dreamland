@@ -189,6 +189,7 @@ function nodePosition(index: number, completed: boolean): Vector3 {
 
 export default function DownloadPlayground({ records, onOpenDownloads }: DownloadPlaygroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const renderRef = useRef<(() => void) | null>(null);
   const recordsRef = useRef<DownloadRecord[]>([]);
   const selectedIdRef = useRef<string | null>(null);
@@ -212,7 +213,8 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const stage = stageRef.current;
+    if (!canvas || !stage) return;
     const targetCanvas = canvas;
 
     let renderer: WebGLRenderer;
@@ -276,6 +278,8 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
     let visible = !document.hidden;
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
+    let intersectionObserver: IntersectionObserver | null = null;
+    let stageVisible = true;
 
     function resize() {
       const width = Math.max(1, targetCanvas.clientWidth);
@@ -315,7 +319,7 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
 
     function setLoop() {
       if (disposed) return;
-      if (!visible || reducedMotion.matches || !hasActiveRecords) {
+      if (!visible || !stageVisible || reducedMotion.matches || !hasActiveRecords) {
         renderer.setAnimationLoop(null);
         render();
       } else {
@@ -329,6 +333,11 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
     }
 
     function handleMotionPreference() {
+      setLoop();
+    }
+
+    function handleIntersection(entries: IntersectionObserverEntry[]) {
+      stageVisible = entries[0]?.isIntersecting ?? true;
       setLoop();
     }
 
@@ -353,6 +362,7 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
       disposed = true;
       renderer.setAnimationLoop(null);
       resizeObserver?.disconnect();
+      intersectionObserver?.disconnect();
       document.removeEventListener("visibilitychange", handleVisibility);
       reducedMotion.removeEventListener("change", handleMotionPreference);
       targetCanvas.removeEventListener("pointerdown", handlePointerDown);
@@ -379,6 +389,10 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
       }
     });
     resizeObserver.observe(targetCanvas);
+    if (typeof IntersectionObserver !== "undefined") {
+      intersectionObserver = new IntersectionObserver(handleIntersection, { threshold: 0.01 });
+      intersectionObserver.observe(stage);
+    }
     document.addEventListener("visibilitychange", handleVisibility);
     reducedMotion.addEventListener("change", handleMotionPreference);
     targetCanvas.addEventListener("pointerdown", handlePointerDown);
@@ -411,7 +425,7 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
         </div>
       </div>
       <p className="helper-text">{demoMode ? "preview data only — this does not enter the queue or history." : "a small WebGL study: work grows as it progresses, then settles into a kept cluster."}</p>
-      <div className="playground-stage">
+      <div ref={stageRef} className="playground-stage">
         <div className="playground-stage-note" aria-hidden="true">
           <span>{demoMode ? "preview orbit" : "live orbit"}</span>
           <strong>{activeCount > 0 ? `${activeCount} in motion` : keptCount > 0 ? "everything held" : "waiting for work"}</strong>

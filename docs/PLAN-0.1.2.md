@@ -1,10 +1,11 @@
 # Dreamland 0.1.2 plan
 
-Status: active. Transition, download-state, and isolated-playground slices are
-implemented; the playground is kept behind its route with an accessible live
-handoff. Desktop/WebView acceptance and final cross-platform performance
-evidence remain open. This is a quality and learning milestone, not a promise
-to add every experiment described here.
+Status: active. The first transition, download-state, and isolated-playground
+experiments are implemented; 0.1.2 is now expanding into a full design-language
+pass across Explore, Inspect, Keep, and the playground shell. Desktop/WebView
+acceptance and final cross-platform performance evidence remain open. This is
+a quality and learning milestone, not a promise to add every experiment
+described here.
 
 ## Intention
 
@@ -31,6 +32,55 @@ The 0.1.2 success bar is therefore two-dimensional:
 - Treat reduced motion, keyboard input, focus, opaque fallbacks, and WebView
   differences as part of the design rather than later polish.
 - Record failures and removals as useful project knowledge.
+
+## Design-language contract for the quality pass
+
+The user should be able to read Dreamland's state at a glance:
+
+```text
+discover  →  inspect  →  keep
+ambient      focused     tangible
+```
+
+The pass will tune existing components around four shared rules:
+
+- **Media leads.** A post thumbnail or a deliberate fallback carries the
+  identity of a download; full/detail media stays on the cache-owned path.
+- **State has a voice.** Queued, running, kept, failed, unavailable, and
+  loading states use shared names, contrast, icon/text support, and the same
+  motion grammar.
+- **Surfaces have hierarchy.** Glass is reserved for shell/panel surfaces;
+  repeated cards and download rows use opaque, cheap containers.
+- **Experiments have a room.** The playground can be expressive and WebGL
+  backed, but Explore, Inspect, and Keep remain usable if WebGL is absent.
+
+### Assumptions made for this pass
+
+1. `DownloadRecord.metadata` is the correct presentation contract for a
+   lightweight preview; no new Rust command or filesystem access is needed.
+2. A deterministic `?demo=1` fixture is useful for visual QA and learning, but
+   demo actions must not imply that a real download was changed.
+3. The existing MUI boundary remains; the quality pass tunes the theme and
+   local primitives before considering a component-library migration.
+4. Three.js remains lazy and isolated to the playground; adding 3D effects to
+   the feed or download list would spend performance budget without proving
+   user value.
+
+### Acceptance bar for the expanded pass
+
+- Downloads show a lightweight preview, metadata hierarchy, progress, and
+  honest fallback for missing/failed media.
+- Explore cards, navigation, panels, and feedback states share the same
+  spacing, border, focus, status, and motion vocabulary.
+- Inspect keeps its cache-owned full-image path, readable loading/failure
+  states, keyboard controls, and reduced-motion behavior.
+- `#/downloads?demo=1` and `#/playground?demo=1` are deterministic visual
+  fixtures that can be inspected without a live site or native backend.
+- The normal feed bundle does not import Three.js; the playground remains
+  lazy-loaded and resource-clean.
+- `make check` passes, and agent-browser receipts cover the new Downloads
+  surface in light/dark and reduced-motion modes where the native desktop
+  display is unavailable.
 
 ## Big steps
 

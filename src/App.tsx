@@ -375,6 +375,115 @@ function overallProgress(records: ProgressRecord[]): ProgressRecord {
   };
 }
 
+function demoThumbnail(label: string, from: string, to: string): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 300"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient></defs><rect width="240" height="300" fill="url(#g)"/><circle cx="178" cy="86" r="68" fill="white" fill-opacity=".18"/><path d="M0 228c46-54 78-50 116-8 34 38 68 45 124-18v98H0Z" fill="white" fill-opacity=".16"/><text x="20" y="270" fill="white" fill-opacity=".86" font-family="sans-serif" font-size="16" letter-spacing="2">${label}</text></svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function demoPost(id: string, previewUrl: string, width: number, height: number): Post {
+  return {
+    post: { site: "yandere", id },
+    tags: ["dreamland", "demo", "sample"],
+    author: "dreamland",
+    creator_id: null,
+    md5: null,
+    source: null,
+    parent_id: null,
+    has_children: false,
+    created_at: "2026-08-22T00:00:00Z",
+    width,
+    height,
+    rating: "Safe",
+    score: 42,
+    preview_url: previewUrl,
+    sample_url: null,
+    full_url: null,
+    file_size: width * height * 2,
+  };
+}
+
+const demoDownloadRecords: DownloadRecord[] = [
+  {
+    id: "demo-running",
+    site: "yandere",
+    post_id: "8421",
+    variant: "Full",
+    status: "Running",
+    target_path: null,
+    error: null,
+    attempts: 1,
+    bytes_downloaded: 1_800_000,
+    total_bytes: 4_800_000,
+    created_at_ms: Date.UTC(2026, 7, 22, 11, 20),
+    updated_at_ms: Date.UTC(2026, 7, 22, 11, 20),
+    metadata: demoPost("8421", demoThumbnail("IN MOTION", "#52737b", "#b1cec5"), 1600, 2100),
+  },
+  {
+    id: "demo-queued",
+    site: "yandere",
+    post_id: "8420",
+    variant: "Sample",
+    status: "Queued",
+    target_path: null,
+    error: null,
+    attempts: 1,
+    bytes_downloaded: 0,
+    total_bytes: null,
+    created_at_ms: Date.UTC(2026, 7, 22, 11, 19),
+    updated_at_ms: Date.UTC(2026, 7, 22, 11, 19),
+    metadata: demoPost("8420", demoThumbnail("WAITING", "#6b5b95", "#d6a2e8"), 1200, 1600),
+  },
+  {
+    id: "demo-completed",
+    site: "yandere",
+    post_id: "8412",
+    variant: "Full",
+    status: "Completed",
+    target_path: "/demo/dreamland/8412.jpg",
+    error: null,
+    attempts: 1,
+    bytes_downloaded: 3_200_000,
+    total_bytes: 3_200_000,
+    created_at_ms: Date.UTC(2026, 7, 21, 17, 5),
+    updated_at_ms: Date.UTC(2026, 7, 21, 17, 6),
+    metadata: demoPost("8412", demoThumbnail("KEPT", "#9b5f56", "#efc0b5"), 1800, 1200),
+  },
+  {
+    id: "demo-failed",
+    site: "yandere",
+    post_id: "8407",
+    variant: "Full",
+    status: "Failed",
+    target_path: null,
+    error: "preview fixture: connection interrupted",
+    attempts: 2,
+    bytes_downloaded: 0,
+    total_bytes: null,
+    created_at_ms: Date.UTC(2026, 7, 20, 9, 42),
+    updated_at_ms: Date.UTC(2026, 7, 20, 9, 42),
+    metadata: demoPost("8407", demoThumbnail("TRY AGAIN", "#3c4858", "#8e9aaf"), 1000, 1000),
+  },
+];
+
+const demoArchiveRecords: ArchiveRecord[] = [
+  {
+    id: "demo-archive",
+    site: "yandere",
+    pool_id: "dream-01",
+    pool_name: "dream studies",
+    status: "Completed",
+    target_path: "/demo/dreamland/dream-studies.zip",
+    error: null,
+    attempts: 1,
+    bytes_downloaded: 12_000_000,
+    total_bytes: 12_000_000,
+    created_at_ms: Date.UTC(2026, 7, 19, 14, 10),
+    updated_at_ms: Date.UTC(2026, 7, 19, 14, 12),
+  },
+];
+
+const demoPosts = demoDownloadRecords.map((record) => record.metadata);
+
 function App() {
   const queryClient = useQueryClient();
   const location = useLocation();
@@ -413,6 +522,7 @@ function App() {
   const activeQuerySession = useRef<string | null>(null);
   const historyIndex = typeof window.history.state?.idx === "number" ? window.history.state.idx : 0;
   const maxHistoryIndex = useRef(historyIndex);
+  const demoMode = new URLSearchParams(location.search).get("demo") === "1";
 
   useEffect(() => {
     maxHistoryIndex.current = Math.max(maxHistoryIndex.current, historyIndex);
@@ -638,7 +748,7 @@ function App() {
   const postDetailQuery = useQuery({
     queryKey: ["post-detail", activeSiteId, selectedPost?.post.id],
     queryFn: () => lookupPost(activeSiteId, selectedPost!.post.id, activeContentPolicy),
-    enabled: Boolean(selectedPost) && activeSite?.capabilities.post_lookup === true,
+    enabled: !demoMode && Boolean(selectedPost) && activeSite?.capabilities.post_lookup === true,
     staleTime: 60_000,
   });
   const relatedTagsQuery = useQuery({
@@ -695,12 +805,12 @@ function App() {
   });
 
   const isBrowseView = view === "latest" || view === "popular" || view === "search";
-  const images = imagesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
-  const queryError = sitesQuery.error
+  const images = demoMode && isBrowseView ? demoPosts : imagesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
+  const queryError = !demoMode && sitesQuery.error
     ? `failed to load sites: ${errorMessage(sitesQuery.error)}`
-    : configQuery.error
+    : !demoMode && configQuery.error
       ? `failed to load configuration: ${errorMessage(configQuery.error)}`
-      : isBrowseView && imagesQuery.error && images.length === 0
+    : !demoMode && isBrowseView && imagesQuery.error && images.length === 0
         ? `failed to load images: ${errorMessage(imagesQuery.error)}`
         : "";
   const favoritePosts = favoritesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
@@ -716,7 +826,7 @@ function App() {
     : -1;
   const canGoPrevious = selectedPreviewIndex > 0;
   const canGoNext = selectedPreviewIndex >= 0 && selectedPreviewIndex < previewPosts.length - 1;
-  const loading = configQuery.isPending || sitesQuery.isPending || (isBrowseView && imagesQuery.isPending);
+  const loading = !demoMode && (configQuery.isPending || sitesQuery.isPending || (isBrowseView && imagesQuery.isPending));
   const browseLoading = loading && images.length === 0;
   const loadingMore = imagesQuery.isFetchingNextPage;
   const downloadRecords = useMemo(() => {
@@ -835,7 +945,7 @@ function App() {
 
   function openPostDetail(post: Post) {
     setSelectedPost(post);
-    navigate(postPath(post.post.site, post.post.id), { state: { post } });
+    navigate(`${postPath(post.post.site, post.post.id)}${demoMode ? "?demo=1" : ""}`, { state: { post } });
   }
 
   function closePostDetail() {
@@ -872,7 +982,7 @@ function App() {
     const nextPost = previewPosts[nextIndex];
     if (nextPost) {
       setSelectedPost(nextPost);
-      navigate(postPath(nextPost.post.site, nextPost.post.id), { replace: true, state: { post: nextPost } });
+      navigate(`${postPath(nextPost.post.site, nextPost.post.id)}${demoMode ? "?demo=1" : ""}`, { replace: true, state: { post: nextPost } });
     }
   }
 
@@ -884,8 +994,9 @@ function App() {
       period: nextView === "popular" ? popularPeriod : undefined,
       date: nextView === "popular" ? popularAnchorDate : undefined,
     });
-    if (`${location.pathname}${location.search}` !== nextPath) {
-      navigate(nextPath);
+    const nextPathWithDemo = demoMode ? `${nextPath}${nextPath.includes("?") ? "&" : "?"}demo=1` : nextPath;
+    if (`${location.pathname}${location.search}` !== nextPathWithDemo) {
+      navigate(nextPathWithDemo);
     }
     setView(nextView);
     setSelectedSavedQueryId(null);
@@ -1221,7 +1332,7 @@ function App() {
       />
 
       <AppLayout>
-        <main className="content">
+        <main className="content" data-view={view}>
           <MainNavigation
             view={view}
             savedQueries={savedQueriesQuery.data ?? []}
@@ -1239,9 +1350,10 @@ function App() {
             isRunnable={savedQueryIsRunnable}
             description={savedQueryDescription}
           />
-          <div key={location.key} className="content-view">
+          <div key={location.key} className={`content-view view-${view}`}>
           <section className="content-heading">
             <div>
+              <p className="section-kicker">{selectedPost ? "inspect" : view === "downloads" ? "keep" : view === "playground" ? "experiment" : "discover"}</p>
               <h2>{title}</h2>
               <p className="subtitle">{subtitle}</p>
             </div>
@@ -1343,7 +1455,8 @@ function App() {
                         selectionMode={selectionMode}
                         selected={selectedPostIds.has(post.post.id)}
                         downloading={downloadingId === post.post.id}
-                        onDownload={handleDownload}
+                        onDownload={demoMode ? async () => undefined : handleDownload}
+                        demo={demoMode}
                         onSelect={openPostDetail}
                         onToggleSelection={() => togglePostSelection(post.post.id)}
                         onTag={chooseTag}
@@ -1365,9 +1478,11 @@ function App() {
             </>
           ) : view === "downloads" ? (
             <DownloadPanel
-              records={downloadRecords}
-              archives={archivesQuery.data ?? []}
-              loading={downloadsQuery.isPending || archivesQuery.isPending}
+              records={demoMode ? demoDownloadRecords : downloadRecords}
+              archives={demoMode ? demoArchiveRecords : archivesQuery.data ?? []}
+              loading={!demoMode && (downloadsQuery.isPending || archivesQuery.isPending)}
+              demo={demoMode}
+              interactive={!demoMode}
               historyHasNext={Boolean(downloadsQuery.hasNextPage)}
               historyLoading={downloadsQuery.isFetchingNextPage}
               onCancel={async (id) => {
@@ -1488,6 +1603,7 @@ function App() {
             relatedTagsError={relatedTagsQuery.error ? errorMessage(relatedTagsQuery.error) : ""}
             onToggleRelatedTags={() => setRelatedTagsOpen((current) => !current)}
             downloadVariant={configQuery.data?.download_variant ?? "Full"}
+            demo={demoMode}
           />
         )}
       </AppLayout>
@@ -1537,6 +1653,7 @@ interface DownloadInput {
 
 interface ImageCardProps {
   post: Post;
+  demo?: boolean;
   selectionMode: boolean;
   selected: boolean;
   downloading: boolean;
@@ -1550,15 +1667,26 @@ interface ImageCardProps {
   onTag: (tag: string) => void;
 }
 
-function ImageCard({ post, selectionMode, selected, downloading, favoriteSupported, favorited, favoriteUpdating, onDownload, onFavorite, onSelect, onToggleSelection, onTag }: ImageCardProps) {
+function ImageCard({ post, demo = false, selectionMode, selected, downloading, favoriteSupported, favorited, favoriteUpdating, onDownload, onFavorite, onSelect, onToggleSelection, onTag }: ImageCardProps) {
   const previewUrl = post.preview_url ?? post.sample_url ?? post.full_url;
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const [previewLoaded, setPreviewLoaded] = useState(false);
+
+  useEffect(() => {
+    setPreviewFailed(false);
+    setPreviewLoaded(false);
+  }, [previewUrl]);
+
   return (
     <article className={`card${selected ? " selected" : ""}`} onClick={() => selectionMode ? onToggleSelection() : onSelect(post)}>
       <div className="preview">
-        {previewUrl ? (
-          <img src={previewUrl} alt={`post ${post.post.id}`} loading="lazy" />
+        {previewUrl && !previewFailed ? (
+          <>
+            {!previewLoaded && <span className="preview-skeleton" aria-hidden="true" />}
+            <img className={previewLoaded ? "is-loaded" : ""} src={previewUrl} alt={`post ${post.post.id}`} loading="lazy" decoding="async" onLoad={() => setPreviewLoaded(true)} onError={() => setPreviewFailed(true)} />
+          </>
         ) : (
-          <span className="missing-preview">preview unavailable</span>
+          <span className="missing-preview"><Icon name="download" />preview unavailable</span>
         )}
         <span className="dimensions">{post.width ?? "?"}×{post.height ?? "?"}</span>
         {favoriteSupported && (
@@ -1601,11 +1729,11 @@ function ImageCard({ post, selectionMode, selected, downloading, favoriteSupport
         </div>
         <div className="card-footer">
           <span className="post-meta">#{post.post.id}{post.score !== null ? ` · ${post.score} score` : ""}</span>
-          <Button variant="contained" disabled={downloading} onClick={(event) => {
+          <Button variant="contained" disabled={demo || downloading} onClick={(event) => {
             event.stopPropagation();
             void onDownload(post);
           }}>
-            {downloading ? "saving…" : "download"}
+            {demo ? "sample only" : downloading ? "saving…" : "download"}
           </Button>
         </div>
       </div>
@@ -1642,9 +1770,10 @@ interface PostInspectorProps {
   relatedTagsError: string;
   onToggleRelatedTags: () => void;
   downloadVariant: MediaVariant;
+  demo?: boolean;
 }
 
-function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, favoriteUpdating, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onOpenPost, onOpenSimilarSearch, similarSearchSupported, onDownload, onFavorite, onTag, relatedTagsSupported, relatedTagsOpen, relatedTags, relatedTagsLoading, relatedTagsError, onToggleRelatedTags, downloadVariant }: PostInspectorProps) {
+function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, favoriteUpdating, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onOpenPost, onOpenSimilarSearch, similarSearchSupported, onDownload, onFavorite, onTag, relatedTagsSupported, relatedTagsOpen, relatedTags, relatedTagsLoading, relatedTagsError, onToggleRelatedTags, downloadVariant, demo = false }: PostInspectorProps) {
   const originalUrl = post.full_url;
   return (
     <Dialog open fullScreen onClose={onClose} className="detail-overlay" slotProps={{ paper: { className: "detail-panel", "aria-label": "post details" } }}>
@@ -1657,7 +1786,7 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
             <IconButton aria-label="close details" onClick={onClose}><Icon name="close" /></IconButton>
           </div>
           <div className="detail-preview">
-            <DetailImage key={post.post.id} post={post} />
+            <DetailImage key={post.post.id} post={post} demo={demo} />
           </div>
           <div className="detail-navigation" aria-label="post preview navigation">
             <IconButton className="detail-nav-button" aria-label="previous post" title="previous post" disabled={!canGoPrevious} onClick={onPrevious}><Icon name="back" /></IconButton>
@@ -1668,8 +1797,8 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
         <section className="detail-sheet" aria-label="post actions and exploration">
           <div className="detail-summary">
             <span>{siteName} post #{post.post.id}</span>
-            <Button variant="outlined" className="detail-post-link" onClick={() => void onOpenPost(post)}>open {siteName} post</Button>
-            {similarSearchSupported && <Button variant="outlined" className="detail-post-link" onClick={() => void onOpenSimilarSearch()}>open similar search</Button>}
+            {!demo && <Button variant="outlined" className="detail-post-link" onClick={() => void onOpenPost(post)}>open {siteName} post</Button>}
+            {!demo && similarSearchSupported && <Button variant="outlined" className="detail-post-link" onClick={() => void onOpenSimilarSearch()}>open similar search</Button>}
             {originalUrl && <a href={originalUrl} target="_blank" rel="noreferrer">open original</a>}
             {post.source && <a href={post.source} target="_blank" rel="noreferrer">open source</a>}
           </div>
@@ -1681,8 +1810,8 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
                 {favoriteUpdating ? "updating favorites…" : favorited ? `remove from ${siteName} favorites` : `add to ${siteName} favorites`}
               </Button>
             )}
-            <Button variant="contained" disabled={downloading} onClick={() => void onDownload(post)}>
-              {downloading ? "saving…" : `download ${downloadVariant.toLowerCase()} quality`}
+            <Button variant="contained" disabled={demo || downloading} onClick={() => void onDownload(post)}>
+              {demo ? "sample fixture" : downloading ? "saving…" : `download ${downloadVariant.toLowerCase()} quality`}
             </Button>
           </div>
           <div className="detail-explore">
@@ -1740,7 +1869,7 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
   );
 }
 
-function DetailImage({ post }: { post: Post }) {
+function DetailImage({ post, demo = false }: { post: Post; demo?: boolean }) {
   const [source, setSource] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1752,17 +1881,21 @@ function DetailImage({ post }: { post: Post }) {
     setLoaded(false);
     setError(null);
     setZoom(1);
-    void loadDetailImage(post.post.site, post.post.id)
-      .then((cachedPath) => {
-        if (active) setSource(convertFileSrc(cachedPath));
-      })
-      .catch((reason) => {
-        if (active) setError(errorMessage(reason));
-      });
+    if (demo) {
+      setSource(post.preview_url ?? post.sample_url ?? null);
+    } else {
+      void loadDetailImage(post.post.site, post.post.id)
+        .then((cachedPath) => {
+          if (active) setSource(convertFileSrc(cachedPath));
+        })
+        .catch((reason) => {
+          if (active) setError(errorMessage(reason));
+        });
+    }
     return () => {
       active = false;
     };
-  }, [post.post.id, post.post.site]);
+  }, [demo, post.post.id, post.post.site, post.preview_url, post.sample_url]);
 
   function changeZoom(delta: number) {
     setZoom((current) => Math.min(2.5, Math.max(1, Number((current + delta).toFixed(1)))));
@@ -1835,6 +1968,8 @@ interface DownloadPanelProps {
   records: DownloadRecord[];
   archives: ArchiveRecord[];
   loading: boolean;
+  demo?: boolean;
+  interactive?: boolean;
   historyHasNext: boolean;
   historyLoading: boolean;
   onCancel: (id: string) => Promise<void>;
@@ -1844,12 +1979,14 @@ interface DownloadPanelProps {
   onCancelArchive: (id: string) => Promise<void>;
 }
 
-function DownloadPanel({ records, archives, loading, historyHasNext, historyLoading, onCancel, onRetry, onOpen, onLoadMore, onCancelArchive }: DownloadPanelProps) {
+function DownloadPanel({ records, archives, loading, demo = false, interactive = true, historyHasNext, historyLoading, onCancel, onRetry, onOpen, onLoadMore, onCancelArchive }: DownloadPanelProps) {
   const active = records.filter((record) => isActiveDownload(record.status));
   const history = records.filter((record) => !isActiveDownload(record.status));
   const activeArchives = archives.filter((record) => isActiveDownload(record.status));
   const archiveHistory = archives.filter((record) => !isActiveDownload(record.status));
   const activeRecords = [...active, ...activeArchives];
+  const keptCount = history.filter((record) => record.status === "Completed" || record.status === "ExistingTarget").length + archiveHistory.filter((record) => record.status === "Completed" || record.status === "ExistingTarget").length;
+  const attentionCount = history.filter((record) => record.status === "Failed" || record.status === "Cancelled").length + archiveHistory.filter((record) => record.status === "Failed" || record.status === "Cancelled").length;
   const totalProgress = overallProgress(activeRecords);
   const groups = new Map<string, DownloadRecord[]>();
   for (const record of history) {
@@ -1863,7 +2000,15 @@ function DownloadPanel({ records, archives, loading, historyHasNext, historyLoad
       <div className="inspector-heading">
         <div><p className="eyebrow">local state</p><h2>downloads</h2></div>
       </div>
-      <p className="helper-text">{active.length + activeArchives.length ? `${active.length + activeArchives.length} item${active.length + activeArchives.length === 1 ? "" : "s"} in progress` : "nothing is downloading"}</p>
+      <div className="download-summary">
+        <p className="helper-text">{active.length + activeArchives.length ? `${active.length + activeArchives.length} item${active.length + activeArchives.length === 1 ? "" : "s"} in progress` : "nothing is downloading"}</p>
+        {demo && <span className="download-demo-badge">local fixture</span>}
+      </div>
+      <div className="download-metrics" aria-label="download summary">
+        <div><strong>{active.length + activeArchives.length}</strong><span>working</span></div>
+        <div><strong>{keptCount}</strong><span>kept</span></div>
+        <div className={attentionCount > 0 ? "has-attention" : ""}><strong>{attentionCount}</strong><span>needs attention</span></div>
+      </div>
       {activeRecords.length > 0 && <DownloadProgress
         bytesDownloaded={totalProgress.bytes_downloaded}
         totalBytes={totalProgress.total_bytes}
@@ -1879,14 +2024,14 @@ function DownloadPanel({ records, archives, loading, historyHasNext, historyLoad
           {active.length + activeArchives.length > 0 && <section className="download-section">
             <h3 className="download-section-title">in progress</h3>
             <div className="download-list">
-              {activeArchives.map((record) => <ArchiveRow key={record.id} record={record} onCancel={onCancelArchive} onOpen={onOpen} />)}
-              {active.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} onOpen={onOpen} />)}
+              {activeArchives.map((record) => <ArchiveRow key={record.id} record={record} onCancel={onCancelArchive} onOpen={onOpen} interactive={interactive} />)}
+              {active.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} onOpen={onOpen} interactive={interactive} />)}
             </div>
           </section>}
           {archiveHistory.length > 0 && <section className="download-section">
             <h3 className="download-section-title">pool archives</h3>
             <div className="download-list">
-              {archiveHistory.map((record) => <ArchiveRow key={record.id} record={record} onCancel={onCancelArchive} onOpen={onOpen} />)}
+              {archiveHistory.map((record) => <ArchiveRow key={record.id} record={record} onCancel={onCancelArchive} onOpen={onOpen} interactive={interactive} />)}
             </div>
           </section>}
           {historyGroups.length > 0 && <section className="download-section">
@@ -1898,7 +2043,7 @@ function DownloadPanel({ records, archives, loading, historyHasNext, historyLoad
                 return <section className="download-month" key={key}>
                   <h4>{year}<span>{monthName}</span></h4>
                   <div className="download-list">
-                    {group.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} onOpen={onOpen} />)}
+                    {group.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} onOpen={onOpen} interactive={interactive} />)}
                   </div>
                 </section>;
               })}
@@ -1952,33 +2097,73 @@ interface DownloadRowProps {
   onCancel: (id: string) => Promise<void>;
   onRetry: (id: string) => Promise<void>;
   onOpen: (path: string) => Promise<void>;
+  interactive?: boolean;
 }
 
-function DownloadRow({ record, onCancel, onRetry, onOpen }: DownloadRowProps) {
+function DownloadRow({ record, onCancel, onRetry, onOpen, interactive = true }: DownloadRowProps) {
   const canCancel = record.status === "Queued" || record.status === "Running";
   const canRetry = record.status === "Failed" || record.status === "Cancelled";
   const canOpen = Boolean(record.target_path) && (record.status === "Completed" || record.status === "ExistingTarget");
   return (
     <article className="download-row">
-      <div className="download-row-heading">
-        <strong>#{record.post_id}</strong>
-        <span key={record.status} className={`download-status status-${record.status.toLowerCase()}`}>{downloadStatusLabel(record.status)}</span>
+      <DownloadThumbnail record={record} />
+      <div className="download-row-content">
+        <div className="download-row-heading">
+          <div className="download-row-title"><strong>#{record.post_id}</strong><span>{record.site}</span></div>
+          <span key={record.status} className={`download-status status-${record.status.toLowerCase()}`}>{downloadStatusLabel(record.status)}</span>
+        </div>
+        <p>{record.variant} quality · {record.metadata.width ?? "?"}×{record.metadata.height ?? "?"} · attempt {record.attempts || 1}</p>
+        <DownloadProgress
+          bytesDownloaded={record.bytes_downloaded}
+          totalBytes={record.total_bytes}
+          status={record.status}
+          label={`post ${record.post_id} progress`}
+        />
+        {record.error && <p className="download-error">{record.error}</p>}
+        {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
+        {interactive && (canCancel || canRetry || canOpen) && <div className="download-row-actions">
+          {canCancel && <Button variant="text" onClick={() => void onCancel(record.id)}>cancel</Button>}
+          {canRetry && <Button variant="outlined" onClick={() => void onRetry(record.id)}>retry</Button>}
+          {canOpen && <Button variant="outlined" onClick={() => void onOpen(record.target_path!)}>open file</Button>}
+        </div>}
       </div>
-      <p>{record.variant} quality · attempt {record.attempts || 1}</p>
-      <DownloadProgress
-        bytesDownloaded={record.bytes_downloaded}
-        totalBytes={record.total_bytes}
-        status={record.status}
-        label={`post ${record.post_id} progress`}
-      />
-      {record.error && <p className="download-error">{record.error}</p>}
-      {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
-      {(canCancel || canRetry || canOpen) && <div className="download-row-actions">
-        {canCancel && <Button variant="text" onClick={() => void onCancel(record.id)}>cancel</Button>}
-        {canRetry && <Button variant="outlined" onClick={() => void onRetry(record.id)}>retry</Button>}
-        {canOpen && <Button variant="outlined" onClick={() => void onOpen(record.target_path!)}>open file</Button>}
-      </div>}
     </article>
+  );
+}
+
+function DownloadThumbnail({ record }: { record: DownloadRecord }) {
+  const source = record.metadata.preview_url ?? record.metadata.sample_url;
+  const [failedSource, setFailedSource] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const imageAvailable = Boolean(source && failedSource !== source);
+
+  useEffect(() => {
+    setFailedSource(null);
+    setLoaded(false);
+  }, [source]);
+
+  return (
+    <div className="download-thumbnail">
+      {imageAvailable ? (
+        <>
+          {!loaded && <span className="download-thumbnail-skeleton" aria-hidden="true" />}
+          <img
+            className={loaded ? "is-loaded" : ""}
+            src={source!}
+            alt={`preview for ${record.site} post ${record.post_id}`}
+            loading="lazy"
+            decoding="async"
+            onLoad={() => setLoaded(true)}
+            onError={() => setFailedSource(source!)}
+          />
+        </>
+      ) : (
+        <div className="download-thumbnail-fallback">
+          <Icon name="download" />
+          <span>preview unavailable</span>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1986,30 +2171,34 @@ interface ArchiveRowProps {
   record: ArchiveRecord;
   onCancel: (id: string) => Promise<void>;
   onOpen: (path: string) => Promise<void>;
+  interactive?: boolean;
 }
 
-function ArchiveRow({ record, onCancel, onOpen }: ArchiveRowProps) {
+function ArchiveRow({ record, onCancel, onOpen, interactive = true }: ArchiveRowProps) {
   const canCancel = record.status === "Queued" || record.status === "Running";
   const canOpen = Boolean(record.target_path) && (record.status === "Completed" || record.status === "ExistingTarget");
   return (
     <article className="download-row archive-row">
-      <div className="download-row-heading">
-        <strong>{record.pool_name}</strong>
-        <span key={record.status} className={`download-status status-${record.status.toLowerCase()}`}>{downloadStatusLabel(record.status)}</span>
+      <div className="download-thumbnail download-thumbnail-archive" aria-hidden="true"><Icon name="download" /></div>
+      <div className="download-row-content">
+        <div className="download-row-heading">
+          <div className="download-row-title"><strong>{record.pool_name}</strong><span>pool archive</span></div>
+          <span key={record.status} className={`download-status status-${record.status.toLowerCase()}`}>{downloadStatusLabel(record.status)}</span>
+        </div>
+        <p>{record.pool_id} · attempt {record.attempts || 1}</p>
+        <DownloadProgress
+          bytesDownloaded={record.bytes_downloaded}
+          totalBytes={record.total_bytes}
+          status={record.status}
+          label={`${record.pool_name} progress`}
+        />
+        {record.error && <p className="download-error">{record.error}</p>}
+        {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
+        {interactive && (canCancel || canOpen) && <div className="download-row-actions">
+          {canCancel && <Button variant="text" onClick={() => void onCancel(record.id)}>cancel</Button>}
+          {canOpen && <Button variant="outlined" onClick={() => void onOpen(record.target_path!)}>open file</Button>}
+        </div>}
       </div>
-      <p>pool zip · {record.pool_id} · attempt {record.attempts || 1}</p>
-      <DownloadProgress
-        bytesDownloaded={record.bytes_downloaded}
-        totalBytes={record.total_bytes}
-        status={record.status}
-        label={`${record.pool_name} progress`}
-      />
-      {record.error && <p className="download-error">{record.error}</p>}
-      {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
-      {(canCancel || canOpen) && <div className="download-row-actions">
-        {canCancel && <Button variant="text" onClick={() => void onCancel(record.id)}>cancel</Button>}
-        {canOpen && <Button variant="outlined" onClick={() => void onOpen(record.target_path!)}>open file</Button>}
-      </div>}
     </article>
   );
 }
