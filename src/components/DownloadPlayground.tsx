@@ -102,6 +102,7 @@ function nodePosition(index: number, completed: boolean): Vector3 {
 
 export default function DownloadPlayground({ records, onOpenDownloads }: DownloadPlaygroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const renderRef = useRef<(() => void) | null>(null);
   const recordsRef = useRef<DownloadRecord[]>([]);
   const selectedIdRef = useRef<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -115,6 +116,12 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
   const sceneKey = visibleRecords.map((record) => `${record.id}:${record.status}`).join("|");
   recordsRef.current = visibleRecords;
   selectedIdRef.current = selectedId;
+
+  function selectNode(id: string | null) {
+    selectedIdRef.current = id;
+    setSelectedId(id);
+    renderRef.current?.();
+  }
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -230,9 +237,7 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
       raycaster.setFromCamera(pointer, camera);
       const hit = raycaster.intersectObjects(nodes.map((node) => node.mesh))[0];
       const nextId = hit ? nodes.find((node) => node.mesh === hit.object)?.id ?? null : null;
-      selectedIdRef.current = nextId;
-      setSelectedId(nextId);
-      render(lastFrame + frameInterval);
+      selectNode(nextId);
     }
 
     const resizeObserver = new ResizeObserver(() => {
@@ -247,6 +252,7 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
     document.addEventListener("visibilitychange", handleVisibility);
     reducedMotion.addEventListener("change", handleMotionPreference);
     targetCanvas.addEventListener("pointerdown", handlePointerDown);
+    renderRef.current = () => render(lastFrame + frameInterval);
     setLoop();
 
     return () => {
@@ -255,6 +261,7 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
       document.removeEventListener("visibilitychange", handleVisibility);
       reducedMotion.removeEventListener("change", handleMotionPreference);
       targetCanvas.removeEventListener("pointerdown", handlePointerDown);
+      renderRef.current = null;
       for (const node of nodes) {
         node.mesh.geometry.dispose();
         node.mesh.material.dispose();
@@ -277,7 +284,7 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
         <div className="playground-actions">
           <Button variant="text" size="small" onClick={() => {
             setDemoMode((current) => !current);
-            setSelectedId(null);
+            selectNode(null);
           }}>{demoMode ? "use live downloads" : "preview example"}</Button>
           <Button variant="outlined" onClick={onOpenDownloads}>open downloads</Button>
         </div>
@@ -291,7 +298,7 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
             <Button variant="contained" onClick={onOpenDownloads}>view download state</Button>
           </div>
         ) : (
-          <canvas ref={canvasRef} aria-label="download constellation; select a node to inspect its download" />
+          <canvas ref={canvasRef} aria-hidden="true" />
         )}
         {!webglUnavailable && visibleRecords.length === 0 && <div className="playground-empty">queue a download to give the constellation something to hold.</div>}
       </div>
@@ -301,8 +308,35 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
         <span><i className="playground-dot is-completed" /> kept</span>
         <span className="playground-legend-hint">size shows progress</span>
       </div>
+      {visibleRecords.length > 0 && <div className="playground-node-list" aria-label="downloads represented by the constellation">
+        {visibleRecords.map((record) => {
+          const selected = selectedId === record.id;
+          const amount = progress(record);
+          const progressText = record.total_bytes && record.total_bytes > 0
+            ? `${Math.round(amount * 100)}%`
+            : record.status === "Completed" ? "kept" : "unknown size";
+          return (
+            <button
+              key={record.id}
+              type="button"
+              className={`playground-node${selected ? " is-selected" : ""}`}
+              aria-pressed={selected}
+              onClick={() => selectNode(record.id)}
+            >
+              <span className={`playground-dot is-${record.status.toLowerCase() === "completed" ? "completed" : record.status.toLowerCase() === "running" ? "running" : "queued"}`} aria-hidden="true" />
+              <span className="playground-node-copy">
+                <strong>{demoMode ? `preview ${record.post_id}` : `post #${record.post_id}`}</strong>
+                <small>{record.status.toLowerCase()} · {progressText}</small>
+              </span>
+            </button>
+          );
+        })}
+      </div>}
       <div className="playground-caption" aria-live="polite">
-        {selected ? `${demoMode ? "preview" : `post #${selected.post_id}`} · ${selected.status.toLowerCase()} · ${demoMode ? "example data only." : "select open downloads to manage it."}` : `${visibleRecords.length} item${visibleRecords.length === 1 ? "" : "s"} represented · click a node to inspect its identity.`}
+        {selected ? <>
+          {`${demoMode ? "preview" : `post #${selected.post_id}`} · ${selected.status.toLowerCase()} · ${demoMode ? "example data only." : "ready to manage."}`}
+          {!demoMode && <Button variant="text" size="small" onClick={onOpenDownloads}>manage download</Button>}
+        </> : `${visibleRecords.length} item${visibleRecords.length === 1 ? "" : "s"} represented · select a node to inspect its identity.`}
       </div>
     </section>
   );

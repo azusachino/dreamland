@@ -11,6 +11,7 @@ Date: 2026-08-22
 | Headless non-WebGL route | Chrome capture with GPU disabled | pass; fallback rendered |
 | reduced motion | source contract plus CSS gate | implemented; native visual check pending |
 | opaque surfaces | `--glass-fallback` and forced non-WebGL capture | pass at browser level |
+| playground keyboard path | native node controls plus live Downloads handoff | implemented; native window check pending |
 | macOS WKWebView interaction | native window pointer/keyboard pass | pending; no capturable display in this environment |
 | Windows WebView2 interaction | native window pass | pending; no Windows runner available |
 | long queue/history behavior | existing runtime tests and bounded playground records | pass at code/test level; populated native run pending |

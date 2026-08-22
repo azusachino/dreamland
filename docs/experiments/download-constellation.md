@@ -22,6 +22,10 @@ into a kept cluster when complete.
 - WebGL setup failures expose a normal download-panel fallback.
 - `#/playground?demo=1` exposes a clearly labeled local preview fixture for
   visual study; it never enters IPC, queue, or history.
+- The canvas is paired with native focusable node controls that expose each
+  record's identity, status, and progress without requiring pointer input.
+- Selecting a live node exposes a direct handoff back to Downloads; preview
+  nodes remain explicitly non-persistent.
 - Every geometry, material, renderer, observer, and listener is disposed when
   the surface unmounts.
 
@@ -57,8 +61,9 @@ populated live-node interaction; browser IPC has no download fixtures here.
 
 The local preview fixture was also captured with four nodes. Halos, state
 legend, relative node size, and the kept-cluster arrangement read clearly at
-desktop size; selection emphasis is implemented in the canvas interaction but
-was not exercised by the screenshot-only probe.
+desktop size; the native node controls provide a keyboard-verifiable path for
+the same selection state, while the screenshot-only probe did not exercise
+pointer selection.
 
 ## What failed
 
@@ -69,6 +74,6 @@ that the constellation feels useful at a real desktop window size.
 ## Decision
 
 **Keep as an experiment for 0.1.2; do not promote it into the gallery yet.**
-Revisit after manual checks of motion quality, WebGL fallback, repeated route
-entry/exit, and whether selecting a node helps users understand the download
-state.
+The interaction is useful enough to retain behind the playground boundary;
+revisit promotion only after manual checks of motion quality, WebGL fallback,
+repeated route entry/exit, and native WebView behavior.

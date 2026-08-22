@@ -1054,6 +1054,64 @@ select:focus-visible {
   margin-left: auto;
 }
 
+.playground-node-list {
+  display: flex;
+  gap: 0.45rem;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0.15rem 0 0.2rem;
+  scrollbar-width: thin;
+}
+
+.playground-node {
+  align-items: center;
+  background: var(--surface-container);
+  border: 1px solid var(--outline);
+  border-radius: 0.7rem;
+  color: var(--ink-muted);
+  cursor: pointer;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.42rem;
+  max-width: 12rem;
+  min-height: 2.5rem;
+  padding: 0.38rem 0.55rem;
+  text-align: left;
+}
+
+.playground-node:hover {
+  border-color: var(--outline-strong);
+  color: var(--ink);
+}
+
+.playground-node.is-selected {
+  background: var(--surface-high);
+  border-color: var(--primary);
+  color: var(--ink);
+}
+
+.playground-node-copy {
+  display: grid;
+  gap: 0.08rem;
+  min-width: 0;
+}
+
+.playground-node-copy strong,
+.playground-node-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playground-node-copy strong {
+  font-size: 0.68rem;
+}
+
+.playground-node-copy small {
+  color: var(--ink-subtle);
+  font-size: 0.58rem;
+}
+
 .playground-dot {
   border-radius: 50%;
   display: inline-block;

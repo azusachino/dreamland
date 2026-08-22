@@ -1,9 +1,10 @@
 # Dreamland 0.1.2 plan
 
 Status: active. Transition, download-state, and isolated-playground slices are
-implemented; desktop/WebView acceptance and the final keep/remove decision are
-still open. This is a quality and learning milestone, not a promise to add
-every experiment described here.
+implemented; the playground is kept behind its route with an accessible live
+handoff. Desktop/WebView acceptance and final cross-platform performance
+evidence remain open. This is a quality and learning milestone, not a promise
+to add every experiment described here.
 
 ## Intention
 
