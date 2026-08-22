@@ -47,8 +47,6 @@ def main() -> int:
     else:
         run("native Rust tests", sys.executable, "scripts/test.py")
 
-    if platform.system() == "Darwin":
-        run("Nix flake", "nix", "flake", "check", "--all-systems")
     return 0
 
 

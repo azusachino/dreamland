@@ -15,11 +15,10 @@ project toolchain policy.
 macOS and Windows are first-class desktop targets. Linux-specific components,
 packaging, CI requirements, and support commitments are out of scope.
 
-Nix is the only project-level toolchain source of truth. The macOS flake pins
-Rust, Bun, Make, native build inputs, and uv. uv plus small Python scripts is
-the daily tooling layer. Windows uses native runners and the same pinned
-Rust, Bun, and uv versions because Nix is not a native Windows provisioning
-layer.
+mise is the project-level toolchain source of truth. `.mise.toml` selects the
+latest stable Rust, Bun, and uv toolchain; native build inputs remain
+OS-level prerequisites. uv plus small Python scripts is the daily tooling
+layer, and both desktop platforms use the same runtime selection.
 
 The desktop bundle keeps the five generated icon assets required by the
 current Tauri configuration: `32x32.png`, `128x128.png`, `128x128@2x.png`,
@@ -28,8 +27,7 @@ part of the product scope.
 
 ## Consequences
 
-- The flake has Darwin outputs only.
 - Windows validation must happen on a native Windows environment or runner.
-- `pyproject.toml` and `uv.lock` describe daily scripts, not an alternative
-  to Nix for the project toolchain.
+- `pyproject.toml` and `uv.lock` describe the daily scripts and their
+  dependencies; `.mise.toml` selects the runtimes used to run them.
 - Linux hosts may run incidental tooling, but do not define support work.

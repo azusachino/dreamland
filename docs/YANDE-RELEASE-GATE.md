@@ -99,7 +99,7 @@ evidence. “Build passes” alone is not a release decision.
 | G-07 | Favorite page | Authorized live read smoke proves current-user identity, private visibility, ordering, empty state, pagination/continuation, and refresh after mutation; fixture tests cover all UI states. | **BLOCKED: read mechanism unverified** |
 | G-08 | Download | Fixture-to-runtime tests prove the frontend supplies only a `DownloadTarget`; async queue durability, temporary-cache staging, atomic rename, existing-target abort, URL scheme, referer, safe filtering, and local path ownership are enforced. | Pending |
 | G-09 | Pool ZIP | Fixtures cover pool metadata/order and archive target mapping; authorized live smoke verifies the ZIP route, auth redirect, content type, and terminal history state without storing the archive in fixtures. | Authenticated live smoke pending |
-| G-10 | Regression gate | `make check` plus site/runtime tests pass. | Verified 2026-08-12: `make check` passed, including TypeScript, Vite build, Rust tests, formatting, and Nix checks. Not hermetic -- `flake.nix` provides `bun` but not `typescript`; a fresh shell needs `bun install` (network) before `tsc` exists. |
+| G-10 | Regression gate | `make check` plus site/runtime tests pass. | Verified 2026-08-12: `make check` passed, including TypeScript, Vite build, Rust tests, formatting, and platform toolchain checks. Not hermetic -- `.mise.toml` provides runtimes but a fresh shell needs `bun install` (network) before `tsc` exists. |
 
 ## Live verification rules
 

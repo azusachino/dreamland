@@ -5,7 +5,10 @@ remains authoritative for external and authenticated acceptance.
 
 ## [Unreleased]
 
-No unreleased changes.
+### Changed
+
+- Replaced the Nix development environment with a mise-managed Rust, Bun, and
+  uv toolchain.
 
 ## [0.1.1] - 2026-08-12
 

@@ -9,7 +9,7 @@ current index; it deliberately does not duplicate their full rationale.
 
 | ADR | Decision |
 | --- | --- |
-| [0001](adr/0001-platform-and-toolchain.md) | macOS/Windows first-class; Nix project toolchain with uv daily scripts |
+| [0001](adr/0001-platform-and-toolchain.md) | macOS/Windows first-class; mise project toolchain with uv daily scripts |
 | [0002](adr/0002-frontend-stack.md) | React, TypeScript, Vite, Bun, Tailwind CSS, and TanStack Query |
 | [0003](adr/0003-rust-workspace-boundaries.md) | Cargo workspace with isolated core, shared protocol, runtime, site adapter, and Tauri shell crates |
 | [0004](adr/0004-site-runtime-boundary.md) | Rust-owned site/runtime boundary; `yandere` is one site ID |

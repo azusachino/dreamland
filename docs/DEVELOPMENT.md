@@ -3,7 +3,6 @@
 ## Quick Start
 
 ```bash
-nix develop
 uv sync --locked
 bun install
 bun run tauri:dev
@@ -11,10 +10,10 @@ bun run tauri:dev
 
 The frontend runs on Vite during Tauri development. Rust commands live under
 `src-tauri/` and handle API requests, configuration, and downloads. Daily
-tooling and platform-aware checks live in `scripts/` and run through uv.
+tooling and platform-aware checks live in `scripts/` and run through uv. mise
+selects the latest stable Rust, Bun, and uv versions for the project.
 
-Or use `make install`, `make doctor`, `make dev`, and `make check` inside
-`nix develop`.
+Or use `make install`, `make doctor`, `make dev`, and `make check`.
 
 ## Commands
 
@@ -56,10 +55,10 @@ Architecture rationale is recorded in [DECISIONS.md](DECISIONS.md) and
 
 ## Troubleshooting
 
-- **macOS setup:** enter `nix develop` and install the native macOS Tauri
-  prerequisites before running the desktop build.
-- **Windows setup:** use a native Windows environment or CI runner with the
-  pinned Rust and Bun versions and the native Tauri build prerequisites.
+- **macOS setup:** use mise and install the native macOS Tauri prerequisites
+  before running the desktop build.
+- **Windows setup:** use a native Windows environment or CI runner with mise's
+  latest stable Rust and Bun versions and the native Tauri prerequisites.
 - **Network errors:** check the active site's bundled endpoint, use Settings →
   Detect proxy, and choose Direct or Manual proxy if Auto is wrong. GET requests
   retry bounded 429/temporary responses and honor numeric `Retry-After` hints.

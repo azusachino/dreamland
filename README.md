@@ -147,16 +147,14 @@ schema and repository ownership.
 | Runtime | Rust 2024, Tokio, Reqwest |
 | Local database | SQLite through `dreamland-state` and `rusqlite` |
 | Shared protocol | `dreamland-moe` |
-| Tooling | Nix, mise, uv, Make |
+| Tooling | mise, uv, Make |
 
 ## Quick start
 
-On macOS, enter the Nix development shell. On Windows, use the native Rust,
-Bun, and uv toolchain with the pinned versions; Nix is not used as a native
-Windows provisioning layer.
+Use mise for the latest stable Rust, Bun, and uv toolchain. Native Tauri
+prerequisites remain OS-level dependencies.
 
 ```bash
-nix develop                 # macOS
 uv sync --locked
 bun install
 make doctor

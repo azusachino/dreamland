@@ -1,0 +1,6 @@
+# mise manages the project runtimes. Native Tauri libraries remain OS-level prerequisites.
+
+[tools]
+rust = { version = "stable", components = "rustfmt,clippy" }
+bun = "latest"
+uv = "latest"
