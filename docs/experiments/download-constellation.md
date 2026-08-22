@@ -35,8 +35,10 @@ surface is no longer used:
 - one canvas maximum;
 - at most 24 recent queued, running, or completed records;
 - pixel ratio capped at 1.5;
+- active animation capped at 30 frames per second;
 - low-power WebGL preference;
-- no texture loading or continuous loop while hidden/reduced-motion.
+- completed-only scenes render once; no continuous loop while hidden or in
+  reduced-motion mode.
 
 ## What worked
 

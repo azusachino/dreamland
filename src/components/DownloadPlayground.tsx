@@ -1,6 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@mui/material";
-import * as THREE from "three";
+import {
+  BufferGeometry,
+  Group,
+  IcosahedronGeometry,
+  Mesh,
+  MeshBasicMaterial,
+  PerspectiveCamera,
+  Raycaster,
+  Scene,
+  Vector2,
+  Vector3,
+  WebGLRenderer,
+} from "three";
 import type { DownloadRecord } from "../lib/ipc";
 
 const maxNodes = 24;
@@ -13,7 +25,7 @@ interface DownloadPlaygroundProps {
 
 interface PlaygroundNode {
   id: string;
-  mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+  mesh: Mesh<BufferGeometry, MeshBasicMaterial>;
   phase: number;
 }
 
@@ -32,14 +44,14 @@ function nodeColor(record: DownloadRecord): number {
   return 0x7f8b93;
 }
 
-function nodePosition(index: number, completed: boolean): THREE.Vector3 {
+function nodePosition(index: number, completed: boolean): Vector3 {
   if (completed) {
     const angle = index * 2.4;
     const radius = 1.15 + (index % 3) * 0.22;
-    return new THREE.Vector3(Math.cos(angle) * radius, Math.sin(angle) * radius * 0.65, 0);
+    return new Vector3(Math.cos(angle) * radius, Math.sin(angle) * radius * 0.65, 0);
   }
   const columns = 5;
-  return new THREE.Vector3((index % columns) * 1.15 - 2.3, Math.floor(index / columns) * 0.95 - 1.15, 0);
+  return new Vector3((index % columns) * 1.15 - 2.3, Math.floor(index / columns) * 0.95 - 1.15, 0);
 }
 
 export default function DownloadPlayground({ records, onOpenDownloads }: DownloadPlaygroundProps) {
@@ -59,9 +71,9 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
     if (!canvas) return;
     const targetCanvas = canvas;
 
-    let renderer: THREE.WebGLRenderer;
+    let renderer: WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({
+      renderer = new WebGLRenderer({
         alpha: true,
         antialias: true,
         canvas: targetCanvas,
@@ -76,25 +88,28 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio));
     renderer.setClearColor(0x000000, 0);
 
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+    const scene = new Scene();
+    const camera = new PerspectiveCamera(35, 1, 0.1, 100);
     camera.position.z = 8;
-    const group = new THREE.Group();
+    const group = new Group();
     scene.add(group);
     const nodes: PlaygroundNode[] = visibleRecords.map((record, index) => {
-      const material = new THREE.MeshBasicMaterial({
+      const material = new MeshBasicMaterial({
         color: nodeColor(record),
         transparent: true,
         opacity: record.status === "Completed" ? 0.92 : 0.78,
       });
-      const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(record.status === "Completed" ? 0.4 : 0.32, 1), material);
+      const mesh = new Mesh(new IcosahedronGeometry(record.status === "Completed" ? 0.4 : 0.32, 1), material);
       mesh.position.copy(nodePosition(index, record.status === "Completed"));
       group.add(mesh);
       return { id: record.id, mesh, phase: index * 0.8 };
     });
-    const raycaster = new THREE.Raycaster();
-    const pointer = new THREE.Vector2();
+    const raycaster = new Raycaster();
+    const pointer = new Vector2();
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const hasActiveRecords = visibleRecords.some((record) => record.status === "Queued" || record.status === "Running");
+    const frameInterval = 1000 / 30;
+    let lastFrame = -Infinity;
     let visible = !document.hidden;
 
     function resize() {
@@ -108,6 +123,8 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
     }
 
     function render(time = 0) {
+      if (time - lastFrame < frameInterval) return;
+      lastFrame = time;
       resize();
       const seconds = time * 0.001;
       const currentRecords = new Map(recordsRef.current.map((record) => [record.id, record]));
@@ -124,7 +141,7 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
     }
 
     function setLoop() {
-      if (!visible || reducedMotion.matches) {
+      if (!visible || reducedMotion.matches || !hasActiveRecords) {
         renderer.setAnimationLoop(null);
         render();
       } else {
