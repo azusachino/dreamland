@@ -11,7 +11,9 @@ Date: 2026-08-22
 | Headless non-WebGL route | Chrome capture with GPU disabled | pass; fallback rendered |
 | reduced motion | source contract plus CSS gate | implemented; native visual check pending |
 | opaque surfaces | `--glass-fallback` and forced non-WebGL capture | pass at browser level |
+| WebGL context loss | renderer stops and existing Downloads fallback is shown | implemented; native event injection pending |
 | playground keyboard path | native node controls plus live Downloads handoff | implemented; native window check pending |
+| bundle isolation | production build output | pass; normal entry remains ~76 kB minified while the ~515 kB / ~131 kB gzip playground chunk stays lazy; known warning accepted for the isolated experiment |
 | macOS WKWebView interaction | native window pointer/keyboard pass | pending; no capturable display in this environment |
 | Windows WebView2 interaction | native window pass | pending; no Windows runner available |
 | long queue/history behavior | existing runtime tests and bounded playground records | pass at code/test level; populated native run pending |

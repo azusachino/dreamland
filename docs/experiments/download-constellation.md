@@ -20,6 +20,8 @@ into a kept cluster when complete.
   objects settle into a cluster.
 - Visibility pauses the animation loop; reduced motion renders a static frame.
 - WebGL setup failures expose a normal download-panel fallback.
+- A context loss after setup stops rendering and uses the same fallback rather
+  than leaving a dead canvas in the surface.
 - `#/playground?demo=1` exposes a clearly labeled local preview fixture for
   visual study; it never enters IPC, queue, or history.
 - The canvas is paired with native focusable node controls that expose each

@@ -240,6 +240,12 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
       selectNode(nextId);
     }
 
+    function handleContextLost(event: Event) {
+      event.preventDefault();
+      renderer.setAnimationLoop(null);
+      setWebglUnavailable(true);
+    }
+
     const resizeObserver = new ResizeObserver(() => {
       const previousWidth = targetCanvas.width;
       const previousHeight = targetCanvas.height;
@@ -252,6 +258,7 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
     document.addEventListener("visibilitychange", handleVisibility);
     reducedMotion.addEventListener("change", handleMotionPreference);
     targetCanvas.addEventListener("pointerdown", handlePointerDown);
+    targetCanvas.addEventListener("webglcontextlost", handleContextLost);
     renderRef.current = () => render(lastFrame + frameInterval);
     setLoop();
 
@@ -261,6 +268,7 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
       document.removeEventListener("visibilitychange", handleVisibility);
       reducedMotion.removeEventListener("change", handleMotionPreference);
       targetCanvas.removeEventListener("pointerdown", handlePointerDown);
+      targetCanvas.removeEventListener("webglcontextlost", handleContextLost);
       renderRef.current = null;
       for (const node of nodes) {
         node.mesh.geometry.dispose();
