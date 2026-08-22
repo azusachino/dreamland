@@ -983,6 +983,14 @@ select:focus-visible {
   min-height: 0;
 }
 
+.playground-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
 .playground-stage {
   background:
     radial-gradient(circle at 50% 45%, rgb(183 203 208 / 12%), transparent 35%),
@@ -1024,6 +1032,45 @@ select:focus-visible {
   color: var(--ink-subtle);
   font-size: 0.72rem;
   min-height: 1.1rem;
+}
+
+.playground-legend {
+  align-items: center;
+  color: var(--ink-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.68rem;
+  gap: 0.75rem;
+}
+
+.playground-legend span {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.3rem;
+}
+
+.playground-legend-hint {
+  color: var(--ink-subtle);
+  margin-left: auto;
+}
+
+.playground-dot {
+  border-radius: 50%;
+  display: inline-block;
+  height: 0.5rem;
+  width: 0.5rem;
+}
+
+.playground-dot.is-running {
+  background: var(--primary);
+}
+
+.playground-dot.is-queued {
+  background: var(--ink-subtle);
+}
+
+.playground-dot.is-completed {
+  background: var(--success);
 }
 
 .collection-list {

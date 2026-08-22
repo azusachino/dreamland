@@ -8,15 +8,60 @@ import {
   MeshBasicMaterial,
   PerspectiveCamera,
   Raycaster,
+  RingGeometry,
   Scene,
   Vector2,
   Vector3,
   WebGLRenderer,
 } from "three";
-import type { DownloadRecord } from "../lib/ipc";
+import type { DownloadRecord, Post } from "../lib/ipc";
 
 const maxNodes = 24;
 const maxPixelRatio = 1.5;
+
+function demoRecord(id: string, postId: string, status: "Queued" | "Running" | "Completed", bytesDownloaded: number, totalBytes: number | null): DownloadRecord {
+  const metadata: Post = {
+    post: { site: "demo", id: postId },
+    tags: ["dreamland_preview"],
+    author: "demo",
+    creator_id: null,
+    md5: null,
+    source: null,
+    parent_id: null,
+    has_children: false,
+    created_at: null,
+    width: 1200,
+    height: 900,
+    rating: "Safe",
+    score: null,
+    preview_url: null,
+    sample_url: null,
+    full_url: null,
+    file_size: totalBytes,
+  };
+  return {
+    id,
+    site: "demo",
+    post_id: postId,
+    variant: "Sample",
+    status,
+    target_path: null,
+    error: null,
+    attempts: status === "Queued" ? 0 : 1,
+    bytes_downloaded: bytesDownloaded,
+    total_bytes: totalBytes,
+    created_at_ms: 0,
+    updated_at_ms: 0,
+    metadata,
+  };
+}
+
+const demoRecords: DownloadRecord[] = [
+  demoRecord("demo-running", "running", "Running", 4_800_000, 12_000_000),
+  demoRecord("demo-queued", "queued", "Queued", 0, null),
+  demoRecord("demo-kept-a", "kept-a", "Completed", 9_000_000, 9_000_000),
+  demoRecord("demo-kept-b", "kept-b", "Completed", 7_500_000, 7_500_000),
+];
 
 interface DownloadPlaygroundProps {
   records: DownloadRecord[];
@@ -26,6 +71,7 @@ interface DownloadPlaygroundProps {
 interface PlaygroundNode {
   id: string;
   mesh: Mesh<BufferGeometry, MeshBasicMaterial>;
+  halo: Mesh<BufferGeometry, MeshBasicMaterial>;
   phase: number;
 }
 
@@ -57,14 +103,18 @@ function nodePosition(index: number, completed: boolean): Vector3 {
 export default function DownloadPlayground({ records, onOpenDownloads }: DownloadPlaygroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const recordsRef = useRef<DownloadRecord[]>([]);
+  const selectedIdRef = useRef<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [demoMode, setDemoMode] = useState(() => window.location.hash.includes("demo=1"));
   const [webglUnavailable, setWebglUnavailable] = useState(false);
+  const sourceRecords = demoMode ? demoRecords : records;
   const visibleRecords = useMemo(
-    () => records.filter(isPlaygroundRecord).slice(0, maxNodes),
-    [records],
+    () => sourceRecords.filter(isPlaygroundRecord).slice(0, maxNodes),
+    [sourceRecords],
   );
   const sceneKey = visibleRecords.map((record) => `${record.id}:${record.status}`).join("|");
   recordsRef.current = visibleRecords;
+  selectedIdRef.current = selectedId;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -99,10 +149,19 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
         transparent: true,
         opacity: record.status === "Completed" ? 0.92 : 0.78,
       });
+      const haloMaterial = new MeshBasicMaterial({
+        color: nodeColor(record),
+        transparent: true,
+        opacity: 0.2,
+      });
       const mesh = new Mesh(new IcosahedronGeometry(record.status === "Completed" ? 0.4 : 0.32, 1), material);
+      const halo = new Mesh(new RingGeometry(0.44, 0.5, 32), haloMaterial);
       mesh.position.copy(nodePosition(index, record.status === "Completed"));
+      halo.position.copy(mesh.position);
+      halo.position.z -= 0.03;
+      group.add(halo);
       group.add(mesh);
-      return { id: record.id, mesh, phase: index * 0.8 };
+      return { id: record.id, mesh, halo, phase: index * 0.8 };
     });
     const raycaster = new Raycaster();
     const pointer = new Vector2();
@@ -132,10 +191,16 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
         const record = currentRecords.get(node.id);
         if (!record) continue;
         const amount = progress(record);
-        node.mesh.scale.setScalar(0.75 + amount * 0.45);
+        const selected = selectedIdRef.current === node.id;
+        const scale = (0.75 + amount * 0.45) * (selected ? 1.2 : 1);
+        node.mesh.scale.setScalar(scale);
+        node.mesh.material.opacity = selected ? 1 : record.status === "Completed" ? 0.92 : 0.78;
+        node.halo.scale.setScalar((1.1 + amount * 0.25) * (selected ? 1.15 : 1));
+        node.halo.material.opacity = selected ? 0.42 : 0.2;
         node.mesh.rotation.x = seconds * 0.18 + node.phase;
         node.mesh.rotation.y = seconds * 0.24 + node.phase;
         node.mesh.position.z = record.status === "Completed" ? 0 : Math.sin(seconds * 1.4 + node.phase) * 0.08;
+        node.halo.position.z = node.mesh.position.z - 0.03;
       }
       renderer.render(scene, camera);
     }
@@ -160,7 +225,10 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
       pointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1;
       raycaster.setFromCamera(pointer, camera);
       const hit = raycaster.intersectObjects(nodes.map((node) => node.mesh))[0];
-      setSelectedId(hit ? nodes.find((node) => node.mesh === hit.object)?.id ?? null : null);
+      const nextId = hit ? nodes.find((node) => node.mesh === hit.object)?.id ?? null : null;
+      selectedIdRef.current = nextId;
+      setSelectedId(nextId);
+      render(lastFrame + frameInterval);
     }
 
     const resizeObserver = new ResizeObserver(resize);
@@ -177,6 +245,8 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
       for (const node of nodes) {
         node.mesh.geometry.dispose();
         node.mesh.material.dispose();
+        node.halo.geometry.dispose();
+        node.halo.material.dispose();
       }
       renderer.dispose();
     };
@@ -191,9 +261,15 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
           <p className="eyebrow">experimental surface</p>
           <h2>download constellation</h2>
         </div>
-        <Button variant="outlined" onClick={onOpenDownloads}>open downloads</Button>
+        <div className="playground-actions">
+          <Button variant="text" size="small" onClick={() => {
+            setDemoMode((current) => !current);
+            setSelectedId(null);
+          }}>{demoMode ? "use live downloads" : "preview example"}</Button>
+          <Button variant="outlined" onClick={onOpenDownloads}>open downloads</Button>
+        </div>
       </div>
-      <p className="helper-text">a small WebGL study: work grows as it progresses, then settles into a kept cluster.</p>
+      <p className="helper-text">{demoMode ? "preview data only — this does not enter the queue or history." : "a small WebGL study: work grows as it progresses, then settles into a kept cluster."}</p>
       <div className="playground-stage">
         {webglUnavailable ? (
           <div className="playground-fallback" role="status">
@@ -206,8 +282,14 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
         )}
         {!webglUnavailable && visibleRecords.length === 0 && <div className="playground-empty">queue a download to give the constellation something to hold.</div>}
       </div>
+      <div className="playground-legend" aria-label="constellation legend">
+        <span><i className="playground-dot is-running" /> working</span>
+        <span><i className="playground-dot is-queued" /> queued</span>
+        <span><i className="playground-dot is-completed" /> kept</span>
+        <span className="playground-legend-hint">size shows progress</span>
+      </div>
       <div className="playground-caption" aria-live="polite">
-        {selected ? `post #${selected.post_id} · ${selected.status.toLowerCase()} · select open downloads to manage it.` : `${visibleRecords.length} item${visibleRecords.length === 1 ? "" : "s"} represented · click a node to inspect its identity.`}
+        {selected ? `${demoMode ? "preview" : `post #${selected.post_id}`} · ${selected.status.toLowerCase()} · ${demoMode ? "example data only." : "select open downloads to manage it."}` : `${visibleRecords.length} item${visibleRecords.length === 1 ? "" : "s"} represented · click a node to inspect its identity.`}
       </div>
     </section>
   );

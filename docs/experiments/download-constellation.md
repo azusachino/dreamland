@@ -20,6 +20,8 @@ into a kept cluster when complete.
   objects settle into a cluster.
 - Visibility pauses the animation loop; reduced motion renders a static frame.
 - WebGL setup failures expose a normal download-panel fallback.
+- `#/playground?demo=1` exposes a clearly labeled local preview fixture for
+  visual study; it never enters IPC, queue, or history.
 - Every geometry, material, renderer, observer, and listener is disposed when
   the surface unmounts.
 
@@ -51,7 +53,12 @@ modes. With normal headless rendering, the WebGL canvas initialized and the
 empty state rendered. With WebGL explicitly disabled, the shell, selected
 navigation state, and non-WebGL recovery action rendered coherently. This
 verifies both browser-level branches, not native WebView2/WKWebView parity or
-populated-node interaction; browser IPC has no download fixtures here.
+populated live-node interaction; browser IPC has no download fixtures here.
+
+The local preview fixture was also captured with four nodes. Halos, state
+legend, relative node size, and the kept-cluster arrangement read clearly at
+desktop size; selection emphasis is implemented in the canvas interaction but
+was not exercised by the screenshot-only probe.
 
 ## What failed
 
