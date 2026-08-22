@@ -927,6 +927,7 @@ select:focus-visible {
 }
 
 .detail-panel {
+  animation: detail-panel-in var(--motion-emphasis) var(--ease) both;
   background: var(--surface-raised);
   border: 1px solid var(--outline);
   box-shadow: 0 1.5rem 5rem rgb(0 0 0 / 38%);
@@ -1296,12 +1297,14 @@ select:focus-visible {
   opacity: 0;
   object-fit: contain;
   position: absolute;
-  transition: opacity var(--motion-standard) var(--ease);
+  transform: scale(1.01);
+  transition: opacity var(--motion-standard) var(--ease), transform var(--motion-emphasis) var(--ease);
   width: 100%;
 }
 
 .detail-image.is-loaded {
   opacity: 1;
+  transform: scale(1);
 }
 
 .detail-image-loading,
@@ -1525,6 +1528,11 @@ select:focus-visible {
 @keyframes pulse {
   0%, 100% { opacity: 0.35; transform: scale(0.85); }
   50% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes detail-panel-in {
+  from { opacity: 0; transform: translateY(0.5rem) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes shimmer {
