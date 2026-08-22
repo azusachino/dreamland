@@ -46,10 +46,12 @@ The experiment has a narrow ownership boundary: it reads download records and
 returns to the existing Downloads surface. It does not alter queue semantics,
 IPC, cache paths, or post detail behavior.
 
-The `/playground` route was also captured at 1440×1000 in headless Chrome with
-WebGL disabled. The shell, selected navigation state, empty state, and
-non-WebGL recovery action rendered coherently. This verifies the browser-level
-fallback path, not native WebView2/WKWebView parity.
+The `/playground` route was captured at 1440×1000 in headless Chrome in two
+modes. With normal headless rendering, the WebGL canvas initialized and the
+empty state rendered. With WebGL explicitly disabled, the shell, selected
+navigation state, and non-WebGL recovery action rendered coherently. This
+verifies both browser-level branches, not native WebView2/WKWebView parity or
+populated-node interaction; browser IPC has no download fixtures here.
 
 ## What failed
 

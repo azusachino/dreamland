@@ -26,6 +26,8 @@ Date: 2026-08-22
 - The normal feed path uses no Three.js import; the experiment is a lazy route.
 - Headless Chrome captured the `/playground` route at 1440×1000 with the
   forced non-WebGL fallback; shell hierarchy and recovery action were legible.
+- A second headless capture without GPU disabling initialized the WebGL canvas
+  and rendered the empty-state overlay at the same size.
 
 ## Open runtime receipt
 
