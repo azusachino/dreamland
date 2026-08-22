@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -1744,12 +1744,14 @@ function DetailImage({ post }: { post: Post }) {
   const [source, setSource] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
     let active = true;
     setSource(null);
     setLoaded(false);
     setError(null);
+    setZoom(1);
     void loadDetailImage(post.post.site, post.post.id)
       .then((cachedPath) => {
         if (active) setSource(convertFileSrc(cachedPath));
@@ -1761,6 +1763,23 @@ function DetailImage({ post }: { post: Post }) {
       active = false;
     };
   }, [post.post.id, post.post.site]);
+
+  function changeZoom(delta: number) {
+    setZoom((current) => Math.min(2.5, Math.max(1, Number((current + delta).toFixed(1)))));
+  }
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key === "+" || event.key === "=" || event.key === "ArrowUp") {
+      event.preventDefault();
+      changeZoom(0.1);
+    } else if (event.key === "-" || event.key === "_" || event.key === "ArrowDown") {
+      event.preventDefault();
+      changeZoom(-0.1);
+    } else if (event.key === "0") {
+      event.preventDefault();
+      setZoom(1);
+    }
+  }
 
   function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
     if (event.pointerType === "touch" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -1778,7 +1797,17 @@ function DetailImage({ post }: { post: Post }) {
 
   if (error) return <div className="detail-image-state" role="alert">full image unavailable<p>{error}</p></div>;
   return (
-    <div className="detail-image-frame" onPointerMove={handlePointerMove} onPointerLeave={resetPointerTilt} onPointerCancel={resetPointerTilt}>
+    <div
+      className="detail-image-frame"
+      role="group"
+      aria-label="full artwork; use plus, minus, or zero to zoom"
+      tabIndex={0}
+      style={{ "--detail-zoom": zoom } as CSSProperties}
+      onKeyDown={handleKeyDown}
+      onPointerMove={handlePointerMove}
+      onPointerLeave={resetPointerTilt}
+      onPointerCancel={resetPointerTilt}
+    >
       {(!source || !loaded) && <Skeleton className="detail-image-loading" variant="rectangular" animation="wave" role="status" aria-label="loading full artwork" />}
       {source && <img
           className={`detail-image${loaded ? " is-loaded" : ""}`}
@@ -1792,6 +1821,12 @@ function DetailImage({ post }: { post: Post }) {
             setError("the cached full image could not be decoded");
           }}
         />}
+      {source && loaded && <div className="detail-image-controls" aria-label="image zoom controls">
+        <Button size="small" variant="outlined" onClick={() => changeZoom(-0.1)} disabled={zoom <= 1} aria-label="zoom out">−</Button>
+        <span aria-live="polite">{Math.round(zoom * 100)}%</span>
+        <Button size="small" variant="outlined" onClick={() => changeZoom(0.1)} disabled={zoom >= 2.5} aria-label="zoom in">+</Button>
+        <Button size="small" variant="outlined" onClick={() => setZoom(1)} disabled={zoom === 1}>reset</Button>
+      </div>}
     </div>
   );
 }
