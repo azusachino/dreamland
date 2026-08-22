@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -1751,9 +1751,23 @@ function DetailImage({ post }: { post: Post }) {
     };
   }, [post.post.id, post.post.site]);
 
+  function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
+    if (event.pointerType === "touch" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const horizontal = ((event.clientX - bounds.left) / bounds.width - 0.5) * 2;
+    const vertical = ((event.clientY - bounds.top) / bounds.height - 0.5) * 2;
+    event.currentTarget.style.setProperty("--detail-tilt-x", `${vertical * -1.8}deg`);
+    event.currentTarget.style.setProperty("--detail-tilt-y", `${horizontal * 1.8}deg`);
+  }
+
+  function resetPointerTilt(event: PointerEvent<HTMLDivElement>) {
+    event.currentTarget.style.setProperty("--detail-tilt-x", "0deg");
+    event.currentTarget.style.setProperty("--detail-tilt-y", "0deg");
+  }
+
   if (error) return <div className="detail-image-state" role="alert">full image unavailable<p>{error}</p></div>;
   return (
-    <div className="detail-image-frame">
+    <div className="detail-image-frame" onPointerMove={handlePointerMove} onPointerLeave={resetPointerTilt} onPointerCancel={resetPointerTilt}>
       {(!source || !loaded) && <Skeleton className="detail-image-loading" variant="rectangular" animation="wave" role="status" aria-label="loading full artwork" />}
       {source && <img
           className={`detail-image${loaded ? " is-loaded" : ""}`}

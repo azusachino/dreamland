@@ -1286,8 +1286,12 @@ select:focus-visible {
 }
 
 .detail-image-frame {
+  --detail-tilt-x: 0deg;
+  --detail-tilt-y: 0deg;
   height: 100%;
+  perspective: 75rem;
   position: relative;
+  touch-action: pan-y;
   width: 100%;
 }
 
@@ -1297,14 +1301,14 @@ select:focus-visible {
   opacity: 0;
   object-fit: contain;
   position: absolute;
-  transform: scale(1.01);
+  transform: rotateX(var(--detail-tilt-x)) rotateY(var(--detail-tilt-y)) scale(1.01);
   transition: opacity var(--motion-standard) var(--ease), transform var(--motion-emphasis) var(--ease);
   width: 100%;
 }
 
 .detail-image.is-loaded {
   opacity: 1;
-  transform: scale(1);
+  transform: rotateX(var(--detail-tilt-x)) rotateY(var(--detail-tilt-y)) scale(1);
 }
 
 .detail-image-loading,
