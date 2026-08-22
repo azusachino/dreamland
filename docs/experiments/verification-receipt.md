@@ -21,3 +21,8 @@ The implementation and browser-level branches are verified. The native macOS
 package is buildable, but buildability is not visual acceptance. Windows and
 native interactive macOS checks remain honest release evidence gaps rather than
 being inferred from Chrome or TypeScript output.
+
+The CI workflow now defines a `macos-latest`/`windows-latest` desktop matrix
+that runs the repository checks and native Tauri packaging. It is a future
+machine-verification path; this branch has not pushed or observed that remote
+run yet.
