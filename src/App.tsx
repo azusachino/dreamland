@@ -556,7 +556,7 @@ function App() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [authFlowStarted, setAuthFlowStarted] = useState(false);
   const [error, setError] = useState("");
-  const [toast, setToast] = useState<ToastState | null>(null);
+  const [toast, setToast] = useState<ToastState[]>([]);
   const toastId = useRef(0);
   const searchInput = useRef<HTMLInputElement>(null);
   const downloadStatuses = useRef(new Map<string, DownloadStatus>());
@@ -627,9 +627,9 @@ function App() {
 
   function showToast(title: string, message: string, tone: ToastTone = "success") {
     const id = ++toastId.current;
-    setToast({ id, title, message, tone });
+    setToast((current) => [...current, { id, title, message, tone }].slice(-4));
     window.setTimeout(() => {
-      setToast((current) => current?.id === id ? null : current);
+      setToast((current) => current.filter((item) => item.id !== id));
     }, 4_500);
   }
 
@@ -886,6 +886,12 @@ function App() {
     const records = downloadsQuery.data?.pages.flatMap((page) => page) ?? [];
     return [...new Map(records.map((record) => [record.id, record])).values()];
   }, [downloadsQuery.data]);
+  function downloadStatusForPost(post: Post): DownloadStatus | undefined {
+    const records = demoMode ? demoDownloadRecords : downloadRecords;
+    const matches = records.filter((record) => record.site === post.post.site && record.post_id === post.post.id);
+    return matches.find((record) => isActiveDownload(record.status))?.status
+      ?? matches.find((record) => record.status === "Completed" || record.status === "ExistingTarget")?.status;
+  }
   const title = view === "search"
     ? "search results"
     : view === "popular"
@@ -1508,6 +1514,7 @@ function App() {
                         selectionMode={selectionMode}
                         selected={selectedPostIds.has(post.post.id)}
                         downloading={downloadingId === post.post.id}
+                        downloadStatus={downloadStatusForPost(post)}
                         onDownload={demoMode ? async () => undefined : handleDownload}
                         demo={demoMode}
                         onSelect={openPostDetail}
@@ -1633,6 +1640,7 @@ function App() {
             detailLoading={postDetailQuery.isFetching}
             detailError={postDetailQuery.error ? errorMessage(postDetailQuery.error) : ""}
             downloading={downloadingId === selectedPost.post.id}
+            downloadStatus={downloadStatusForPost(selectedPost)}
             siteName={activeSite?.name ?? selectedPost.post.site}
             favoriteSupported={activeSite?.capabilities.remote_favorites === true}
             onClose={closePostDetail}
@@ -1686,7 +1694,7 @@ function App() {
           formatError={errorMessage}
         />
       )}
-      {toast && <PopupToast state={toast} onClose={() => setToast(null)} />}
+      {toast.length > 0 && <PopupToast states={toast} onClose={(id) => setToast((current) => current.filter((item) => item.id !== id))} />}
       </div>
     </ThemeProvider>
   );
@@ -1711,6 +1719,7 @@ interface ImageCardProps {
   selectionMode: boolean;
   selected: boolean;
   downloading: boolean;
+  downloadStatus?: DownloadStatus;
   favoriteSupported: boolean;
   favorited: boolean;
   favoriteUpdating: boolean;
@@ -1721,8 +1730,10 @@ interface ImageCardProps {
   onTag: (tag: string) => void;
 }
 
-function ImageCard({ post, demo = false, selectionMode, selected, downloading, favoriteSupported, favorited, favoriteUpdating, onDownload, onFavorite, onSelect, onToggleSelection, onTag }: ImageCardProps) {
+function ImageCard({ post, demo = false, selectionMode, selected, downloading, downloadStatus, favoriteSupported, favorited, favoriteUpdating, onDownload, onFavorite, onSelect, onToggleSelection, onTag }: ImageCardProps) {
   const previewUrl = post.preview_url ?? post.sample_url ?? post.full_url;
+  const activeDownload = downloading || (downloadStatus !== undefined && isActiveDownload(downloadStatus));
+  const alreadyKept = downloadStatus === "Completed" || downloadStatus === "ExistingTarget";
   const [previewFailed, setPreviewFailed] = useState(false);
   const [previewLoaded, setPreviewLoaded] = useState(false);
 
@@ -1783,11 +1794,11 @@ function ImageCard({ post, demo = false, selectionMode, selected, downloading, f
         </div>
         <div className="card-footer">
           <span className="post-meta">#{post.post.id}{post.score !== null ? ` · ${post.score} score` : ""}</span>
-              <Button variant="contained" disabled={demo || downloading} onClick={(event) => {
+              <Button variant="contained" disabled={demo || activeDownload || alreadyKept} onClick={(event) => {
                 event.stopPropagation();
                 void onDownload(post);
               }}>
-            {demo ? "demo" : downloading ? "saving…" : "download"}
+            {demo ? "demo" : activeDownload ? downloadStatus === "Queued" ? "queued" : "saving…" : alreadyKept ? "kept" : "download"}
           </Button>
         </div>
       </div>
@@ -1800,6 +1811,7 @@ interface PostInspectorProps {
   detailLoading: boolean;
   detailError: string;
   downloading: boolean;
+  downloadStatus?: DownloadStatus;
   siteName: string;
   favoriteSupported: boolean;
   favorited: boolean;
@@ -1827,9 +1839,11 @@ interface PostInspectorProps {
   demo?: boolean;
 }
 
-function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, favoriteUpdating, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onOpenPost, onOpenSimilarSearch, similarSearchSupported, onDownload, onFavorite, onTag, relatedTagsSupported, relatedTagsOpen, relatedTags, relatedTagsLoading, relatedTagsError, onToggleRelatedTags, downloadVariant, demo = false }: PostInspectorProps) {
+function PostInspector({ post, detailLoading, detailError, downloading, downloadStatus, siteName, favoriteSupported, favorited, favoriteUpdating, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onOpenPost, onOpenSimilarSearch, similarSearchSupported, onDownload, onFavorite, onTag, relatedTagsSupported, relatedTagsOpen, relatedTags, relatedTagsLoading, relatedTagsError, onToggleRelatedTags, downloadVariant, demo = false }: PostInspectorProps) {
   const originalUrl = post.full_url;
   const hasSourceLinks = !demo || Boolean(originalUrl || post.source);
+  const activeDownload = downloading || (downloadStatus !== undefined && isActiveDownload(downloadStatus));
+  const alreadyKept = downloadStatus === "Completed" || downloadStatus === "ExistingTarget";
   const [chromeVisible, setChromeVisible] = useState(true);
   const chromeTimer = useRef<number | null>(null);
 
@@ -1898,12 +1912,12 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
             )}
             <Button
               variant="contained"
-              disabled={demo || downloading}
-              title={demo ? "demo fixture" : `download ${downloadVariant.toLowerCase()} quality`}
+              disabled={demo || activeDownload || alreadyKept}
+              title={demo ? "demo fixture" : activeDownload ? "download already in progress" : alreadyKept ? "file already kept" : `download ${downloadVariant.toLowerCase()} quality`}
               aria-label={demo ? "demo fixture" : `download ${downloadVariant.toLowerCase()} quality`}
               onClick={() => void onDownload(post)}
             >
-              {demo ? "demo only" : downloading ? "saving…" : "download"}
+              {demo ? "demo only" : activeDownload ? downloadStatus === "Queued" ? "queued" : "saving…" : alreadyKept ? "kept" : "download"}
             </Button>
           </div>
           <div className="detail-explore">
@@ -2248,7 +2262,7 @@ function DownloadProgress({ bytesDownloaded, totalBytes, status, label, alwaysVi
   const indeterminate = status === "Running" && percent === null;
   const waiting = status === "Queued" && percent === null;
   const detail = percent === null
-    ? status === "Queued" ? "waiting" : "size unknown"
+    ? status === "Queued" ? "waiting" : bytesDownloaded > 0 ? `${formatBytes(bytesDownloaded)} downloaded · total unknown` : "starting download"
     : `${formatBytes(bytesDownloaded)} of ${formatBytes(totalBytes!)}`;
   return (
     <div className={`download-progress${prominent ? " download-progress-prominent" : ""}`} aria-label={label}>

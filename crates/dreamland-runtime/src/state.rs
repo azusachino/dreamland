@@ -4,7 +4,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex, RwLock,
 };
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{bail, Context, Result};
 use dreamland_core::{MediaVariant, NetworkPolicy, Post, ReplayableQuery, SavedQuery, SiteId};
@@ -12,7 +12,10 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 
-use crate::{download_archive, download_image_with_detail_cache, DownloadOutcome};
+use crate::media::{
+    download_archive_with_progress, download_image_with_detail_cache_progress, ProgressCallback,
+};
+use crate::DownloadOutcome;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum DownloadStatus {
@@ -240,6 +243,26 @@ impl StateStore {
     ) -> Result<()> {
         self.connection()?.execute(
             "UPDATE download_queue
+             SET bytes_downloaded = ?2, total_bytes = ?3, updated_at_ms = ?4
+             WHERE id = ?1",
+            params![
+                id,
+                bytes_downloaded as i64,
+                total_bytes.map(|value| value as i64),
+                now_ms(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub(crate) fn update_archive_progress(
+        &self,
+        id: &str,
+        bytes_downloaded: u64,
+        total_bytes: Option<u64>,
+    ) -> Result<()> {
+        self.connection()?.execute(
+            "UPDATE archive_queue
              SET bytes_downloaded = ?2, total_bytes = ?3, updated_at_ms = ?4
              WHERE id = ?1",
             params![
@@ -700,6 +723,37 @@ pub(crate) struct StoredDownload {
     pub download_root: PathBuf,
 }
 
+fn progress_callback(store: StateStore, id: String, archive: bool) -> ProgressCallback {
+    let checkpoint = Arc::new(Mutex::new((
+        Instant::now() - Duration::from_secs(1),
+        0_u64,
+        None::<u64>,
+    )));
+    Arc::new(move |bytes_downloaded, total_bytes| {
+        let mut checkpoint = checkpoint
+            .lock()
+            .expect("download progress checkpoint lock poisoned");
+        let should_update = checkpoint.2 != total_bytes
+            || bytes_downloaded.saturating_sub(checkpoint.1) >= 256 * 1024
+            || checkpoint.0.elapsed() >= Duration::from_millis(200)
+            || total_bytes == Some(bytes_downloaded);
+        if !should_update {
+            return;
+        }
+        checkpoint.0 = Instant::now();
+        checkpoint.1 = bytes_downloaded;
+        checkpoint.2 = total_bytes;
+        let result = if archive {
+            store.update_archive_progress(&id, bytes_downloaded, total_bytes)
+        } else {
+            store.update_progress(&id, bytes_downloaded, total_bytes)
+        };
+        if let Err(error) = result {
+            eprintln!("download progress update failed: {error}");
+        }
+    })
+}
+
 #[derive(Clone)]
 pub struct DownloadManager {
     store: StateStore,
@@ -951,7 +1005,8 @@ impl DownloadManager {
                 .read()
                 .expect("detail cache lock poisoned")
                 .clone();
-            let result = download_image_with_detail_cache(
+            let progress = progress_callback(self.store.clone(), job.record.id.clone(), false);
+            let result = download_image_with_detail_cache_progress(
                 &job.source_url,
                 job.record.site.as_str(),
                 &job.record.post_id,
@@ -960,6 +1015,7 @@ impl DownloadManager {
                 detail_cache_root.as_deref(),
                 &network,
                 &cancellation,
+                Some(&progress),
             )
             .await;
             if let Ok(DownloadOutcome::Completed(path)) = &result {
@@ -1044,9 +1100,10 @@ impl DownloadManager {
                 .read()
                 .expect("download network lock poisoned")
                 .clone();
+            let progress = progress_callback(self.store.clone(), archive.record.id.clone(), true);
             let result = match cookie {
                 Some(cookie) => {
-                    download_archive(
+                    download_archive_with_progress(
                         &archive.source_url,
                         archive.record.site.as_str(),
                         &archive.record.pool_id,
@@ -1056,6 +1113,7 @@ impl DownloadManager {
                         &network,
                         &cookie,
                         &cancellation,
+                        Some(&progress),
                     )
                     .await
                 }

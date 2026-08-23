@@ -1,9 +1,12 @@
 use dreamland_core::{NetworkPolicy, ProxyMode};
+use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 
 const USER_AGENT: &str = concat!("Dreamland/", env!("CARGO_PKG_VERSION"));
 const DETAIL_IMAGE_EXTENSIONS: [&str; 7] = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "avif"];
 use crate::{default_detail_cache_path, default_log_path, DownloadCancellation};
+
+pub(crate) type ProgressCallback = Arc<dyn Fn(u64, Option<u64>) + Send + Sync>;
 
 fn log_detail_event(event: &str) {
     let path = default_log_path();
@@ -71,6 +74,32 @@ pub async fn download_image_with_detail_cache(
     network: &NetworkPolicy,
     cancellation: &DownloadCancellation,
 ) -> anyhow::Result<DownloadOutcome> {
+    download_image_with_detail_cache_progress(
+        url,
+        site_id,
+        identifier,
+        download_dir,
+        cache_dir,
+        detail_cache_root,
+        network,
+        cancellation,
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn download_image_with_detail_cache_progress(
+    url: &str,
+    site_id: &str,
+    identifier: &str,
+    download_dir: &std::path::Path,
+    cache_dir: &std::path::Path,
+    detail_cache_root: Option<&std::path::Path>,
+    network: &NetworkPolicy,
+    cancellation: &DownloadCancellation,
+    progress: Option<&ProgressCallback>,
+) -> anyhow::Result<DownloadOutcome> {
     validate_image_identifier(identifier)?;
     validate_path_component(site_id, "site")?;
     let posts_dir = download_dir.join(site_id).join("posts");
@@ -103,6 +132,7 @@ pub async fn download_image_with_detail_cache(
         cancellation,
         None,
         None,
+        progress,
     )
     .await?
     {
@@ -176,6 +206,34 @@ pub async fn download_archive(
     cookie_header: &str,
     cancellation: &DownloadCancellation,
 ) -> anyhow::Result<DownloadOutcome> {
+    download_archive_with_progress(
+        url,
+        site_id,
+        pool_id,
+        pool_name,
+        download_dir,
+        cache_dir,
+        network,
+        cookie_header,
+        cancellation,
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn download_archive_with_progress(
+    url: &str,
+    site_id: &str,
+    pool_id: &str,
+    pool_name: &str,
+    download_dir: &std::path::Path,
+    cache_dir: &std::path::Path,
+    network: &NetworkPolicy,
+    cookie_header: &str,
+    cancellation: &DownloadCancellation,
+    progress: Option<&ProgressCallback>,
+) -> anyhow::Result<DownloadOutcome> {
     validate_path_component(site_id, "site")?;
     if pool_id.is_empty() || !pool_id.chars().all(|value| value.is_ascii_digit()) {
         anyhow::bail!("pool id must be numeric");
@@ -193,6 +251,7 @@ pub async fn download_archive(
         cancellation,
         Some(cookie_header),
         Some(&filename),
+        progress,
     )
     .await?
     {
@@ -316,6 +375,7 @@ async fn download_file(
     cancellation: &DownloadCancellation,
     cookie_header: Option<&str>,
     filename: Option<&str>,
+    progress: Option<&ProgressCallback>,
 ) -> anyhow::Result<DownloadFileOutcome> {
     validate_media_url(url)?;
     let client = build_client(network)?;
@@ -372,6 +432,10 @@ async fn download_file(
         .unwrap_or("image/jpeg")
         .to_string();
     let extension = mime_to_extension(&content_type).unwrap_or("jpg");
+    let total_bytes = response.content_length();
+    if let Some(progress) = progress {
+        progress(0, total_bytes);
+    }
     let final_path = target_dir.join(
         filename
             .map(str::to_owned)
@@ -385,6 +449,7 @@ async fn download_file(
     tokio::fs::create_dir_all(&cache_dir).await?;
     let temporary_path = cache_dir.join(format!("{}.{}.part", identifier, uuid::Uuid::new_v4()));
     let mut file = tokio::fs::File::create(&temporary_path).await?;
+    let mut bytes_downloaded = 0;
     let write_result: anyhow::Result<()> = async {
         let mut response = response;
         while let Some(chunk) = response.chunk().await? {
@@ -392,6 +457,10 @@ async fn download_file(
                 anyhow::bail!("download cancelled");
             }
             file.write_all(&chunk).await?;
+            bytes_downloaded += chunk.len() as u64;
+            if let Some(progress) = progress {
+                progress(bytes_downloaded, total_bytes);
+            }
         }
         file.flush().await?;
         Ok(())
@@ -541,6 +610,45 @@ mod tests {
     fn mime_types_map_to_extensions() {
         assert_eq!(mime_to_extension("image/jpeg"), Some("jpg"));
         assert_eq!(mime_to_extension("image/unknown"), None);
+    }
+
+    #[tokio::test]
+    async fn streamed_download_reports_known_progress() {
+        let root = std::env::temp_dir().join(format!("dreamland-root-{}", uuid::Uuid::new_v4()));
+        let cache = std::env::temp_dir().join(format!("dreamland-cache-{}", uuid::Uuid::new_v4()));
+        let (url, server) = image_server();
+        let updates = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let received_updates = updates.clone();
+        let progress: ProgressCallback = std::sync::Arc::new(move |bytes, total| {
+            received_updates.lock().unwrap().push((bytes, total));
+        });
+
+        let outcome = download_image_with_detail_cache_progress(
+            &url,
+            "yandere",
+            "123",
+            &root,
+            &cache,
+            None,
+            &NetworkPolicy {
+                proxy: ProxyMode::Direct,
+                ..NetworkPolicy::default()
+            },
+            &DownloadCancellation::default(),
+            Some(&progress),
+        )
+        .await
+        .unwrap();
+        server.join().unwrap();
+
+        assert!(matches!(outcome, DownloadOutcome::Completed(_)));
+        {
+            let updates = updates.lock().unwrap();
+            assert!(updates.contains(&(0, Some(4))));
+            assert!(updates.contains(&(4, Some(4))));
+        }
+        let _ = tokio::fs::remove_dir_all(root).await;
+        let _ = tokio::fs::remove_dir_all(cache).await;
     }
 
     #[test]

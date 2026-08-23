@@ -2243,8 +2243,25 @@ select:focus-visible {
   100% { transform: scale(1); }
 }
 
-.toast {
+.toast-stack {
+  display: grid;
+  gap: 0.55rem;
+  max-width: min(24rem, calc(100vw - 2rem));
+  pointer-events: none;
+  position: fixed;
+  right: 1rem;
+  top: 1rem;
+  width: min(24rem, calc(100vw - 2rem));
+  z-index: 1400;
+}
+
+.toast-stack .toast {
   animation: toast-in var(--motion-standard) var(--ease) both;
+  pointer-events: auto;
+}
+
+.toast-stack .toast .MuiAlert-message {
+  min-width: 0;
 }
 
 @keyframes toast-in {

@@ -11,7 +11,6 @@ import {
   InputLabel,
   MenuItem,
   Select,
-  Snackbar,
   TextField,
 } from "@mui/material";
 import {
@@ -326,12 +325,14 @@ export function ErrorState({ message, onRetry, onOpenSite, siteName }: ErrorStat
   );
 }
 
-export function Toast({ state, onClose }: { state: ToastState; onClose: () => void }) {
+export function Toast({ states, onClose }: { states: ToastState[]; onClose: (id: number) => void }) {
   return (
-    <Snackbar className="toast" open onClose={onClose} autoHideDuration={5000} anchorOrigin={{ vertical: "top", horizontal: "right" }}>
-      <Alert onClose={onClose} severity={state.tone} variant="filled" sx={{ width: "100%" }}>
-        <strong>{state.title}</strong><div>{state.message}</div>
-      </Alert>
-    </Snackbar>
+    <div className="toast-stack" role="region" aria-label="notifications" aria-live="polite">
+      {states.map((state) => (
+        <Alert key={state.id} className="toast" onClose={() => onClose(state.id)} severity={state.tone} variant="filled">
+          <strong>{state.title}</strong><div>{state.message}</div>
+        </Alert>
+      ))}
+    </div>
   );
 }

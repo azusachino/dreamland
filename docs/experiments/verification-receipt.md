@@ -14,7 +14,10 @@ Date: 2026-08-23
 | Downloads media collection | `agent-browser` open `#/downloads?demo=1`, full screenshot and snapshot | pass; five post records plus archive fallback, progress, summary metrics, existing-target state, and failed state rendered |
 | Downloads list/card switch | `agent-browser` click `cards`, inspect `.download-list-cards` and computed progress track | pass; all three download groups switch to cards and the prominent track renders at 0.48rem |
 | Download progress semantics | demo queue with one known and one unknown total | pass; overall progress reports known bytes honestly and calls out the unknown item instead of inventing a total |
+| Streamed download progress | runtime progress callback test with a four-byte HTTP fixture | pass; the queue receives `0/4` metadata and `4/4` completion updates during the stream rather than only at finish |
 | Existing-target history | demo `ExistingTarget` record and runtime enqueue path | pass; “already on disk” is retained as history with an explanation and active duplicate requests return the original queue record |
+| Same-post download affordance | feed/detail card bound to active or kept download records | pass; active posts show queued/downloading state and kept posts show a non-destructive kept state instead of another blind download action |
+| Notification center | multiple completion/status events in one session | pass; the top-right center keeps up to four stacked notices with independent dismissal and expiry |
 | Explore media fallback | `agent-browser` open `#/latest?demo=1` | pass; four deterministic preview cards rendered with disabled demo actions |
 | Inspect stage sizing | `agent-browser` click demo post and inspect `.MuiDialog-container` bounds | pass; desktop renders a media stage beside a detail rail instead of a shallow stacked sheet |
 | Inspect compact layout | `agent-browser` set viewport 390×844 and capture the demo detail | pass; stage, actions, tags, and metadata stack in the intended order; close control remains reachable |
