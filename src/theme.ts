@@ -51,6 +51,7 @@ export function createDreamlandTheme(mode: DreamlandPaletteMode) {
       MuiChip: {
         styleOverrides: {
           root: {
+            color: dark ? "#e7ebee" : "#1d282d",
             borderRadius: 10,
             fontWeight: 600,
             transition: "background-color var(--motion-fast) var(--ease-smooth-out), border-color var(--motion-fast) var(--ease-smooth-out), transform var(--motion-fast) var(--ease-smooth-out)",
@@ -64,6 +65,27 @@ export function createDreamlandTheme(mode: DreamlandPaletteMode) {
       },
       MuiTextField: {
         defaultProps: { size: "small" },
+      },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: { color: dark ? "#e7ebee" : "#1d282d" },
+          input: { color: dark ? "#e7ebee" : "#1d282d" },
+        },
+      },
+      MuiInputLabel: {
+        styleOverrides: {
+          root: { color: dark ? "#aeb8bf" : "#5a6970" },
+        },
+      },
+      MuiDialogTitle: {
+        styleOverrides: {
+          root: { color: dark ? "#e7ebee" : "#1d282d" },
+        },
+      },
+      MuiDialogContent: {
+        styleOverrides: {
+          root: { color: dark ? "#e7ebee" : "#1d282d" },
+        },
       },
       MuiSkeleton: {
         styleOverrides: {

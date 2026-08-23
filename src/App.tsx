@@ -90,6 +90,7 @@ type ToastTone = "success" | "info" | "error";
 type ThemeMode = "system" | "light" | "dark";
 type QueryOrder = "" | "score" | "score_asc" | "id" | "id_desc" | "mpixels" | "mpixels_asc" | "landscape" | "portrait" | "vote" | "random";
 const contentCacheTime = 5 * 60_000;
+const tagTones = ["aqua", "violet", "amber", "rose", "mint", "blue"] as const;
 
 interface AdvancedQueryForm {
   tags: string;
@@ -131,6 +132,12 @@ function errorMessage(reason: unknown): string {
 function readThemeMode(): ThemeMode {
   const saved = window.localStorage.getItem("dreamland.theme");
   return saved === "light" || saved === "dark" ? saved : "system";
+}
+
+function tagTone(tag: string): (typeof tagTones)[number] {
+  let hash = 0;
+  for (const character of tag.toLowerCase()) hash = (hash * 31 + character.charCodeAt(0)) | 0;
+  return tagTones[(hash >>> 0) % tagTones.length];
 }
 
 function today(): string {
@@ -1789,7 +1796,7 @@ function ImageCard({ post, demo = false, selectionMode, selected, downloading, d
       <div className="card-details">
         <div className="tag-list">
           {post.tags.slice(0, 4).map((tag) => (
-            <Chip key={tag} component="button" clickable label={tag} onClick={(event) => {
+            <Chip key={tag} className={`tag-chip tag-chip-${tagTone(tag)}`} component="button" clickable label={tag} onClick={(event) => {
               event.stopPropagation();
               onTag(tag);
             }} />
@@ -1928,7 +1935,7 @@ function PostInspector({ post, detailLoading, detailError, downloading, download
           <div className="detail-explore">
             <span className="section-label">explore</span>
             <div className="tag-list" aria-label="post tags">
-              {post.tags.map((tag) => <Chip key={tag} component="button" clickable label={tag} onClick={() => onTag(tag)} />)}
+              {post.tags.map((tag) => <Chip key={tag} className={`tag-chip tag-chip-${tagTone(tag)}`} component="button" clickable label={tag} onClick={() => onTag(tag)} />)}
             </div>
             {relatedTagsSupported && (
               <div className="detail-related-tags">
@@ -1941,7 +1948,7 @@ function PostInspector({ post, detailLoading, detailError, downloading, download
                 {relatedTagsOpen && !relatedTagsLoading && !relatedTagsError && relatedTags.length > 0 && (
                   <div className="tag-list" aria-label="related tags">
                     {relatedTags.map((tag) => (
-                      <Chip key={tag.name} component="button" clickable label={tag.name} title={tag.post_count === null ? undefined : `${tag.post_count.toLocaleString()} posts`} onClick={() => onTag(tag.name)} />
+                      <Chip key={tag.name} className={`tag-chip tag-chip-${tagTone(tag.name)}`} component="button" clickable label={tag.name} title={tag.post_count === null ? undefined : `${tag.post_count.toLocaleString()} posts`} onClick={() => onTag(tag.name)} />
                     ))}
                   </div>
                 )}
