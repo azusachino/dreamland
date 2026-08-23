@@ -614,9 +614,9 @@ function App() {
     try {
       await beginAuth();
       setAuthFlowStarted(true);
-      showToast("sign-in window opened", "finish signing in at yande.re, then choose check login.", "info");
+      showToast("sign-in window opened", `finish signing in at ${activeSite?.name ?? "the site"}, then choose check login.`, "info");
     } catch (reason) {
-      setError(`could not open yande.re sign-in: ${errorMessage(reason)}`);
+      setError(`could not open ${activeSite?.name ?? "site"} sign-in: ${errorMessage(reason)}`);
     }
   }
 
@@ -625,10 +625,10 @@ function App() {
     const result = await authQuery.refetch();
     if (result.data?.authenticated) {
       setAuthFlowStarted(false);
-      showToast("yande.re connected", result.data.username ? `signed in as ${result.data.username}.` : "your account is ready.");
+      showToast(`${activeSite?.name ?? "site"} connected`, result.data.username ? `signed in as ${result.data.username}.` : "your account is ready.");
     } else {
       setAuthFlowStarted(true);
-      showToast("not signed in yet", "finish the yande.re sign-in, then check again.", "info");
+      showToast("not signed in yet", `finish the ${activeSite?.name ?? "site"} sign-in, then check again.`, "info");
     }
   }
   const savedQueriesQuery = useQuery({
@@ -861,7 +861,7 @@ function App() {
       : view === "pools"
       ? `ordered public collections from ${activeSite?.name ?? "the active site"}`
       : view === "favorites"
-      ? authQuery.data?.authenticated ? `saved by ${authQuery.data.username ?? "your yandere account"}` : "sign in to browse your saved posts"
+      ? authQuery.data?.authenticated ? `saved by ${authQuery.data.username ?? `your ${activeSite?.name ?? "site"} account`}` : "sign in to browse your saved posts"
       : activeSiteSafeOnly
       ? "safe-mode browse from the active site"
       : "a calm feed for finding something worth keeping";
@@ -1184,7 +1184,7 @@ function App() {
     try {
       const authResult = await authQuery.refetch();
       if (!authResult.data?.authenticated) {
-        showToast("sign in required", "connect your yandere account before changing favorites.", "info");
+        showToast("sign in required", `connect your ${activeSite?.name ?? "site"} account before changing favorites.`, "info");
         return;
       }
       if (!authResult.data.username) {
@@ -1200,7 +1200,7 @@ function App() {
         return next;
       });
       await queryClient.invalidateQueries({ queryKey: ["favorites", activeSiteId, `${activeSiteId}:${authResult.data.username}`] });
-      showToast(favorite ? "added to favorites" : "removed from favorites", `post #${post.post.id} updated on yandere.`);
+      showToast(favorite ? "added to favorites" : "removed from favorites", `post #${post.post.id} updated on ${activeSite?.name ?? "site"}.`);
     } catch (reason) {
       showToast("favorite update failed", errorMessage(reason), "error");
     } finally {
@@ -1559,6 +1559,7 @@ function App() {
               onSelect={openPostDetail}
               onDownload={handleDownload}
               onTag={chooseTag}
+              siteName={activeSite?.name ?? "site"}
               favoriteSupported={activeSite?.capabilities.remote_favorites === true}
               favorited={(post) => favoritePostIds.has(post.post.id)}
               favoriteUpdating={(post) => favoriteUpdatingIds.has(post.post.id)}
@@ -1729,11 +1730,11 @@ function ImageCard({ post, demo = false, selectionMode, selected, downloading, f
         </div>
         <div className="card-footer">
           <span className="post-meta">#{post.post.id}{post.score !== null ? ` · ${post.score} score` : ""}</span>
-          <Button variant="contained" disabled={demo || downloading} onClick={(event) => {
-            event.stopPropagation();
-            void onDownload(post);
-          }}>
-            {demo ? "sample only" : downloading ? "saving…" : "download"}
+              <Button variant="contained" disabled={demo || downloading} onClick={(event) => {
+                event.stopPropagation();
+                void onDownload(post);
+              }}>
+            {demo ? "demo" : downloading ? "saving…" : "download"}
           </Button>
         </div>
       </div>
@@ -1775,13 +1776,18 @@ interface PostInspectorProps {
 
 function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, favoriteUpdating, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onOpenPost, onOpenSimilarSearch, similarSearchSupported, onDownload, onFavorite, onTag, relatedTagsSupported, relatedTagsOpen, relatedTags, relatedTagsLoading, relatedTagsError, onToggleRelatedTags, downloadVariant, demo = false }: PostInspectorProps) {
   const originalUrl = post.full_url;
+  const hasSourceLinks = !demo || Boolean(originalUrl || post.source);
   return (
-    <Dialog open fullScreen onClose={onClose} className="detail-overlay" slotProps={{ paper: { className: "detail-panel", "aria-label": "post details" } }}>
+    <Dialog open fullScreen onClose={onClose} className="detail-overlay" slotProps={{ paper: { className: "detail-panel", "aria-label": "post details", "aria-labelledby": `detail-title-${post.post.id}` } }}>
         <div className="detail-stage">
           <div className="detail-stage-heading">
-            <div>
-              <p className="eyebrow">post details</p>
-              <h2>#{post.post.id}</h2>
+            <div className="detail-stage-identity">
+              <p className="eyebrow">inspect</p>
+              <h2 id={`detail-title-${post.post.id}`}>#{post.post.id}</h2>
+            </div>
+            <div className="detail-stage-context" aria-label="post context">
+              <span>{siteName}</span>
+              <span>{post.rating.toLowerCase()}</span>
             </div>
             <IconButton aria-label="close details" onClick={onClose}><Icon name="close" /></IconButton>
           </div>
@@ -1795,23 +1801,39 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
           </div>
         </div>
         <section className="detail-sheet" aria-label="post actions and exploration">
-          <div className="detail-summary">
-            <span>{siteName} post #{post.post.id}</span>
-            {!demo && <Button variant="outlined" className="detail-post-link" onClick={() => void onOpenPost(post)}>open {siteName} post</Button>}
-            {!demo && similarSearchSupported && <Button variant="outlined" className="detail-post-link" onClick={() => void onOpenSimilarSearch()}>open similar search</Button>}
-            {originalUrl && <a href={originalUrl} target="_blank" rel="noreferrer">open original</a>}
-            {post.source && <a href={post.source} target="_blank" rel="noreferrer">open source</a>}
-          </div>
+          <header className="detail-sheet-header">
+            <div>
+              <p className="eyebrow">keep or continue</p>
+              <h3>{siteName} post #{post.post.id}</h3>
+              <p className="detail-sheet-lede">{post.width ?? "?"}×{post.height ?? "?"} · {post.rating.toLowerCase()} · {post.score === null ? "unscored" : `${post.score} score`}</p>
+            </div>
+            <span className="detail-sheet-index">{previewPosition && previewTotal ? `${previewPosition} / ${previewTotal}` : "single"}</span>
+          </header>
+          {hasSourceLinks && <div className="detail-summary">
+              <span className="section-label">source</span>
+              <div className="detail-source-links">
+                {!demo && <Button variant="outlined" className="detail-post-link" onClick={() => void onOpenPost(post)}>view post</Button>}
+                {!demo && similarSearchSupported && <Button variant="outlined" className="detail-post-link" onClick={() => void onOpenSimilarSearch()}>similar</Button>}
+                {originalUrl && <a href={originalUrl} target="_blank" rel="noreferrer">original</a>}
+                {post.source && <a href={post.source} target="_blank" rel="noreferrer">source</a>}
+              </div>
+            </div>}
           {detailLoading && <p className="detail-helper" role="status">refreshing post details…</p>}
           {detailError && <p className="detail-helper" role="alert">couldn’t refresh the post; showing the feed snapshot. {detailError}</p>}
           <div className="detail-primary-actions">
             {favoriteSupported && (
               <Button variant="outlined" disabled={favoriteUpdating} startIcon={<Icon name={favorited ? "heartFilled" : "heart"} />} onClick={() => void onFavorite(post)}>
-                {favoriteUpdating ? "updating favorites…" : favorited ? `remove from ${siteName} favorites` : `add to ${siteName} favorites`}
+                {favoriteUpdating ? "updating…" : favorited ? "unfavorite" : "favorite"}
               </Button>
             )}
-            <Button variant="contained" disabled={demo || downloading} onClick={() => void onDownload(post)}>
-              {demo ? "sample fixture" : downloading ? "saving…" : `download ${downloadVariant.toLowerCase()} quality`}
+            <Button
+              variant="contained"
+              disabled={demo || downloading}
+              title={demo ? "demo fixture" : `download ${downloadVariant.toLowerCase()} quality`}
+              aria-label={demo ? "demo fixture" : `download ${downloadVariant.toLowerCase()} quality`}
+              onClick={() => void onDownload(post)}
+            >
+              {demo ? "demo only" : downloading ? "saving…" : "download"}
             </Button>
           </div>
           <div className="detail-explore">
@@ -1822,7 +1844,7 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
             {relatedTagsSupported && (
               <div className="detail-related-tags">
                 <Button variant="outlined" className="detail-post-link" onClick={onToggleRelatedTags}>
-                  {relatedTagsOpen ? "hide related tags" : "show related tags"}
+                  {relatedTagsOpen ? "hide related" : "related tags"}
                 </Button>
                 {relatedTagsOpen && <p className="detail-helper">site metadata may include tags outside the current rating filter; post results still follow content policy.</p>}
                 {relatedTagsOpen && relatedTagsLoading && <p className="detail-helper" role="status">loading related tags…</p>}
@@ -2304,6 +2326,7 @@ function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool
 
 interface AccountPanelProps {
   auth: AuthStatus | null;
+  siteName: string;
   favorites: Post[];
   favoritesLoading: boolean;
   favoritesError: string;
@@ -2324,7 +2347,7 @@ interface AccountPanelProps {
   onSignOut: () => Promise<void>;
 }
 
-function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favoritesHasNext, loading, authFlowStarted, onBeginAuth, onRefresh, onRetry, onLoadMore, onSelect, onDownload, favoriteSupported, favorited, favoriteUpdating, onFavorite, onTag, onSignOut }: AccountPanelProps) {
+function AccountPanel({ auth, siteName, favorites, favoritesLoading, favoritesError, favoritesHasNext, loading, authFlowStarted, onBeginAuth, onRefresh, onRetry, onLoadMore, onSelect, onDownload, favoriteSupported, favorited, favoriteUpdating, onFavorite, onTag, onSignOut }: AccountPanelProps) {
   return (
     <section className="workspace-panel shell-surface" aria-label="favorites account">
       {loading && !auth?.authenticated ? (
@@ -2334,7 +2357,7 @@ function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favor
         </div>
       ) : auth?.authenticated ? (
         <>
-          <p className="account-connected"><span className="connection-dot" /> {auth.username ? `${auth.username} connected` : "yandere account connected"}</p>
+          <p className="account-connected"><span className="connection-dot" /> {auth.username ? `${auth.username} connected` : `${siteName} account connected`}</p>
           {favoritesError && <Alert className="panel-error" severity="error" action={<Button color="inherit" size="small" onClick={onRetry}>try again</Button>}>{favoritesError}</Alert>}
           {favoritesLoading && favorites.length === 0 && <GallerySkeleton count={8} />}
           {!favoritesLoading && favorites.length === 0 && <div className="panel-empty">no favorites found.</div>}
@@ -2363,12 +2386,12 @@ function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favor
       ) : (
         <>
           <Alert className="auth-guide" severity="info">
-            <strong>sign in in the yande.re window</strong>
+            <strong>sign in in the {siteName} window</strong>
             <p>Dreamland never asks for your password here. Complete the site’s own sign-in, then check the session. Your sign-in cookie is kept locally for the next launch.</p>
           </Alert>
           {authFlowStarted && <p className="account-status" role="status">sign-in window is open. After you finish, choose “check login”.</p>}
           <div className="account-actions">
-            <Button variant="contained" onClick={onBeginAuth}>{authFlowStarted ? "reopen sign-in page" : "sign in to yande.re"}</Button>
+            <Button variant="contained" onClick={onBeginAuth}>{authFlowStarted ? "reopen sign-in" : "sign in"}</Button>
             <Button variant="outlined" disabled={loading} onClick={onRefresh}>{loading ? "checking…" : "check login"}</Button>
           </div>
         </>

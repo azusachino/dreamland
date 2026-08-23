@@ -13,7 +13,9 @@ Date: 2026-08-23
 | reduced motion | `agent-browser set media dark reduced-motion` and reload | pass at browser behavior level; native visual check pending |
 | Downloads media collection | `agent-browser` open `#/downloads?demo=1`, full screenshot and snapshot | pass; four post thumbnails plus archive fallback, progress, summary metrics, and failed state rendered |
 | Explore media fallback | `agent-browser` open `#/latest?demo=1` | pass; four deterministic preview cards rendered with disabled demo actions |
-| Inspect stage sizing | `agent-browser` click demo post and inspect `.MuiDialog-container` bounds | pass; dialog fills the desktop content width instead of collapsing to intrinsic width |
+| Inspect stage sizing | `agent-browser` click demo post and inspect `.MuiDialog-container` bounds | pass; desktop renders a media stage beside a detail rail instead of a shallow stacked sheet |
+| Inspect compact layout | `agent-browser` set viewport 390×844 and capture the demo detail | pass; stage, actions, tags, and metadata stack in the intended order; close control remains reachable |
+| Inspect keyboard zoom | focus `.detail-image-frame`, press `+`, inspect zoom status | pass; zoom changed to 110% without losing focus |
 | light/reduced-motion quality | `agent-browser set media light reduced-motion` on Downloads demo | pass; hierarchy and progress remain readable without animation |
 | opaque surfaces | `--glass-fallback` and forced non-WebGL capture | pass at browser level |
 | WebGL context loss | `agent-browser eval` dispatch of `webglcontextlost`, fallback text, and canvas count | pass in browser; native event injection pending |

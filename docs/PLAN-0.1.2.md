@@ -53,6 +53,9 @@ The pass will tune existing components around four shared rules:
   repeated cards and download rows use opaque, cheap containers.
 - **Experiments have a room.** The playground can be expressive and WebGL
   backed, but Explore, Inspect, and Keep remain usable if WebGL is absent.
+- **Inspect has a working shape.** Desktop uses a media stage beside an
+  anchored detail rail; compact screens stack the same regions without
+  changing the action order.
 
 ### Assumptions made for this pass
 
@@ -73,7 +76,8 @@ The pass will tune existing components around four shared rules:
 - Explore cards, navigation, panels, and feedback states share the same
   spacing, border, focus, status, and motion vocabulary.
 - Inspect keeps its cache-owned full-image path, readable loading/failure
-  states, keyboard controls, and reduced-motion behavior.
+  states, keyboard controls, reduced-motion behavior, and a stable desktop /
+  compact layout.
 - `#/downloads?demo=1` and `#/playground?demo=1` are deterministic visual
   fixtures that can be inspected without a live site or native backend.
 - The normal feed bundle does not import Three.js; the playground remains
