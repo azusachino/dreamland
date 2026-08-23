@@ -179,6 +179,7 @@ an attractive screen cannot hide a broken command contract.
 ## Documentation map
 
 - [Development guide](docs/DEVELOPMENT.md) — setup, commands, and troubleshooting
+- [0.1.2 retrospective](docs/RETROSPECTIVE-0.1.2.md) — durable lessons, wrong turns, and repeatable checks
 - [agent-browser SOP](docs/AGENT-BROWSER-SOP.md) — isolated browser checks and mandatory resource cleanup
 - [Project spec](docs/PROJECT-SPEC.md) — scope and acceptance criteria
 - [API v1](docs/API-V1.md) — site/runtime capability contract
