@@ -77,6 +77,10 @@ Successful download rows use the local library file for their thumbnail first,
 then fall back to the remote preview. Selecting that thumbnail opens the same
 detail inspector as a feed card; if post metadata is still hydrating, the
 inspector retries once the full-image URL arrives.
+If a cached frontend route outlives the bounded runtime post cache, enqueueing
+performs one authoritative site lookup by site and post id before resolving the
+download URL; scrolling does not turn the runtime cache into an unbounded
+history of every rendered post.
 
 The current schema is idempotent and tested in `dreamland-state`. New tables or
 columns must land there before a runtime repository method consumes them.
