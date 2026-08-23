@@ -1257,10 +1257,45 @@ select:focus-visible {
   gap: 0.65rem;
 }
 
+.pool-overview-heading,
+.pool-detail-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.pool-overview-heading > div,
+.pool-detail-heading > div {
+  min-width: 0;
+}
+
+.pool-overview-heading h2,
+.pool-detail-heading h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pool-overview-heading > div > p:last-child {
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  margin: 0.45rem 0 0;
+}
+
+.pool-result-count {
+  color: var(--ink-subtle);
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  padding-top: 0.25rem;
+}
+
 .pool-search {
   align-items: center;
   display: flex;
   gap: 0.5rem;
+  margin: 1.25rem 0 1rem;
 }
 
 .pool-search input {
@@ -1277,6 +1312,66 @@ select:focus-visible {
   border-color: var(--primary);
   outline: 0.18rem solid rgb(183 203 208 / 13%);
   outline-offset: 0.08rem;
+}
+
+.pool-list-heading,
+.pool-contents-heading {
+  align-items: baseline;
+  border-bottom: 1px solid var(--outline);
+  color: var(--ink-subtle);
+  display: flex;
+  font-size: 0.68rem;
+  gap: 0.65rem;
+  justify-content: space-between;
+  margin: 0 0 0.7rem;
+  padding: 0 0 0.55rem;
+}
+
+.pool-list-heading .section-label,
+.pool-contents-heading .section-label {
+  color: var(--ink);
+}
+
+.pool-back-link {
+  font-size: 0.68rem !important;
+  justify-content: flex-start;
+  margin: -0.35rem 0 0.45rem -0.55rem !important;
+  min-height: 1.8rem !important;
+  padding: 0.15rem 0.55rem !important;
+}
+
+.pool-detail-summary {
+  align-items: center;
+  background: var(--surface-container);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin: 1rem 0 1.1rem;
+  padding: 0.75rem 0.85rem;
+}
+
+.pool-detail-summary div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.pool-detail-summary strong {
+  font-size: 0.88rem;
+}
+
+.pool-detail-summary span {
+  color: var(--ink-muted);
+  font-size: 0.68rem;
+}
+
+.pool-detail-summary > span {
+  flex: 0 0 auto;
+}
+
+.pool-contents-heading {
+  margin-top: 1rem;
 }
 
 .load-more,
@@ -1310,6 +1405,26 @@ select:focus-visible {
   padding: 0.8rem;
 }
 
+.collection-row-main {
+  align-items: center;
+  display: flex;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.collection-row-index {
+  align-items: center;
+  border: 1px solid var(--outline-strong);
+  border-radius: 0.55rem;
+  color: var(--primary);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  height: 2rem;
+  justify-content: center;
+  width: 2rem;
+}
+
 .collection-row strong {
   display: block;
   font-size: 0.82rem;
@@ -1322,6 +1437,20 @@ select:focus-visible {
   color: var(--ink-muted);
   font-size: 0.72rem;
   margin: 0.35rem 0 0;
+}
+
+.collection-row-actions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.25rem;
+}
+
+.collection-row-actions .MuiButton-root,
+.pool-detail-heading .MuiButton-root {
+  font-size: 0.68rem;
+  min-height: 1.9rem;
+  padding: 0.25rem 0.65rem;
 }
 
 .panel-error p {
@@ -2426,6 +2555,34 @@ select:focus-visible {
 
   .heading-actions {
     width: 100%;
+  }
+
+  .pool-overview-heading,
+  .pool-detail-heading {
+    flex-direction: column;
+  }
+
+  .pool-detail-heading .inspector-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .pool-search {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .pool-search .MuiTextField-root {
+    flex: 1 1 100%;
+  }
+
+  .collection-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .collection-row-actions {
+    align-self: flex-end;
   }
 
   .gallery-grid {

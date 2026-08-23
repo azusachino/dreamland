@@ -121,7 +121,7 @@ function createNodeTexture(record: DownloadRecord): CanvasTexture {
   const seed = [...record.post_id].reduce((value, character) => value + character.charCodeAt(0), 0);
   const accent = ["#f1c7a8", "#b9d9d0", "#c8c3ed", "#e6c9dc"][seed % 4];
   const background = record.status === "Completed" ? "#17332f" : record.status === "Running" ? "#1d3038" : "#27303b";
-  const label = record.status === "Completed" ? "kept" : record.status === "Running" ? "in motion" : "waiting";
+  const label = record.status === "Completed" ? "downloaded" : record.status === "Running" ? "in motion" : "waiting";
 
   context.fillStyle = background;
   context.fillRect(0, 0, textureCanvas.width, textureCanvas.height);
@@ -407,7 +407,7 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
 
   const selected = visibleRecords.find((record) => record.id === selectedId);
   const activeCount = visibleRecords.filter((record) => record.status === "Queued" || record.status === "Running").length;
-  const keptCount = visibleRecords.filter((record) => record.status === "Completed").length;
+  const downloadedCount = visibleRecords.filter((record) => record.status === "Completed").length;
 
   return (
     <section className="workspace-panel playground-panel shell-surface" aria-label="download constellation playground">
@@ -424,11 +424,11 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
           <Button variant="outlined" onClick={onOpenDownloads}>open downloads</Button>
         </div>
       </div>
-      <p className="helper-text">{demoMode ? "preview data only — this does not enter the queue or history." : "a small WebGL study: work grows as it progresses, then settles into a kept cluster."}</p>
+      <p className="helper-text">{demoMode ? "preview data only — this does not enter the queue or history." : "a small WebGL study: work grows as it progresses, then settles into a downloaded cluster."}</p>
       <div ref={stageRef} className="playground-stage">
         <div className="playground-stage-note" aria-hidden="true">
           <span>{demoMode ? "preview orbit" : "live orbit"}</span>
-          <strong>{activeCount > 0 ? `${activeCount} in motion` : keptCount > 0 ? "everything held" : "waiting for work"}</strong>
+          <strong>{activeCount > 0 ? `${activeCount} in motion` : downloadedCount > 0 ? "everything downloaded" : "waiting for work"}</strong>
         </div>
         {webglUnavailable ? (
           <div className="playground-fallback" role="status">
@@ -444,7 +444,7 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
       <div className="playground-legend" aria-label="constellation legend">
         <span><i className="playground-dot is-running" /> working</span>
         <span><i className="playground-dot is-queued" /> queued</span>
-        <span><i className="playground-dot is-completed" /> kept</span>
+        <span><i className="playground-dot is-completed" /> downloaded</span>
         <span className="playground-legend-hint">size shows progress</span>
       </div>
       {visibleRecords.length > 0 && <div className="playground-node-list" aria-label="downloads represented by the constellation">
@@ -453,7 +453,7 @@ export default function DownloadPlayground({ records, onOpenDownloads }: Downloa
           const amount = progress(record);
           const progressText = record.total_bytes && record.total_bytes > 0
             ? `${Math.round(amount * 100)}%`
-            : record.status === "Completed" ? "kept" : "unknown size";
+            : record.status === "Completed" ? "downloaded" : "unknown size";
           return (
             <button
               key={record.id}

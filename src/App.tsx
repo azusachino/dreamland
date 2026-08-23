@@ -1733,7 +1733,8 @@ interface ImageCardProps {
 function ImageCard({ post, demo = false, selectionMode, selected, downloading, downloadStatus, favoriteSupported, favorited, favoriteUpdating, onDownload, onFavorite, onSelect, onToggleSelection, onTag }: ImageCardProps) {
   const previewUrl = post.preview_url ?? post.sample_url ?? post.full_url;
   const activeDownload = downloading || (downloadStatus !== undefined && isActiveDownload(downloadStatus));
-  const alreadyKept = downloadStatus === "Completed" || downloadStatus === "ExistingTarget";
+  const downloaded = downloadStatus === "Completed";
+  const alreadyOnDisk = downloadStatus === "ExistingTarget";
   const [previewFailed, setPreviewFailed] = useState(false);
   const [previewLoaded, setPreviewLoaded] = useState(false);
 
@@ -1794,11 +1795,11 @@ function ImageCard({ post, demo = false, selectionMode, selected, downloading, d
         </div>
         <div className="card-footer">
           <span className="post-meta">#{post.post.id}{post.score !== null ? ` · ${post.score} score` : ""}</span>
-              <Button variant="contained" disabled={demo || activeDownload || alreadyKept} onClick={(event) => {
+              <Button variant="contained" disabled={demo || activeDownload || downloaded || alreadyOnDisk} title={demo ? "demo fixture" : activeDownload ? "download already in progress" : downloaded ? "file already downloaded" : alreadyOnDisk ? "file already on disk" : "download image"} onClick={(event) => {
                 event.stopPropagation();
                 void onDownload(post);
               }}>
-            {demo ? "demo" : activeDownload ? downloadStatus === "Queued" ? "queued" : "saving…" : alreadyKept ? "kept" : "download"}
+            {demo ? "demo" : activeDownload ? downloadStatus === "Queued" ? "queued" : "saving…" : downloaded ? "downloaded" : alreadyOnDisk ? "on disk" : "download"}
           </Button>
         </div>
       </div>
@@ -1843,7 +1844,8 @@ function PostInspector({ post, detailLoading, detailError, downloading, download
   const originalUrl = post.full_url;
   const hasSourceLinks = !demo || Boolean(originalUrl || post.source);
   const activeDownload = downloading || (downloadStatus !== undefined && isActiveDownload(downloadStatus));
-  const alreadyKept = downloadStatus === "Completed" || downloadStatus === "ExistingTarget";
+  const downloaded = downloadStatus === "Completed";
+  const alreadyOnDisk = downloadStatus === "ExistingTarget";
   const [chromeVisible, setChromeVisible] = useState(true);
   const chromeTimer = useRef<number | null>(null);
 
@@ -1912,12 +1914,12 @@ function PostInspector({ post, detailLoading, detailError, downloading, download
             )}
             <Button
               variant="contained"
-              disabled={demo || activeDownload || alreadyKept}
-              title={demo ? "demo fixture" : activeDownload ? "download already in progress" : alreadyKept ? "file already kept" : `download ${downloadVariant.toLowerCase()} quality`}
-              aria-label={demo ? "demo fixture" : `download ${downloadVariant.toLowerCase()} quality`}
+              disabled={demo || activeDownload || downloaded || alreadyOnDisk}
+              title={demo ? "demo fixture" : activeDownload ? "download already in progress" : downloaded ? "file already downloaded" : alreadyOnDisk ? "file already on disk" : `download ${downloadVariant.toLowerCase()} quality`}
+              aria-label={demo ? "demo fixture" : activeDownload ? `download ${downloadVariant.toLowerCase()} quality is in progress` : downloaded ? "file already downloaded" : alreadyOnDisk ? "file already on disk" : `download ${downloadVariant.toLowerCase()} quality`}
               onClick={() => void onDownload(post)}
             >
-              {demo ? "demo only" : activeDownload ? downloadStatus === "Queued" ? "queued" : "saving…" : alreadyKept ? "kept" : "download"}
+              {demo ? "demo only" : activeDownload ? downloadStatus === "Queued" ? "queued" : "saving…" : downloaded ? "downloaded" : alreadyOnDisk ? "on disk" : "download"}
             </Button>
           </div>
           <div className="detail-explore">
@@ -2164,7 +2166,7 @@ function DownloadPanel({ records, archives, loading, demo = false, interactive =
   const activeArchives = archives.filter((record) => isActiveDownload(record.status));
   const archiveHistory = archives.filter((record) => !isActiveDownload(record.status));
   const activeRecords = [...active, ...activeArchives];
-  const keptCount = history.filter((record) => record.status === "Completed" || record.status === "ExistingTarget").length + archiveHistory.filter((record) => record.status === "Completed" || record.status === "ExistingTarget").length;
+  const downloadedCount = history.filter((record) => record.status === "Completed" || record.status === "ExistingTarget").length + archiveHistory.filter((record) => record.status === "Completed" || record.status === "ExistingTarget").length;
   const attentionCount = history.filter((record) => record.status === "Failed" || record.status === "Cancelled").length + archiveHistory.filter((record) => record.status === "Failed" || record.status === "Cancelled").length;
   const totalProgress = overallProgress(activeRecords);
   const listClass = `download-list${presentation === "cards" ? " download-list-cards" : ""}`;
@@ -2190,7 +2192,7 @@ function DownloadPanel({ records, archives, loading, demo = false, interactive =
       </div>
       <div className="download-metrics" aria-label="download summary">
         <div><strong>{active.length + activeArchives.length}</strong><span>working</span></div>
-        <div><strong>{keptCount}</strong><span>kept</span></div>
+        <div><strong>{downloadedCount}</strong><span>downloaded</span></div>
         <div className={attentionCount > 0 ? "has-attention" : ""}><strong>{attentionCount}</strong><span>needs attention</span></div>
       </div>
       {activeRecords.length > 0 && <div className="download-overall">
@@ -2312,7 +2314,7 @@ function DownloadRow({ record, onCancel, onRetry, onOpen, interactive = true }: 
           label={`post ${record.post_id} progress`}
         />
         {record.error && <p className="download-error">{record.error}</p>}
-        {record.status === "ExistingTarget" && <p className="download-state-note">already kept; nothing was overwritten.</p>}
+        {record.status === "ExistingTarget" && <p className="download-state-note">already on disk; nothing was overwritten.</p>}
         {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
         {interactive && (canCancel || canRetry || canOpen) && <div className="download-row-actions">
           {canCancel && <Button variant="text" onClick={() => void onCancel(record.id)}>cancel</Button>}
@@ -2386,7 +2388,7 @@ function ArchiveRow({ record, onCancel, onOpen, interactive = true }: ArchiveRow
           label={`${record.pool_name} progress`}
         />
         {record.error && <p className="download-error">{record.error}</p>}
-        {record.status === "ExistingTarget" && <p className="download-state-note">already kept; nothing was overwritten.</p>}
+        {record.status === "ExistingTarget" && <p className="download-state-note">already on disk; nothing was overwritten.</p>}
         {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
         {interactive && (canCancel || canOpen) && <div className="download-row-actions">
           {canCancel && <Button variant="text" onClick={() => void onCancel(record.id)}>cancel</Button>}
@@ -2433,61 +2435,81 @@ interface PoolPanelProps {
 function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool, posts, postsLoading, postsError, postsHasNext, onRetryPools, onRetryPosts, onLoadMorePools, onLoadMorePosts, onBack, onBrowse, onDownloadZip, onSelectPost, onDownload, favoriteSupported, favorited, favoriteUpdating, onFavorite, onTag, downloadingId, siteName, collectionDownloads, poolSearch, onPoolSearchChange, onSubmitPoolSearch, onClearPoolSearch }: PoolPanelProps) {
   if (selectedPool) {
     return (
-      <section className="workspace-panel shell-surface" aria-label={`${selectedPool.name} pool`}>
-        <div className="inspector-heading">
-          <div><p className="eyebrow">{siteName} pool</p><h2>{selectedPool.name}</h2></div>
+      <section className="workspace-panel pool-detail-panel shell-surface" aria-label={`${selectedPool.name} pool`}>
+        <div className="pool-detail-heading">
+          <div>
+            <Button className="pool-back-link" variant="text" startIcon={<Icon name="back" />} onClick={onBack}>pools</Button>
+            <p className="eyebrow">{siteName} collection</p>
+            <h2>{selectedPool.name}</h2>
+          </div>
           <div className="inspector-actions">
-            {collectionDownloads && <Button variant="outlined" onClick={() => onDownloadZip(selectedPool)}>download zip</Button>}
-            <Button variant="outlined" startIcon={<Icon name="back" />} onClick={onBack}>all pools</Button>
+            {collectionDownloads && <Button variant="outlined" title="download this pool as a zip archive" onClick={() => onDownloadZip(selectedPool)}>zip</Button>}
+            <Button variant="outlined" onClick={onBack}>all pools</Button>
           </div>
         </div>
-        <p className="helper-text">{selectedPool.post_count} ordered post{selectedPool.post_count === 1 ? "" : "s"} from {siteName}.</p>
+        <div className="pool-detail-summary">
+          <div><strong>{selectedPool.post_count} post{selectedPool.post_count === 1 ? "" : "s"}</strong><span>ordered in this public collection</span></div>
+          <span>{posts.length} loaded</span>
+        </div>
         {postsError && <Alert className="panel-error" severity="error" action={<Button color="inherit" size="small" onClick={onRetryPosts}>try again</Button>}>{postsError}</Alert>}
         {postsLoading && posts.length === 0 && <GallerySkeleton count={8} />}
         {!postsLoading && !postsError && posts.length === 0 && <div className="panel-empty">this pool has no visible posts.</div>}
-        <div className="gallery-grid">
-          {posts.map((post) => (
-            <ImageCard
-              key={post.post.id}
-              post={post}
-              selectionMode={false}
-              selected={false}
-              downloading={downloadingId === post.post.id}
-              favoriteSupported={favoriteSupported}
-              favorited={favorited(post)}
-              favoriteUpdating={favoriteUpdating(post)}
-              onDownload={onDownload}
-              onFavorite={onFavorite}
-              onSelect={onSelectPost}
-              onToggleSelection={() => undefined}
-              onTag={onTag}
-            />
-          ))}
-        </div>
+        {posts.length > 0 && <>
+          <div className="pool-contents-heading"><span className="section-label">contents</span><span>showing {posts.length} of {selectedPool.post_count}</span></div>
+          <div className="gallery-grid">
+            {posts.map((post) => (
+              <ImageCard
+                key={post.post.id}
+                post={post}
+                selectionMode={false}
+                selected={false}
+                downloading={downloadingId === post.post.id}
+                favoriteSupported={favoriteSupported}
+                favorited={favorited(post)}
+                favoriteUpdating={favoriteUpdating(post)}
+                onDownload={onDownload}
+                onFavorite={onFavorite}
+                onSelect={onSelectPost}
+                onToggleSelection={() => undefined}
+                onTag={onTag}
+              />
+            ))}
+          </div>
+        </>}
         {posts.length > 0 && <LoadMore hasNext={postsHasNext} loading={postsLoading} onLoadMore={onLoadMorePosts} />}
       </section>
     );
   }
 
   return (
-    <section className="workspace-panel shell-surface" aria-label="pools">
-      <div className="inspector-heading">
-        <div><p className="eyebrow">{siteName} collections</p><h2>pools</h2></div>
+    <section className="workspace-panel pool-overview-panel shell-surface" aria-label="pools">
+      <div className="pool-overview-heading">
+        <div><p className="eyebrow">{siteName} collections</p><h2>pools</h2><p>Browse public posts in the order their authors arranged them.</p></div>
+        <span className="pool-result-count">{pools.length} loaded</span>
       </div>
       <form className="pool-search" role="search" onSubmit={(event) => { event.preventDefault(); onSubmitPoolSearch(); }}>
-        <TextField aria-label="search pools" placeholder="search pools…" value={poolSearch} onChange={(event) => onPoolSearchChange(event.target.value)} size="small" />
-        <Button variant="contained" type="submit">search</Button>
-        {poolSearch && <Button variant="text" type="button" onClick={onClearPoolSearch}>clear</Button>}
+        <TextField label="find a pool" aria-label="search pools" placeholder="name or phrase" value={poolSearch} onChange={(event) => onPoolSearchChange(event.target.value)} size="small" />
+        <Button variant="contained" type="submit">find</Button>
+        {poolSearch && <Button variant="text" type="button" onClick={onClearPoolSearch}>reset</Button>}
       </form>
-      <p className="helper-text">public pools group ordered posts from {siteName}. open a pool to browse its ordered posts{collectionDownloads ? " or request its authenticated zip archive" : ""}.</p>
+      <div className="pool-list-heading">
+        <span className="section-label">public pools</span>
+        <span>{poolSearch.trim() ? `matching “${poolSearch.trim()}”` : "recently available"}</span>
+      </div>
       {poolsLoading && pools.length === 0 && <RowSkeleton />}
       {poolsError && <Alert className="panel-error" severity="error" action={<Button color="inherit" size="small" onClick={onRetryPools}>try again</Button>}>{poolsError}</Alert>}
-      {!poolsLoading && !poolsError && pools.length === 0 && <div className="panel-empty">no public pools found.</div>}
+      {!poolsLoading && !poolsError && pools.length === 0 && <div className="panel-empty">{poolSearch.trim() ? "no pools matched that search." : "no public pools found."}</div>}
       <div className="collection-list">
-        {pools.map((pool) => (
+        {pools.map((pool, index) => (
           <article className="collection-row" key={pool.id}>
-            <div><strong>{pool.name}</strong><p>{pool.post_count} post{pool.post_count === 1 ? "" : "s"}</p></div>
-            <Button variant="outlined" onClick={() => onBrowse(pool)}>browse</Button>
+            <div className="collection-row-main">
+              <span className="collection-row-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+              <div><strong>{pool.name}</strong><p>{pool.post_count} post{pool.post_count === 1 ? "" : "s"} · public collection</p></div>
+            </div>
+            <div className="collection-row-actions">
+              {collectionDownloads && <Button variant="text" title="download this pool as a zip archive" onClick={() => onDownloadZip(pool)}>zip</Button>}
+              <Button variant="outlined" onClick={() => onBrowse(pool)}>browse</Button>
+            </div>
           </article>
         ))}
       </div>
