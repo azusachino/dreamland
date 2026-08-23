@@ -1,10 +1,10 @@
 # Dreamland 0.1.2 plan
 
-Status: active. The first transition, download-state, and isolated-playground
-experiments are implemented; 0.1.2 is now expanding into a full design-language
-pass across Explore, Inspect, Keep, and the playground shell. Desktop/WebView
-acceptance and final cross-platform performance evidence remain open. This is
-a quality and learning milestone, not a promise to add every experiment
+Status: release candidate. The transition, download-state, cache, pagination,
+theme, tag-palette, gallery-performance, and isolated-playground slices are
+implemented across Explore, Inspect, Keep, and the playground shell. Native
+WKWebView/WebView2 interaction evidence remains an explicit release follow-up;
+this is a quality and learning milestone, not a promise to add every experiment
 described here.
 
 ## Intention

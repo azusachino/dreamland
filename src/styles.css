@@ -1772,6 +1772,28 @@ select:focus-visible {
   position: relative;
 }
 
+.download-thumbnail-trigger {
+  align-self: start;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  cursor: zoom-in;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.download-thumbnail-trigger:focus-visible {
+  border-radius: 0.7rem;
+  outline: 0.16rem solid var(--primary);
+  outline-offset: 0.12rem;
+}
+
+.download-thumbnail-trigger .download-thumbnail {
+  width: 100%;
+}
+
 .download-thumbnail img {
   display: block;
   filter: saturate(0.82);

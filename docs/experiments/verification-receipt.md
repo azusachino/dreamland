@@ -15,8 +15,9 @@ Date: 2026-08-23
 | Downloads list/card switch | `agent-browser` click `cards`, inspect `.download-list-cards` and computed progress track | pass; all three download groups switch to cards and the prominent track renders at 0.48rem |
 | Download progress semantics | demo queue with one known and one unknown total | pass; overall progress reports known bytes honestly and calls out the unknown item instead of inventing a total |
 | Streamed download progress | runtime progress callback test with a four-byte HTTP fixture | pass; the queue receives `0/4` metadata and `4/4` completion updates during the stream rather than only at finish |
-| Existing-target history | demo `ExistingTarget` record and runtime enqueue path | pass; “already on disk” is retained as history with an explanation and active duplicate requests return the original queue record |
+| Existing-target history | demo `ExistingTarget` record and runtime enqueue path | pass; “on disk” is retained as attempt history with one concise no-overwrite explanation and active duplicate requests return the original queue record |
 | Same-post download affordance | feed/detail card bound to active or completed download records | pass; active posts show queued/downloading state, completed posts show “downloaded”, and existing targets show “on disk” instead of another blind download action |
+| Download history preview | completed history row with a local target and delayed post metadata | pass; the local file is preferred for the thumbnail, remote preview is a fallback, and selecting the thumbnail reuses the detail inspector after metadata hydration |
 | Notification center | multiple completion/status events in one session | pass; the top-right center keeps up to four stacked notices with independent dismissal and expiry |
 | Explore media fallback | `agent-browser` open `#/latest?demo=1` | pass; four deterministic preview cards rendered with disabled demo actions |
 | Inspect stage sizing | `agent-browser` click demo post and inspect `.MuiDialog-container` bounds | pass; desktop renders a media stage beside a detail rail instead of a shallow stacked sheet |

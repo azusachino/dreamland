@@ -355,6 +355,25 @@ pub async fn cache_detail_image_at(
     }
 }
 
+pub async fn refresh_detail_image_at(
+    url: &str,
+    site_id: &str,
+    post_id: &str,
+    cache_root: &std::path::Path,
+    network: &NetworkPolicy,
+) -> anyhow::Result<std::path::PathBuf> {
+    validate_image_identifier(post_id)?;
+    validate_path_component(site_id, "site")?;
+    let posts_dir = cache_root.join(site_id).join("posts");
+    for extension in DETAIL_IMAGE_EXTENSIONS {
+        let path = posts_dir.join(format!("{post_id}.{extension}"));
+        if tokio::fs::try_exists(&path).await? {
+            tokio::fs::remove_file(path).await?;
+        }
+    }
+    cache_detail_image_at(url, site_id, post_id, cache_root, network).await
+}
+
 fn detail_cache_path() -> std::path::PathBuf {
     default_detail_cache_path()
 }
@@ -818,6 +837,37 @@ mod tests {
             .unwrap();
 
         assert_eq!(found, Some(cached));
+        let _ = tokio::fs::remove_dir_all(detail).await;
+    }
+
+    #[tokio::test]
+    async fn refreshing_detail_image_replaces_stale_cache() {
+        let detail =
+            std::env::temp_dir().join(format!("dreamland-detail-{}", uuid::Uuid::new_v4()));
+        let stale = detail.join("yandere/posts/123.jpg");
+        tokio::fs::create_dir_all(stale.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&stale, b"stale").await.unwrap();
+        let (url, server) = image_server();
+
+        let refreshed = refresh_detail_image_at(
+            &url,
+            "yandere",
+            "123",
+            &detail,
+            &NetworkPolicy {
+                proxy: ProxyMode::Direct,
+                ..NetworkPolicy::default()
+            },
+        )
+        .await
+        .unwrap();
+        server.join().unwrap();
+
+        assert_eq!(refreshed, detail.join("yandere/posts/123.png"));
+        assert_eq!(tokio::fs::read(refreshed).await.unwrap(), b"PNG!");
+        assert!(!stale.exists());
         let _ = tokio::fs::remove_dir_all(detail).await;
     }
 

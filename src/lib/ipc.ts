@@ -298,8 +298,8 @@ export function lookupPost(siteId: string, postId: string, contentPolicy: Conten
   return invoke<Post>("lookup_post", { siteId, postId, contentPolicy });
 }
 
-export function loadDetailImage(siteId: string, postId: string): Promise<string> {
-  return invoke<string>("load_detail_image", { siteId, postId });
+export function loadDetailImage(siteId: string, postId: string, refresh = false): Promise<string> {
+  return invoke<string>("load_detail_image", { siteId, postId, refresh });
 }
 
 export function suggestTags(siteId: string, query: string, limit = 5): Promise<TagSuggestion[]> {

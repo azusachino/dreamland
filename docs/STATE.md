@@ -62,10 +62,21 @@ atomic rename, so an existing completed file remains authoritative.
 The configured download library is the durable media store. Detail images are
 reusable cache entries, and a download promotes a copy into the library without
 removing a cache path that an open detail view may still be using. Detail lookup
-checks the detail cache first and the library second, so cache cleanup does not
+checks the configured library first and the detail cache second, so a stale
+detail entry cannot mask an already-downloaded file. Cache cleanup does not
 invalidate already-downloaded media. `detail-staging` and `downloads` contain
 only in-flight temporary files. Cache cleanup is refused while either queue
 contains `Queued` or `Running` work.
+
+History records attempts, not just unique files. A later request for a post whose
+canonical target already exists becomes `ExistingTarget`; the earlier
+`Completed` record remains useful evidence and is not silently merged. UI
+summaries count unique target paths, while the row vocabulary is `downloaded`
+for a new file and `on disk` for an existing file kept without overwrite.
+Successful download rows use the local library file for their thumbnail first,
+then fall back to the remote preview. Selecting that thumbnail opens the same
+detail inspector as a feed card; if post metadata is still hydrating, the
+inspector retries once the full-image URL arrives.
 
 The current schema is idempotent and tested in `dreamland-state`. New tables or
 columns must land there before a runtime repository method consumes them.
