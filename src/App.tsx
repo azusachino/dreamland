@@ -712,7 +712,7 @@ function App() {
     queryKey: ["posts", activeSiteId, request],
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) => pageParam ? continueQuery(pageParam) : queryPosts(activeSiteId, request),
-    getNextPageParam: (lastPage) => lastPage.session && lastPage.posts.length >= lastPage.page_size
+    getNextPageParam: (lastPage) => lastPage.session && lastPage.posts.length > 0
       ? lastPage.session
       : undefined,
     enabled: configQuery.isSuccess && sitesQuery.isSuccess && Boolean(activeSite) && (view === "latest" || view === "popular" || view === "search"),
