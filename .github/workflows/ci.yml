@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  UV_EXCLUDE_NEWER: "7 days"
+
 jobs:
   validate:
     name: validate
@@ -26,12 +29,12 @@ jobs:
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.13
+          bun-version: "1.4"
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.97.1
+          toolchain: "1.98.0"
           components: rustfmt, clippy
 
       - name: Install Linux desktop dependencies
@@ -54,3 +57,42 @@ jobs:
 
       - name: Run workspace Rust tests
         run: cargo test --workspace --locked
+
+  desktop:
+    name: desktop-${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.98.0"
+          components: rustfmt, clippy
+
+      - name: Install locked dependencies
+        run: |
+          uv sync --locked
+          bun install --frozen-lockfile
+
+      - name: Run desktop validation
+        run: uv run scripts/check.py
+
+      - name: Build native desktop bundle
+        run: bun run tauri:build

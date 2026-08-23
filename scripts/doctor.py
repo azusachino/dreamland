@@ -10,9 +10,7 @@ import sys
 
 def main() -> int:
     system = platform.system()
-    tools = ["uv", "bun", "cargo", "rustfmt"]
-    if system == "Darwin":
-        tools.append("nix")
+    tools = ["mise", "uv", "bun", "cargo", "rustfmt"]
 
     missing = [tool for tool in tools if shutil.which(tool) is None]
     for tool in tools:

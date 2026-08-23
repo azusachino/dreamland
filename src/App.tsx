@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -81,14 +81,16 @@ import { LoadMore } from "./components/LoadMore";
 import { GallerySkeleton, RowSkeleton } from "./components/LoadingStates";
 import { MainNavigation } from "./components/MainNavigation";
 import { AdvancedQueryDialog as PopupAdvancedQueryDialog, ErrorState as PopupErrorState, SettingsDialog as PopupSettingsDialog, Toast as PopupToast } from "./components/Popups";
-import { isPoolPath, isPostPath, pathForView, poolPath, popularPath, postPath, searchPath, viewFromPath } from "./navigation";
+import { isPoolPath, isPostPath, pathForView, poolPath, popularPath, postPath, postRoute, searchPath, viewFromPath } from "./navigation";
 
 import type { ViewMode } from "./view-model";
+const DownloadPlayground = lazy(() => import("./components/DownloadPlayground"));
 type PopularPeriod = "Day" | "Week" | "Month";
 type ToastTone = "success" | "info" | "error";
 type ThemeMode = "system" | "light" | "dark";
 type QueryOrder = "" | "score" | "score_asc" | "id" | "id_desc" | "mpixels" | "mpixels_asc" | "landscape" | "portrait" | "vote" | "random";
 const contentCacheTime = 5 * 60_000;
+const tagTones = ["aqua", "violet", "amber", "rose", "mint", "blue"] as const;
 
 interface AdvancedQueryForm {
   tags: string;
@@ -130,6 +132,12 @@ function errorMessage(reason: unknown): string {
 function readThemeMode(): ThemeMode {
   const saved = window.localStorage.getItem("dreamland.theme");
   return saved === "light" || saved === "dark" ? saved : "system";
+}
+
+function tagTone(tag: string): (typeof tagTones)[number] {
+  let hash = 0;
+  for (const character of tag.toLowerCase()) hash = (hash * 31 + character.charCodeAt(0)) | 0;
+  return tagTones[(hash >>> 0) % tagTones.length];
 }
 
 function today(): string {
@@ -344,6 +352,189 @@ function isActiveDownload(status: DownloadStatus): boolean {
   return status === "Queued" || status === "Running";
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  const lastUnit = units[units.length - 1];
+  let value = bytes;
+  let unit = units[0];
+  for (const nextUnit of units) {
+    value /= 1024;
+    unit = nextUnit;
+    if (value < 1024 || nextUnit === lastUnit) break;
+  }
+  return `${value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2)} ${unit}`;
+}
+
+type ProgressRecord = Pick<DownloadRecord, "bytes_downloaded" | "total_bytes">;
+type ActiveProgressRecord = ProgressRecord & Pick<DownloadRecord, "status">;
+
+function progressPercent(record: ProgressRecord): number | null {
+  if (record.total_bytes === null || record.total_bytes <= 0) return null;
+  return Math.min(100, (record.bytes_downloaded / record.total_bytes) * 100);
+}
+
+interface OverallProgress extends ProgressRecord {
+  queuedCount: number;
+  runningUnknownCount: number;
+}
+
+function overallProgress(records: ActiveProgressRecord[]): OverallProgress {
+  const knownRecords = records.filter((record) => record.total_bytes !== null && record.total_bytes > 0);
+  return {
+    bytes_downloaded: knownRecords.reduce((total, record) => total + record.bytes_downloaded, 0),
+    total_bytes: knownRecords.length > 0 ? knownRecords.reduce((total, record) => total + (record.total_bytes ?? 0), 0) : null,
+    queuedCount: records.filter((record) => record.status === "Queued").length,
+    runningUnknownCount: records.filter((record) => record.status === "Running" && (record.total_bytes === null || record.total_bytes <= 0)).length,
+  };
+}
+
+function demoThumbnail(label: string, from: string, to: string): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 300"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient></defs><rect width="240" height="300" fill="url(#g)"/><circle cx="178" cy="86" r="68" fill="white" fill-opacity=".18"/><path d="M0 228c46-54 78-50 116-8 34 38 68 45 124-18v98H0Z" fill="white" fill-opacity=".16"/><text x="20" y="270" fill="white" fill-opacity=".86" font-family="sans-serif" font-size="16" letter-spacing="2">${label}</text></svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function demoPost(id: string, previewUrl: string, width: number, height: number): Post {
+  return {
+    post: { site: "yandere", id },
+    tags: ["dreamland", "demo", "sample"],
+    author: "dreamland",
+    creator_id: null,
+    md5: null,
+    source: null,
+    parent_id: null,
+    has_children: false,
+    created_at: "2026-08-22T00:00:00Z",
+    width,
+    height,
+    rating: "Safe",
+    score: 42,
+    preview_url: previewUrl,
+    sample_url: null,
+    full_url: null,
+    file_size: width * height * 2,
+  };
+}
+
+const demoDownloadRecords: DownloadRecord[] = [
+  {
+    id: "demo-running",
+    site: "yandere",
+    post_id: "8421",
+    variant: "Full",
+    status: "Running",
+    target_path: null,
+    error: null,
+    attempts: 1,
+    bytes_downloaded: 1_800_000,
+    total_bytes: 4_800_000,
+    created_at_ms: Date.UTC(2026, 7, 22, 11, 20),
+    updated_at_ms: Date.UTC(2026, 7, 22, 11, 20),
+    metadata: demoPost("8421", demoThumbnail("IN MOTION", "#52737b", "#b1cec5"), 1600, 2100),
+  },
+  {
+    id: "demo-queued",
+    site: "yandere",
+    post_id: "8420",
+    variant: "Sample",
+    status: "Queued",
+    target_path: null,
+    error: null,
+    attempts: 1,
+    bytes_downloaded: 0,
+    total_bytes: null,
+    created_at_ms: Date.UTC(2026, 7, 22, 11, 19),
+    updated_at_ms: Date.UTC(2026, 7, 22, 11, 19),
+    metadata: demoPost("8420", demoThumbnail("WAITING", "#6b5b95", "#d6a2e8"), 1200, 1600),
+  },
+  {
+    id: "demo-completed",
+    site: "yandere",
+    post_id: "8412",
+    variant: "Full",
+    status: "Completed",
+    target_path: "/demo/dreamland/8412.jpg",
+    error: null,
+    attempts: 1,
+    bytes_downloaded: 3_200_000,
+    total_bytes: 3_200_000,
+    created_at_ms: Date.UTC(2026, 7, 21, 17, 5),
+    updated_at_ms: Date.UTC(2026, 7, 21, 17, 6),
+    metadata: demoPost("8412", demoThumbnail("KEPT", "#9b5f56", "#efc0b5"), 1800, 1200),
+  },
+  {
+    id: "demo-existing",
+    site: "yandere",
+    post_id: "8418",
+    variant: "Full",
+    status: "ExistingTarget",
+    target_path: "/demo/dreamland/8418.jpg",
+    error: null,
+    attempts: 1,
+    bytes_downloaded: 3_200_000,
+    total_bytes: 3_200_000,
+    created_at_ms: Date.UTC(2026, 7, 21, 16, 48),
+    updated_at_ms: Date.UTC(2026, 7, 21, 16, 48),
+    metadata: demoPost("8418", demoThumbnail("ALREADY KEPT", "#4f7468", "#b1cec5"), 1400, 1400),
+  },
+  {
+    id: "demo-failed",
+    site: "yandere",
+    post_id: "8407",
+    variant: "Full",
+    status: "Failed",
+    target_path: null,
+    error: "preview fixture: connection interrupted",
+    attempts: 2,
+    bytes_downloaded: 0,
+    total_bytes: null,
+    created_at_ms: Date.UTC(2026, 7, 20, 9, 42),
+    updated_at_ms: Date.UTC(2026, 7, 20, 9, 42),
+    metadata: demoPost("8407", demoThumbnail("TRY AGAIN", "#3c4858", "#8e9aaf"), 1000, 1000),
+  },
+];
+
+const demoArchiveRecords: ArchiveRecord[] = [
+  {
+    id: "demo-archive",
+    site: "yandere",
+    pool_id: "dream-01",
+    pool_name: "dream studies",
+    status: "Completed",
+    target_path: "/demo/dreamland/dream-studies.zip",
+    error: null,
+    attempts: 1,
+    bytes_downloaded: 12_000_000,
+    total_bytes: 12_000_000,
+    created_at_ms: Date.UTC(2026, 7, 19, 14, 10),
+    updated_at_ms: Date.UTC(2026, 7, 19, 14, 12),
+  },
+];
+
+const demoPosts = demoDownloadRecords.filter((record) => record.id !== "demo-existing").map((record) => record.metadata);
+
+function routePost(siteId: string, postId: string): Post {
+  return {
+    post: { site: siteId, id: postId },
+    tags: [],
+    author: null,
+    creator_id: null,
+    md5: null,
+    source: null,
+    parent_id: null,
+    has_children: false,
+    created_at: null,
+    width: null,
+    height: null,
+    rating: "Unknown",
+    score: null,
+    preview_url: null,
+    sample_url: null,
+    full_url: null,
+    file_size: null,
+  };
+}
+
 function App() {
   const queryClient = useQueryClient();
   const location = useLocation();
@@ -375,13 +566,14 @@ function App() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [authFlowStarted, setAuthFlowStarted] = useState(false);
   const [error, setError] = useState("");
-  const [toast, setToast] = useState<ToastState | null>(null);
+  const [toast, setToast] = useState<ToastState[]>([]);
   const toastId = useRef(0);
   const searchInput = useRef<HTMLInputElement>(null);
   const downloadStatuses = useRef(new Map<string, DownloadStatus>());
   const activeQuerySession = useRef<string | null>(null);
   const historyIndex = typeof window.history.state?.idx === "number" ? window.history.state.idx : 0;
   const maxHistoryIndex = useRef(historyIndex);
+  const demoMode = new URLSearchParams(location.search).get("demo") === "1";
 
   useEffect(() => {
     maxHistoryIndex.current = Math.max(maxHistoryIndex.current, historyIndex);
@@ -392,7 +584,7 @@ function App() {
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const routeSite = params.get("site");
+    const routeSite = params.get("site") ?? postRoute(location.pathname)?.siteId;
     if (routeSite && routeSite !== selectedSiteId) setSelectedSiteId(routeSite);
     if (location.pathname === "/popular") {
       const routePeriod = params.get("period");
@@ -428,11 +620,14 @@ function App() {
     }
     if (isPostPath(location.pathname)) {
       const routeState = location.state as { post?: Post } | null;
+      const route = postRoute(location.pathname);
       if (routeState?.post) setSelectedPost(routeState.post);
+      else if (route && demoMode) setSelectedPost(demoPosts.find((post) => post.post.site === route.siteId && post.post.id === route.postId) ?? routePost(route.siteId, route.postId));
+      else if (route) setSelectedPost(routePost(route.siteId, route.postId));
     } else {
       setSelectedPost(null);
     }
-  }, [location.pathname, location.search]);
+  }, [demoMode, location.pathname, location.search, location.state]);
 
   useEffect(() => {
     if (themeMode === "system") document.documentElement.removeAttribute("data-theme");
@@ -442,9 +637,9 @@ function App() {
 
   function showToast(title: string, message: string, tone: ToastTone = "success") {
     const id = ++toastId.current;
-    setToast({ id, title, message, tone });
+    setToast((current) => [...current, { id, title, message, tone }].slice(-4));
     window.setTimeout(() => {
-      setToast((current) => current?.id === id ? null : current);
+      setToast((current) => current.filter((item) => item.id !== id));
     }, 4_500);
   }
 
@@ -473,9 +668,9 @@ function App() {
     try {
       await beginAuth();
       setAuthFlowStarted(true);
-      showToast("sign-in window opened", "finish signing in at yande.re, then choose check login.", "info");
+      showToast("sign-in window opened", `finish signing in at ${activeSite?.name ?? "the site"}, then choose check login.`, "info");
     } catch (reason) {
-      setError(`could not open yande.re sign-in: ${errorMessage(reason)}`);
+      setError(`could not open ${activeSite?.name ?? "site"} sign-in: ${errorMessage(reason)}`);
     }
   }
 
@@ -484,10 +679,10 @@ function App() {
     const result = await authQuery.refetch();
     if (result.data?.authenticated) {
       setAuthFlowStarted(false);
-      showToast("yande.re connected", result.data.username ? `signed in as ${result.data.username}.` : "your account is ready.");
+      showToast(`${activeSite?.name ?? "site"} connected`, result.data.username ? `signed in as ${result.data.username}.` : "your account is ready.");
     } else {
       setAuthFlowStarted(true);
-      showToast("not signed in yet", "finish the yande.re sign-in, then check again.", "info");
+      showToast("not signed in yet", `finish the ${activeSite?.name ?? "site"} sign-in, then check again.`, "info");
     }
   }
   const savedQueriesQuery = useQuery({
@@ -501,6 +696,11 @@ function App() {
   const activeContentPolicy = activeSiteSafeOnly
     ? "SafeOnly"
     : activeSavedQuery?.query.content_policy ?? contentPolicy;
+  const detailSiteId = selectedPost?.post.site ?? activeSiteId;
+  const detailSite = sitesQuery.data?.find((site) => site.id === detailSiteId) ?? activeSite;
+  const detailContentPolicy = detailSite?.capabilities.safe_content_only
+    ? "SafeOnly"
+    : configQuery.data?.content_policy ?? "SafeOnly";
   const request = useMemo<PostQueryRequest>(() => {
     let source: DiscoverySource = "Browse";
     if (view === "popular") {
@@ -524,7 +724,7 @@ function App() {
     queryKey: ["posts", activeSiteId, request],
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) => pageParam ? continueQuery(pageParam) : queryPosts(activeSiteId, request),
-    getNextPageParam: (lastPage) => lastPage.session && lastPage.posts.length >= lastPage.page_size
+    getNextPageParam: (lastPage) => lastPage.session && lastPage.posts.length > 0
       ? lastPage.session
       : undefined,
     enabled: configQuery.isSuccess && sitesQuery.isSuccess && Boolean(activeSite) && (view === "latest" || view === "popular" || view === "search"),
@@ -564,9 +764,9 @@ function App() {
       const previous = downloadStatuses.current.get(record.id);
       if (previous && previous !== record.status) {
         if (record.status === "Completed") {
-          showToast("download complete", `post #${record.post_id} is ready in downloads.`);
+          showToast("downloaded", `post #${record.post_id} is ready in downloads.`);
         } else if (record.status === "ExistingTarget") {
-          showToast("already downloaded", `post #${record.post_id} was not overwritten.`, "info");
+          showToast("on disk", `post #${record.post_id} was already saved; no overwrite was needed.`, "info");
         } else if (record.status === "Failed") {
           showToast("download failed", record.error ?? `post #${record.post_id} could not be saved.`, "error");
         }
@@ -605,15 +805,15 @@ function App() {
     gcTime: 30 * 60_000,
   });
   const postDetailQuery = useQuery({
-    queryKey: ["post-detail", activeSiteId, selectedPost?.post.id],
-    queryFn: () => lookupPost(activeSiteId, selectedPost!.post.id, activeContentPolicy),
-    enabled: Boolean(selectedPost) && activeSite?.capabilities.post_lookup === true,
+    queryKey: ["post-detail", detailSiteId, selectedPost?.post.id, detailContentPolicy],
+    queryFn: () => lookupPost(detailSiteId, selectedPost!.post.id, detailContentPolicy),
+    enabled: !demoMode && Boolean(selectedPost) && detailSite?.capabilities.post_lookup === true,
     staleTime: 60_000,
   });
   const relatedTagsQuery = useQuery({
-    queryKey: ["related-tags", activeSiteId, selectedPost?.post.id, selectedPost?.tags],
-    queryFn: () => relatedTags(activeSiteId, selectedPost!.tags, 12),
-    enabled: relatedTagsOpen && Boolean(selectedPost) && activeSite?.capabilities.related_tags === true,
+    queryKey: ["related-tags", detailSiteId, selectedPost?.post.id, selectedPost?.tags],
+    queryFn: () => relatedTags(detailSiteId, selectedPost!.tags, 12),
+    enabled: relatedTagsOpen && Boolean(selectedPost) && detailSite?.capabilities.related_tags === true,
     staleTime: 300_000,
   });
   const favoriteIdentity = authQuery.data?.authenticated && authQuery.data.username
@@ -658,18 +858,27 @@ function App() {
     onSuccess: (record) => {
       void queryClient.invalidateQueries({ queryKey: ["downloads"] });
       downloadStatuses.current.set(record.id, record.status);
-      showToast("download queued", `post #${record.post_id} will be saved at the configured path.`);
+      const title = record.status === "ExistingTarget"
+        ? "on disk"
+        : record.status === "Completed"
+          ? "downloaded"
+          : record.status === "Running"
+            ? "download in progress"
+            : "download tracked";
+      showToast(title, record.status === "ExistingTarget"
+        ? `post #${record.post_id} was already saved; no file was overwritten.`
+        : `post #${record.post_id} will be saved at the configured path.`);
     },
     onError: (reason) => setError(`download failed: ${errorMessage(reason)}`),
   });
 
   const isBrowseView = view === "latest" || view === "popular" || view === "search";
-  const images = imagesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
-  const queryError = sitesQuery.error
+  const images = demoMode && isBrowseView ? demoPosts : imagesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
+  const queryError = !demoMode && sitesQuery.error
     ? `failed to load sites: ${errorMessage(sitesQuery.error)}`
-    : configQuery.error
+    : !demoMode && configQuery.error
       ? `failed to load configuration: ${errorMessage(configQuery.error)}`
-      : isBrowseView && imagesQuery.error && images.length === 0
+    : !demoMode && isBrowseView && imagesQuery.error && images.length === 0
         ? `failed to load images: ${errorMessage(imagesQuery.error)}`
         : "";
   const favoritePosts = favoritesQuery.data?.pages.flatMap((page) => page.posts) ?? [];
@@ -685,19 +894,29 @@ function App() {
     : -1;
   const canGoPrevious = selectedPreviewIndex > 0;
   const canGoNext = selectedPreviewIndex >= 0 && selectedPreviewIndex < previewPosts.length - 1;
-  const loading = configQuery.isPending || sitesQuery.isPending || imagesQuery.isPending;
+  const loading = !demoMode && (configQuery.isPending || sitesQuery.isPending || (isBrowseView && imagesQuery.isPending));
   const browseLoading = loading && images.length === 0;
   const loadingMore = imagesQuery.isFetchingNextPage;
   const downloadRecords = useMemo(() => {
     const records = downloadsQuery.data?.pages.flatMap((page) => page) ?? [];
     return [...new Map(records.map((record) => [record.id, record])).values()];
   }, [downloadsQuery.data]);
+  function downloadStatusForPost(post: Post): DownloadStatus | undefined {
+    const records = demoMode ? demoDownloadRecords : downloadRecords;
+    const matches = records
+      .filter((record) => record.site === post.post.site && record.post_id === post.post.id)
+      .sort((left, right) => right.updated_at_ms - left.updated_at_ms);
+    return matches.find((record) => isActiveDownload(record.status))?.status
+      ?? matches.find((record) => record.status === "Completed" || record.status === "ExistingTarget")?.status;
+  }
   const title = view === "search"
     ? "search results"
     : view === "popular"
       ? "popular"
       : view === "downloads"
       ? "downloads"
+      : view === "playground"
+      ? "playground"
       : view === "pools"
       ? "pools"
       : view === "favorites"
@@ -713,10 +932,12 @@ function App() {
       ? `most popular this ${popularPeriod.toLowerCase()} · ${popularWindow(popularAnchorDate, popularPeriod).join(" to ")} · score-ranked`
       : view === "downloads"
       ? "local download history and active work"
+      : view === "playground"
+      ? "an experimental view of work becoming something kept"
       : view === "pools"
       ? `ordered public collections from ${activeSite?.name ?? "the active site"}`
       : view === "favorites"
-      ? authQuery.data?.authenticated ? `saved by ${authQuery.data.username ?? "your yandere account"}` : "sign in to browse your saved posts"
+      ? authQuery.data?.authenticated ? `saved by ${authQuery.data.username ?? `your ${activeSite?.name ?? "site"} account`}` : "sign in to browse your saved posts"
       : activeSiteSafeOnly
       ? "safe-mode browse from the active site"
       : "a calm feed for finding something worth keeping";
@@ -800,7 +1021,7 @@ function App() {
 
   function openPostDetail(post: Post) {
     setSelectedPost(post);
-    navigate(postPath(post.post.site, post.post.id), { state: { post } });
+    navigate(`${postPath(post.post.site, post.post.id)}${demoMode ? "?demo=1" : ""}`, { state: { post } });
   }
 
   function closePostDetail() {
@@ -837,7 +1058,7 @@ function App() {
     const nextPost = previewPosts[nextIndex];
     if (nextPost) {
       setSelectedPost(nextPost);
-      navigate(postPath(nextPost.post.site, nextPost.post.id), { replace: true, state: { post: nextPost } });
+      navigate(`${postPath(nextPost.post.site, nextPost.post.id)}${demoMode ? "?demo=1" : ""}`, { replace: true, state: { post: nextPost } });
     }
   }
 
@@ -849,8 +1070,9 @@ function App() {
       period: nextView === "popular" ? popularPeriod : undefined,
       date: nextView === "popular" ? popularAnchorDate : undefined,
     });
-    if (`${location.pathname}${location.search}` !== nextPath) {
-      navigate(nextPath);
+    const nextPathWithDemo = demoMode ? `${nextPath}${nextPath.includes("?") ? "&" : "?"}demo=1` : nextPath;
+    if (`${location.pathname}${location.search}` !== nextPathWithDemo) {
+      navigate(nextPathWithDemo);
     }
     setView(nextView);
     setSelectedSavedQueryId(null);
@@ -1038,7 +1260,7 @@ function App() {
     try {
       const authResult = await authQuery.refetch();
       if (!authResult.data?.authenticated) {
-        showToast("sign in required", "connect your yandere account before changing favorites.", "info");
+        showToast("sign in required", `connect your ${activeSite?.name ?? "site"} account before changing favorites.`, "info");
         return;
       }
       if (!authResult.data.username) {
@@ -1054,7 +1276,7 @@ function App() {
         return next;
       });
       await queryClient.invalidateQueries({ queryKey: ["favorites", activeSiteId, `${activeSiteId}:${authResult.data.username}`] });
-      showToast(favorite ? "added to favorites" : "removed from favorites", `post #${post.post.id} updated on yandere.`);
+      showToast(favorite ? "added to favorites" : "removed from favorites", `post #${post.post.id} updated on ${activeSite?.name ?? "site"}.`);
     } catch (reason) {
       showToast("favorite update failed", errorMessage(reason), "error");
     } finally {
@@ -1186,7 +1408,7 @@ function App() {
       />
 
       <AppLayout>
-        <main className="content">
+        <main className="content" data-view={view}>
           <MainNavigation
             view={view}
             savedQueries={savedQueriesQuery.data ?? []}
@@ -1204,8 +1426,10 @@ function App() {
             isRunnable={savedQueryIsRunnable}
             description={savedQueryDescription}
           />
+          <div key={location.key} className={`content-view view-${view}`}>
           <section className="content-heading">
             <div>
+              <p className="section-kicker">{selectedPost ? "inspect" : view === "downloads" ? "keep" : view === "playground" ? "experiment" : "discover"}</p>
               <h2>{title}</h2>
               <p className="subtitle">{subtitle}</p>
             </div>
@@ -1307,7 +1531,9 @@ function App() {
                         selectionMode={selectionMode}
                         selected={selectedPostIds.has(post.post.id)}
                         downloading={downloadingId === post.post.id}
-                        onDownload={handleDownload}
+                        downloadStatus={downloadStatusForPost(post)}
+                        onDownload={demoMode ? async () => undefined : handleDownload}
+                        demo={demoMode}
                         onSelect={openPostDetail}
                         onToggleSelection={() => togglePostSelection(post.post.id)}
                         onTag={chooseTag}
@@ -1329,9 +1555,11 @@ function App() {
             </>
           ) : view === "downloads" ? (
             <DownloadPanel
-              records={downloadRecords}
-              archives={archivesQuery.data ?? []}
-              loading={downloadsQuery.isPending || archivesQuery.isPending}
+              records={demoMode ? demoDownloadRecords : downloadRecords}
+              archives={demoMode ? demoArchiveRecords : archivesQuery.data ?? []}
+              loading={!demoMode && (downloadsQuery.isPending || archivesQuery.isPending)}
+              demo={demoMode}
+              interactive={!demoMode}
               historyHasNext={Boolean(downloadsQuery.hasNextPage)}
               historyLoading={downloadsQuery.isFetchingNextPage}
               onCancel={async (id) => {
@@ -1350,11 +1578,16 @@ function App() {
                 }
               }}
               onLoadMore={() => void downloadsQuery.fetchNextPage()}
+              onSelect={openPostDetail}
               onCancelArchive={async (id) => {
                 await cancelArchive(id);
                 await archivesQuery.refetch();
               }}
             />
+          ) : view === "playground" ? (
+            <Suspense fallback={<div className="loading-line" role="status"><span />loading playground…</div>}>
+              <DownloadPlayground records={downloadRecords} onOpenDownloads={() => changeView("downloads")} />
+            </Suspense>
           ) : view === "pools" ? (
             <PoolPanel
               pools={pools}
@@ -1404,6 +1637,7 @@ function App() {
               onSelect={openPostDetail}
               onDownload={handleDownload}
               onTag={chooseTag}
+              siteName={activeSite?.name ?? "site"}
               favoriteSupported={activeSite?.capabilities.remote_favorites === true}
               favorited={(post) => favoritePostIds.has(post.post.id)}
               favoriteUpdating={(post) => favoriteUpdatingIds.has(post.post.id)}
@@ -1415,6 +1649,7 @@ function App() {
               }}
             />
           )}
+          </div>
         </main>
 
         {selectedPost && (
@@ -1423,8 +1658,9 @@ function App() {
             detailLoading={postDetailQuery.isFetching}
             detailError={postDetailQuery.error ? errorMessage(postDetailQuery.error) : ""}
             downloading={downloadingId === selectedPost.post.id}
-            siteName={activeSite?.name ?? selectedPost.post.site}
-            favoriteSupported={activeSite?.capabilities.remote_favorites === true}
+            downloadStatus={downloadStatusForPost(selectedPost)}
+            siteName={detailSite?.name ?? selectedPost.post.site}
+            favoriteSupported={detailSite?.capabilities.remote_favorites === true}
             onClose={closePostDetail}
             canGoPrevious={canGoPrevious}
             canGoNext={canGoNext}
@@ -1434,19 +1670,20 @@ function App() {
             onNext={() => selectAdjacentPost(1)}
             onOpenPost={handleOpenPost}
             onOpenSimilarSearch={handleOpenSimilarSearch}
-            similarSearchSupported={activeSite?.capabilities.similar_search === true}
+            similarSearchSupported={detailSite?.capabilities.similar_search === true}
             onDownload={handleDownload}
             favorited={favoritePostIds.has(selectedPost.post.id)}
             favoriteUpdating={favoriteUpdatingIds.has(selectedPost.post.id)}
             onFavorite={handleFavorite}
             onTag={chooseTag}
-            relatedTagsSupported={activeSite?.capabilities.related_tags === true}
+            relatedTagsSupported={detailSite?.capabilities.related_tags === true}
             relatedTagsOpen={relatedTagsOpen}
             relatedTags={relatedTagsQuery.data ?? []}
             relatedTagsLoading={relatedTagsQuery.isPending || relatedTagsQuery.isFetching}
             relatedTagsError={relatedTagsQuery.error ? errorMessage(relatedTagsQuery.error) : ""}
             onToggleRelatedTags={() => setRelatedTagsOpen((current) => !current)}
             downloadVariant={configQuery.data?.download_variant ?? "Full"}
+            demo={demoMode}
           />
         )}
       </AppLayout>
@@ -1475,7 +1712,7 @@ function App() {
           formatError={errorMessage}
         />
       )}
-      {toast && <PopupToast state={toast} onClose={() => setToast(null)} />}
+      {toast.length > 0 && <PopupToast states={toast} onClose={(id) => setToast((current) => current.filter((item) => item.id !== id))} />}
       </div>
     </ThemeProvider>
   );
@@ -1496,9 +1733,11 @@ interface DownloadInput {
 
 interface ImageCardProps {
   post: Post;
+  demo?: boolean;
   selectionMode: boolean;
   selected: boolean;
   downloading: boolean;
+  downloadStatus?: DownloadStatus;
   favoriteSupported: boolean;
   favorited: boolean;
   favoriteUpdating: boolean;
@@ -1509,15 +1748,29 @@ interface ImageCardProps {
   onTag: (tag: string) => void;
 }
 
-function ImageCard({ post, selectionMode, selected, downloading, favoriteSupported, favorited, favoriteUpdating, onDownload, onFavorite, onSelect, onToggleSelection, onTag }: ImageCardProps) {
+function ImageCard({ post, demo = false, selectionMode, selected, downloading, downloadStatus, favoriteSupported, favorited, favoriteUpdating, onDownload, onFavorite, onSelect, onToggleSelection, onTag }: ImageCardProps) {
   const previewUrl = post.preview_url ?? post.sample_url ?? post.full_url;
+  const activeDownload = downloading || (downloadStatus !== undefined && isActiveDownload(downloadStatus));
+  const downloaded = downloadStatus === "Completed";
+  const alreadyOnDisk = downloadStatus === "ExistingTarget";
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const [previewLoaded, setPreviewLoaded] = useState(false);
+
+  useEffect(() => {
+    setPreviewFailed(false);
+    setPreviewLoaded(false);
+  }, [previewUrl]);
+
   return (
     <article className={`card${selected ? " selected" : ""}`} onClick={() => selectionMode ? onToggleSelection() : onSelect(post)}>
       <div className="preview">
-        {previewUrl ? (
-          <img src={previewUrl} alt={`post ${post.post.id}`} loading="lazy" />
+        {previewUrl && !previewFailed ? (
+          <>
+            {!previewLoaded && <span className="preview-skeleton" aria-hidden="true" />}
+            <img className={previewLoaded ? "is-loaded" : ""} src={previewUrl} alt={`post ${post.post.id}`} loading="lazy" decoding="async" onLoad={() => setPreviewLoaded(true)} onError={() => setPreviewFailed(true)} />
+          </>
         ) : (
-          <span className="missing-preview">preview unavailable</span>
+          <span className="missing-preview"><Icon name="download" />preview unavailable</span>
         )}
         <span className="dimensions">{post.width ?? "?"}×{post.height ?? "?"}</span>
         {favoriteSupported && (
@@ -1551,7 +1804,7 @@ function ImageCard({ post, selectionMode, selected, downloading, favoriteSupport
       <div className="card-details">
         <div className="tag-list">
           {post.tags.slice(0, 4).map((tag) => (
-            <Chip key={tag} component="button" clickable label={tag} onClick={(event) => {
+            <Chip key={tag} className={`tag-chip tag-chip-${tagTone(tag)}`} component="button" clickable label={tag} onClick={(event) => {
               event.stopPropagation();
               onTag(tag);
             }} />
@@ -1560,11 +1813,11 @@ function ImageCard({ post, selectionMode, selected, downloading, favoriteSupport
         </div>
         <div className="card-footer">
           <span className="post-meta">#{post.post.id}{post.score !== null ? ` · ${post.score} score` : ""}</span>
-          <Button variant="contained" disabled={downloading} onClick={(event) => {
-            event.stopPropagation();
-            void onDownload(post);
-          }}>
-            {downloading ? "saving…" : "download"}
+              <Button variant="contained" disabled={demo || activeDownload || downloaded || alreadyOnDisk} title={demo ? "demo fixture" : activeDownload ? "download already in progress" : downloaded ? "file already downloaded" : alreadyOnDisk ? "file already on disk" : "download image"} onClick={(event) => {
+                event.stopPropagation();
+                void onDownload(post);
+              }}>
+            {demo ? "demo" : activeDownload ? downloadStatus === "Queued" ? "queued" : "saving…" : downloaded ? "downloaded" : alreadyOnDisk ? "on disk" : "download"}
           </Button>
         </div>
       </div>
@@ -1577,6 +1830,7 @@ interface PostInspectorProps {
   detailLoading: boolean;
   detailError: string;
   downloading: boolean;
+  downloadStatus?: DownloadStatus;
   siteName: string;
   favoriteSupported: boolean;
   favorited: boolean;
@@ -1601,58 +1855,100 @@ interface PostInspectorProps {
   relatedTagsError: string;
   onToggleRelatedTags: () => void;
   downloadVariant: MediaVariant;
+  demo?: boolean;
 }
 
-function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, favoriteUpdating, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onOpenPost, onOpenSimilarSearch, similarSearchSupported, onDownload, onFavorite, onTag, relatedTagsSupported, relatedTagsOpen, relatedTags, relatedTagsLoading, relatedTagsError, onToggleRelatedTags, downloadVariant }: PostInspectorProps) {
+function PostInspector({ post, detailLoading, detailError, downloading, downloadStatus, siteName, favoriteSupported, favorited, favoriteUpdating, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onOpenPost, onOpenSimilarSearch, similarSearchSupported, onDownload, onFavorite, onTag, relatedTagsSupported, relatedTagsOpen, relatedTags, relatedTagsLoading, relatedTagsError, onToggleRelatedTags, downloadVariant, demo = false }: PostInspectorProps) {
   const originalUrl = post.full_url;
+  const hasSourceLinks = !demo || Boolean(originalUrl || post.source);
+  const activeDownload = downloading || (downloadStatus !== undefined && isActiveDownload(downloadStatus));
+  const downloaded = downloadStatus === "Completed";
+  const alreadyOnDisk = downloadStatus === "ExistingTarget";
+  const [chromeVisible, setChromeVisible] = useState(true);
+  const chromeTimer = useRef<number | null>(null);
+
+  function revealChrome() {
+    setChromeVisible(true);
+    if (chromeTimer.current !== null) window.clearTimeout(chromeTimer.current);
+    chromeTimer.current = window.setTimeout(() => setChromeVisible(false), 2_400);
+  }
+
+  useEffect(() => {
+    setChromeVisible(true);
+    chromeTimer.current = window.setTimeout(() => setChromeVisible(false), 2_400);
+    return () => {
+      if (chromeTimer.current !== null) window.clearTimeout(chromeTimer.current);
+    };
+  }, [post.post.id]);
+
   return (
-    <Dialog open fullScreen onClose={onClose} className="detail-overlay" slotProps={{ paper: { className: "detail-panel", "aria-label": "post details" } }}>
-        <div className="detail-stage">
+    <Dialog open fullScreen onClose={onClose} className="detail-overlay" slotProps={{ paper: { className: "detail-panel", "aria-label": "post details", "aria-labelledby": `detail-title-${post.post.id}` } }}>
+        <div className="detail-stage" onPointerMove={revealChrome} onPointerDown={revealChrome} onMouseMove={revealChrome} onMouseDown={revealChrome} onWheel={revealChrome} onKeyDown={revealChrome}>
           <div className="detail-stage-heading">
-            <div>
-              <p className="eyebrow">post details</p>
-              <h2>#{post.post.id}</h2>
+            <div className="detail-stage-identity">
+              <p className="eyebrow">inspect</p>
+              <h2 id={`detail-title-${post.post.id}`}>#{post.post.id}</h2>
+            </div>
+            <div className="detail-stage-context" aria-label="post context">
+              <span>{siteName}</span>
+              <span>{post.rating.toLowerCase()}</span>
             </div>
             <IconButton aria-label="close details" onClick={onClose}><Icon name="close" /></IconButton>
           </div>
           <div className="detail-preview">
-            <DetailImage key={post.post.id} post={post} />
+            <DetailImage key={post.post.id} post={post} demo={demo} onActivity={revealChrome} />
           </div>
           <div className="detail-navigation" aria-label="post preview navigation">
             <IconButton className="detail-nav-button" aria-label="previous post" title="previous post" disabled={!canGoPrevious} onClick={onPrevious}><Icon name="back" /></IconButton>
-            <span>{previewPosition && previewTotal ? `${previewPosition} of ${previewTotal}` : "single post"}</span>
+            <span className={chromeVisible ? "" : "is-hidden"}>{previewPosition && previewTotal ? `${previewPosition} of ${previewTotal}` : "single post"}</span>
             <IconButton className="detail-nav-button" aria-label="next post" title="next post" disabled={!canGoNext} onClick={onNext}><Icon name="forward" /></IconButton>
           </div>
         </div>
         <section className="detail-sheet" aria-label="post actions and exploration">
-          <div className="detail-summary">
-            <span>{siteName} post #{post.post.id}</span>
-            <Button variant="outlined" className="detail-post-link" onClick={() => void onOpenPost(post)}>open {siteName} post</Button>
-            {similarSearchSupported && <Button variant="outlined" className="detail-post-link" onClick={() => void onOpenSimilarSearch()}>open similar search</Button>}
-            {originalUrl && <a href={originalUrl} target="_blank" rel="noreferrer">open original</a>}
-            {post.source && <a href={post.source} target="_blank" rel="noreferrer">open source</a>}
-          </div>
+          <header className="detail-sheet-header">
+            <div>
+              <p className="eyebrow">keep or continue</p>
+              <h3>{siteName} post #{post.post.id}</h3>
+              <p className="detail-sheet-lede">{post.width ?? "?"}×{post.height ?? "?"} · {post.rating.toLowerCase()} · {post.score === null ? "unscored" : `${post.score} score`}</p>
+            </div>
+            <span className="detail-sheet-index">{previewPosition && previewTotal ? `${previewPosition} / ${previewTotal}` : "single"}</span>
+          </header>
+          {hasSourceLinks && <div className="detail-summary">
+              <span className="section-label">source</span>
+              <div className="detail-source-links">
+                {!demo && <Button variant="outlined" className="detail-post-link" onClick={() => void onOpenPost(post)}>view post</Button>}
+                {!demo && similarSearchSupported && <Button variant="outlined" className="detail-post-link" onClick={() => void onOpenSimilarSearch()}>similar</Button>}
+                {originalUrl && <a href={originalUrl} target="_blank" rel="noreferrer">original</a>}
+                {post.source && <a href={post.source} target="_blank" rel="noreferrer">source</a>}
+              </div>
+            </div>}
           {detailLoading && <p className="detail-helper" role="status">refreshing post details…</p>}
           {detailError && <p className="detail-helper" role="alert">couldn’t refresh the post; showing the feed snapshot. {detailError}</p>}
           <div className="detail-primary-actions">
             {favoriteSupported && (
               <Button variant="outlined" disabled={favoriteUpdating} startIcon={<Icon name={favorited ? "heartFilled" : "heart"} />} onClick={() => void onFavorite(post)}>
-                {favoriteUpdating ? "updating favorites…" : favorited ? `remove from ${siteName} favorites` : `add to ${siteName} favorites`}
+                {favoriteUpdating ? "updating…" : favorited ? "unfavorite" : "favorite"}
               </Button>
             )}
-            <Button variant="contained" disabled={downloading} onClick={() => void onDownload(post)}>
-              {downloading ? "saving…" : `download ${downloadVariant.toLowerCase()} quality`}
+            <Button
+              variant="contained"
+              disabled={demo || activeDownload || downloaded || alreadyOnDisk}
+              title={demo ? "demo fixture" : activeDownload ? "download already in progress" : downloaded ? "file already downloaded" : alreadyOnDisk ? "file already on disk" : `download ${downloadVariant.toLowerCase()} quality`}
+              aria-label={demo ? "demo fixture" : activeDownload ? `download ${downloadVariant.toLowerCase()} quality is in progress` : downloaded ? "file already downloaded" : alreadyOnDisk ? "file already on disk" : `download ${downloadVariant.toLowerCase()} quality`}
+              onClick={() => void onDownload(post)}
+            >
+              {demo ? "demo only" : activeDownload ? downloadStatus === "Queued" ? "queued" : "saving…" : downloaded ? "downloaded" : alreadyOnDisk ? "on disk" : "download"}
             </Button>
           </div>
           <div className="detail-explore">
             <span className="section-label">explore</span>
             <div className="tag-list" aria-label="post tags">
-              {post.tags.map((tag) => <Chip key={tag} component="button" clickable label={tag} onClick={() => onTag(tag)} />)}
+              {post.tags.map((tag) => <Chip key={tag} className={`tag-chip tag-chip-${tagTone(tag)}`} component="button" clickable label={tag} onClick={() => onTag(tag)} />)}
             </div>
             {relatedTagsSupported && (
               <div className="detail-related-tags">
                 <Button variant="outlined" className="detail-post-link" onClick={onToggleRelatedTags}>
-                  {relatedTagsOpen ? "hide related tags" : "show related tags"}
+                  {relatedTagsOpen ? "hide related" : "related tags"}
                 </Button>
                 {relatedTagsOpen && <p className="detail-helper">site metadata may include tags outside the current rating filter; post results still follow content policy.</p>}
                 {relatedTagsOpen && relatedTagsLoading && <p className="detail-helper" role="status">loading related tags…</p>}
@@ -1660,7 +1956,7 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
                 {relatedTagsOpen && !relatedTagsLoading && !relatedTagsError && relatedTags.length > 0 && (
                   <div className="tag-list" aria-label="related tags">
                     {relatedTags.map((tag) => (
-                      <Chip key={tag.name} component="button" clickable label={tag.name} title={tag.post_count === null ? undefined : `${tag.post_count.toLocaleString()} posts`} onClick={() => onTag(tag.name)} />
+                      <Chip key={tag.name} className={`tag-chip tag-chip-${tagTone(tag.name)}`} component="button" clickable label={tag.name} title={tag.post_count === null ? undefined : `${tag.post_count.toLocaleString()} posts`} onClick={() => onTag(tag.name)} />
                     ))}
                   </div>
                 )}
@@ -1699,31 +1995,151 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
   );
 }
 
-function DetailImage({ post }: { post: Post }) {
+function DetailImage({ post, demo = false, onActivity }: { post: Post; demo?: boolean; onActivity?: () => void }) {
+  const minZoom = 1;
+  const maxZoom = 4;
   const [source, setSource] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshed, setRefreshed] = useState(false);
+  const [zoom, setZoom] = useState(minZoom);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ pointerId: number; x: number; y: number; panX: number; panY: number } | null>(null);
 
   useEffect(() => {
     let active = true;
     setSource(null);
     setLoaded(false);
     setError(null);
-    void loadDetailImage(post.post.site, post.post.id)
-      .then((cachedPath) => {
-        if (active) setSource(convertFileSrc(cachedPath));
-      })
-      .catch((reason) => {
-        if (active) setError(errorMessage(reason));
-      });
+    setRefreshing(false);
+    setRefreshed(false);
+    setZoom(minZoom);
+    setPan({ x: 0, y: 0 });
+    if (demo) {
+      setSource(post.preview_url ?? post.sample_url ?? null);
+    } else {
+      void loadDetailImage(post.post.site, post.post.id)
+        .then((cachedPath) => {
+          if (active) setSource(convertFileSrc(cachedPath));
+        })
+        .catch((reason) => {
+          if (active) setError(errorMessage(reason));
+        });
+    }
     return () => {
       active = false;
     };
-  }, [post.post.id, post.post.site]);
+  }, [demo, post.post.id, post.post.site, post.preview_url, post.sample_url, post.full_url]);
+
+  function boundedPan(x: number, y: number, scale = zoom) {
+    const bounds = frameRef.current;
+    if (!bounds || scale <= minZoom) return { x: 0, y: 0 };
+    const maxX = (bounds.clientWidth * (scale - 1)) / 2;
+    const maxY = (bounds.clientHeight * (scale - 1)) / 2;
+    return {
+      x: Math.min(maxX, Math.max(-maxX, x)),
+      y: Math.min(maxY, Math.max(-maxY, y)),
+    };
+  }
+
+  function changeZoom(delta: number) {
+    onActivity?.();
+    setZoom((current) => {
+      const next = Math.min(maxZoom, Math.max(minZoom, Number((current + delta).toFixed(1))));
+      setPan((currentPan) => boundedPan(currentPan.x, currentPan.y, next));
+      return next;
+    });
+  }
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    onActivity?.();
+    if (event.key === "+" || event.key === "=" || event.key === "ArrowUp") {
+      event.preventDefault();
+      changeZoom(0.1);
+    } else if (event.key === "-" || event.key === "_" || event.key === "ArrowDown") {
+      event.preventDefault();
+      changeZoom(-0.1);
+    } else if (event.key === "0") {
+      event.preventDefault();
+      setZoom(minZoom);
+      setPan({ x: 0, y: 0 });
+    }
+  }
+
+  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+    onActivity?.();
+    if (!source || !loaded || zoom <= minZoom || event.button !== 0) return;
+    if (event.target instanceof Element && event.target.closest("button")) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y };
+    setDragging(true);
+  }
+
+  function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
+    onActivity?.();
+    if (dragRef.current?.pointerId === event.pointerId) {
+      setPan(boundedPan(dragRef.current.panX + event.clientX - dragRef.current.x, dragRef.current.panY + event.clientY - dragRef.current.y));
+      return;
+    }
+    if (event.pointerType === "touch" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const horizontal = ((event.clientX - bounds.left) / bounds.width - 0.5) * 2;
+    const vertical = ((event.clientY - bounds.top) / bounds.height - 0.5) * 2;
+    event.currentTarget.style.setProperty("--detail-tilt-x", `${vertical * -1.8}deg`);
+    event.currentTarget.style.setProperty("--detail-tilt-y", `${horizontal * 1.8}deg`);
+  }
+
+  function endPointerDrag(event: PointerEvent<HTMLDivElement>) {
+    if (dragRef.current?.pointerId === event.pointerId) {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      dragRef.current = null;
+      setDragging(false);
+    }
+    resetPointerTilt(event);
+  }
+
+  function resetPointerTilt(event: PointerEvent<HTMLDivElement>) {
+    event.currentTarget.style.setProperty("--detail-tilt-x", "0deg");
+    event.currentTarget.style.setProperty("--detail-tilt-y", "0deg");
+  }
+
+  function handleWheel(event: ReactWheelEvent<HTMLDivElement>) {
+    if (!source || !loaded) return;
+    event.preventDefault();
+    changeZoom(event.deltaY > 0 ? -0.1 : 0.1);
+  }
+
+  function handleDoubleClick(event: ReactMouseEvent<HTMLDivElement>) {
+    event.preventDefault();
+    onActivity?.();
+    const next = zoom === minZoom ? 1.5 : minZoom;
+    setZoom(next);
+    setPan((currentPan) => boundedPan(currentPan.x, currentPan.y, next));
+  }
 
   if (error) return <div className="detail-image-state" role="alert">full image unavailable<p>{error}</p></div>;
   return (
-    <div className="detail-image-frame">
+    <div
+      role="group"
+      aria-label="full artwork; use plus, minus, wheel, or drag to zoom and move"
+      tabIndex={0}
+      ref={frameRef}
+      style={{ "--detail-zoom": zoom, "--detail-pan-x": `${pan.x}px`, "--detail-pan-y": `${pan.y}px` } as CSSProperties}
+      onKeyDown={handleKeyDown}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onMouseMove={onActivity}
+      onMouseDown={onActivity}
+      onWheel={handleWheel}
+      onDoubleClick={handleDoubleClick}
+      onPointerUp={endPointerDrag}
+      onPointerLeave={resetPointerTilt}
+      onPointerCancel={endPointerDrag}
+      className={`detail-image-frame${zoom > minZoom ? " is-zoomed" : ""}${dragging ? " is-dragging" : ""}`}
+    >
       {(!source || !loaded) && <Skeleton className="detail-image-loading" variant="rectangular" animation="wave" role="status" aria-label="loading full artwork" />}
       {source && <img
           className={`detail-image${loaded ? " is-loaded" : ""}`}
@@ -1731,12 +2147,36 @@ function DetailImage({ post }: { post: Post }) {
           alt={`post ${post.post.id}`}
           loading="eager"
           decoding="async"
-          onLoad={() => setLoaded(true)}
+          onLoad={() => {
+            setLoaded(true);
+            setPan({ x: 0, y: 0 });
+          }}
           onError={() => {
             setLoaded(false);
-            setError("the cached full image could not be decoded");
+            if (!demo && !refreshed && !refreshing) {
+              setRefreshing(true);
+              setSource(null);
+              void loadDetailImage(post.post.site, post.post.id, true)
+                .then((path) => {
+                  setRefreshed(true);
+                  setRefreshing(false);
+                  setSource(convertFileSrc(path));
+                })
+                .catch((reason) => {
+                  setRefreshing(false);
+                  setError(errorMessage(reason));
+                });
+            } else {
+              setError("the full image could not be decoded");
+            }
           }}
         />}
+      {source && loaded && <div className="detail-image-controls" aria-label="image zoom controls">
+        <Button size="small" variant="outlined" onClick={() => changeZoom(-0.1)} disabled={zoom <= minZoom} aria-label="zoom out">−</Button>
+        <span aria-live="polite">{Math.round(zoom * 100)}%</span>
+        <Button size="small" variant="outlined" onClick={() => changeZoom(0.1)} disabled={zoom >= maxZoom} aria-label="zoom in">+</Button>
+        <Button size="small" variant="outlined" onClick={() => { setZoom(minZoom); setPan({ x: 0, y: 0 }); }} disabled={zoom === minZoom && pan.x === 0 && pan.y === 0}>reset</Button>
+      </div>}
     </div>
   );
 }
@@ -1745,6 +2185,8 @@ interface DownloadPanelProps {
   records: DownloadRecord[];
   archives: ArchiveRecord[];
   loading: boolean;
+  demo?: boolean;
+  interactive?: boolean;
   historyHasNext: boolean;
   historyLoading: boolean;
   onCancel: (id: string) => Promise<void>;
@@ -1752,13 +2194,32 @@ interface DownloadPanelProps {
   onOpen: (path: string) => Promise<void>;
   onLoadMore: () => void;
   onCancelArchive: (id: string) => Promise<void>;
+  onSelect?: (post: Post) => void;
 }
 
-function DownloadPanel({ records, archives, loading, historyHasNext, historyLoading, onCancel, onRetry, onOpen, onLoadMore, onCancelArchive }: DownloadPanelProps) {
+function DownloadPanel({ records, archives, loading, demo = false, interactive = true, historyHasNext, historyLoading, onCancel, onRetry, onOpen, onLoadMore, onCancelArchive, onSelect }: DownloadPanelProps) {
+  const [presentation, setPresentation] = useState<"list" | "cards">("list");
   const active = records.filter((record) => isActiveDownload(record.status));
   const history = records.filter((record) => !isActiveDownload(record.status));
   const activeArchives = archives.filter((record) => isActiveDownload(record.status));
   const archiveHistory = archives.filter((record) => !isActiveDownload(record.status));
+  const activeRecords = [...active, ...activeArchives];
+  const downloadedCount = new Set([
+    ...history
+      .filter((record) => record.status === "Completed" || record.status === "ExistingTarget")
+      .map((record) => record.target_path ?? `${record.site}:${record.post_id}:${record.variant}`),
+    ...archiveHistory
+      .filter((record) => record.status === "Completed" || record.status === "ExistingTarget")
+      .map((record) => record.target_path ?? `${record.site}:pool:${record.pool_id}`),
+  ]).size;
+  const attentionCount = history.filter((record) => record.status === "Failed" || record.status === "Cancelled").length + archiveHistory.filter((record) => record.status === "Failed" || record.status === "Cancelled").length;
+  const totalProgress = overallProgress(activeRecords);
+  const overallStatus: DownloadStatus = activeRecords.some((record) => record.status === "Running") ? "Running" : "Queued";
+  const progressSummary = [
+    totalProgress.queuedCount > 0 ? `${totalProgress.queuedCount} waiting` : null,
+    totalProgress.runningUnknownCount > 0 ? `${totalProgress.runningUnknownCount} size unknown` : null,
+  ].filter(Boolean).join(" · ") || "all sizes known";
+  const listClass = `download-list${presentation === "cards" ? " download-list-cards" : ""}`;
   const groups = new Map<string, DownloadRecord[]>();
   for (const record of history) {
     const date = new Date(record.created_at_ms);
@@ -1770,8 +2231,32 @@ function DownloadPanel({ records, archives, loading, historyHasNext, historyLoad
     <section className="workspace-panel shell-surface" aria-label="downloads">
       <div className="inspector-heading">
         <div><p className="eyebrow">local state</p><h2>downloads</h2></div>
+        <div className="download-view-switch" role="group" aria-label="download layout">
+          <Button size="small" variant={presentation === "list" ? "contained" : "text"} aria-pressed={presentation === "list"} onClick={() => setPresentation("list")}>list</Button>
+          <Button size="small" variant={presentation === "cards" ? "contained" : "text"} aria-pressed={presentation === "cards"} onClick={() => setPresentation("cards")}>cards</Button>
+        </div>
       </div>
-      <p className="helper-text">{active.length + activeArchives.length ? `${active.length + activeArchives.length} item${active.length + activeArchives.length === 1 ? "" : "s"} in progress` : "nothing is downloading"}</p>
+      <div className="download-summary">
+        <p className="helper-text">{active.length + activeArchives.length ? `${active.length + activeArchives.length} item${active.length + activeArchives.length === 1 ? "" : "s"} in progress` : "nothing is downloading"}</p>
+        {demo && <span className="download-demo-badge">local fixture</span>}
+      </div>
+      <div className="download-metrics" aria-label="download summary">
+        <div><strong>{active.length + activeArchives.length}</strong><span>working</span></div>
+        <div><strong>{downloadedCount}</strong><span>downloaded</span></div>
+        <div className={attentionCount > 0 ? "has-attention" : ""}><strong>{attentionCount}</strong><span>needs attention</span></div>
+      </div>
+      {activeRecords.length > 0 && <div className="download-overall">
+        <div className="download-overall-heading"><strong>overall progress</strong><span>{progressSummary}</span></div>
+        <DownloadProgress
+          bytesDownloaded={totalProgress.bytes_downloaded}
+          totalBytes={totalProgress.total_bytes}
+          status={overallStatus}
+          label="overall progress"
+          alwaysVisible
+          prominent
+        />
+        {(totalProgress.queuedCount > 0 || totalProgress.runningUnknownCount > 0) && <p className="download-progress-note">known sizes are counted; waiting items start in order and unknown-size transfers report progress after their response begins.</p>}
+      </div>}
       {loading && records.length === 0 && archives.length === 0 ? (
         <RowSkeleton count={6} />
       ) : records.length === 0 && archives.length === 0 ? (
@@ -1780,15 +2265,15 @@ function DownloadPanel({ records, archives, loading, historyHasNext, historyLoad
         <>
           {active.length + activeArchives.length > 0 && <section className="download-section">
             <h3 className="download-section-title">in progress</h3>
-            <div className="download-list">
-              {activeArchives.map((record) => <ArchiveRow key={record.id} record={record} onCancel={onCancelArchive} onOpen={onOpen} />)}
-              {active.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} onOpen={onOpen} />)}
+            <div className={listClass}>
+              {activeArchives.map((record) => <ArchiveRow key={record.id} record={record} onCancel={onCancelArchive} onOpen={onOpen} interactive={interactive} />)}
+              {active.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} onOpen={onOpen} onSelect={onSelect} interactive={interactive} />)}
             </div>
           </section>}
           {archiveHistory.length > 0 && <section className="download-section">
             <h3 className="download-section-title">pool archives</h3>
-            <div className="download-list">
-              {archiveHistory.map((record) => <ArchiveRow key={record.id} record={record} onCancel={onCancelArchive} onOpen={onOpen} />)}
+            <div className={listClass}>
+              {archiveHistory.map((record) => <ArchiveRow key={record.id} record={record} onCancel={onCancelArchive} onOpen={onOpen} interactive={interactive} />)}
             </div>
           </section>}
           {historyGroups.length > 0 && <section className="download-section">
@@ -1799,17 +2284,55 @@ function DownloadPanel({ records, archives, loading, historyHasNext, historyLoad
                 const monthName = new Date(Number(year), Number(month) - 1, 1).toLocaleString(undefined, { month: "long" });
                 return <section className="download-month" key={key}>
                   <h4>{year}<span>{monthName}</span></h4>
-                  <div className="download-list">
-                    {group.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} onOpen={onOpen} />)}
+                  <div className={listClass}>
+                    {group.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} onOpen={onOpen} onSelect={onSelect} interactive={interactive} />)}
                   </div>
                 </section>;
               })}
             </div>
-            <LoadMore hasNext={historyHasNext} loading={historyLoading} onLoadMore={onLoadMore} />
+            <LoadMore autoLoad={false} hasNext={historyHasNext} loading={historyLoading} onLoadMore={onLoadMore} />
           </section>}
         </>
       )}
     </section>
+  );
+}
+
+interface DownloadProgressProps {
+  bytesDownloaded: number;
+  totalBytes: number | null;
+  status: DownloadStatus;
+  label: string;
+  alwaysVisible?: boolean;
+  prominent?: boolean;
+}
+
+function DownloadProgress({ bytesDownloaded, totalBytes, status, label, alwaysVisible = false, prominent = false }: DownloadProgressProps) {
+  const percent = progressPercent({ bytes_downloaded: bytesDownloaded, total_bytes: totalBytes });
+  const shouldShow = alwaysVisible || status === "Queued" || percent !== null || bytesDownloaded > 0;
+  if (!shouldShow) return null;
+  const indeterminate = status === "Running" && percent === null;
+  const waiting = status === "Queued" && percent === null;
+  const detail = percent === null
+    ? status === "Queued" ? "waiting" : bytesDownloaded > 0 ? `${formatBytes(bytesDownloaded)} downloaded · total unknown` : "starting download"
+    : `${formatBytes(bytesDownloaded)} of ${formatBytes(totalBytes!)}`;
+  return (
+    <div className={`download-progress${prominent ? " download-progress-prominent" : ""}`} aria-label={label}>
+      <div className="download-progress-meta">
+        <span>{percent === null ? detail : `${Math.round(percent)}%`}</span>
+        {percent !== null && <span>{detail}</span>}
+      </div>
+      <div
+        className={`download-progress-track${indeterminate ? " is-indeterminate" : ""}${waiting ? " is-waiting" : ""}`}
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={percent === null ? undefined : 100}
+        aria-valuenow={percent ?? undefined}
+      >
+        <span style={percent === null ? undefined : { width: `${percent}%` }} />
+      </div>
+    </div>
   );
 }
 
@@ -1818,52 +2341,123 @@ interface DownloadRowProps {
   onCancel: (id: string) => Promise<void>;
   onRetry: (id: string) => Promise<void>;
   onOpen: (path: string) => Promise<void>;
+  onSelect?: (post: Post) => void;
+  interactive?: boolean;
 }
 
-function DownloadRow({ record, onCancel, onRetry, onOpen }: DownloadRowProps) {
+function DownloadRow({ record, onCancel, onRetry, onOpen, onSelect, interactive = true }: DownloadRowProps) {
   const canCancel = record.status === "Queued" || record.status === "Running";
   const canRetry = record.status === "Failed" || record.status === "Cancelled";
   const canOpen = Boolean(record.target_path) && (record.status === "Completed" || record.status === "ExistingTarget");
   return (
     <article className="download-row">
-      <div className="download-row-heading">
-        <strong>#{record.post_id}</strong>
-        <span className={`download-status status-${record.status.toLowerCase()}`}>{downloadStatusLabel(record.status)}</span>
+      <DownloadThumbnail record={record} onSelect={onSelect} />
+      <div className="download-row-content">
+        <div className="download-row-heading">
+          <div className="download-row-title"><strong>#{record.post_id}</strong><span>{record.site}</span></div>
+          <span key={record.status} className={`download-status status-${record.status.toLowerCase()}`}>{downloadStatusLabel(record.status)}</span>
+        </div>
+        <p>{record.variant} quality · {record.metadata.width ?? "?"}×{record.metadata.height ?? "?"} · attempt {record.attempts || 1}</p>
+        <DownloadProgress
+          bytesDownloaded={record.bytes_downloaded}
+          totalBytes={record.total_bytes}
+          status={record.status}
+          label={`post ${record.post_id} progress`}
+        />
+        {record.error && <p className="download-error">{record.error}</p>}
+        {record.status === "ExistingTarget" && <p className="download-state-note">existing file kept · no overwrite</p>}
+        {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
+        {interactive && (canCancel || canRetry || canOpen) && <div className="download-row-actions">
+          {canCancel && <Button variant="text" onClick={() => void onCancel(record.id)}>cancel</Button>}
+          {canRetry && <Button variant="outlined" onClick={() => void onRetry(record.id)}>retry</Button>}
+          {canOpen && <Button variant="outlined" onClick={() => void onOpen(record.target_path!)}>open file</Button>}
+        </div>}
       </div>
-      <p>{record.variant} quality · attempt {record.attempts || 1}</p>
-      {record.error && <p className="download-error">{record.error}</p>}
-      {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
-      {(canCancel || canRetry || canOpen) && <div className="download-row-actions">
-        {canCancel && <Button variant="text" onClick={() => void onCancel(record.id)}>cancel</Button>}
-        {canRetry && <Button variant="outlined" onClick={() => void onRetry(record.id)}>retry</Button>}
-        {canOpen && <Button variant="outlined" onClick={() => void onOpen(record.target_path!)}>open file</Button>}
-      </div>}
     </article>
   );
+}
+
+function DownloadThumbnail({ record, onSelect }: { record: DownloadRecord; onSelect?: (post: Post) => void }) {
+  const localSource = record.target_path && (record.status === "Completed" || record.status === "ExistingTarget")
+    ? convertFileSrc(record.target_path)
+    : null;
+  const sources = [localSource, record.metadata.preview_url, record.metadata.sample_url, record.metadata.full_url]
+    .filter((source): source is string => Boolean(source));
+  const [sourceIndex, setSourceIndex] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+  const source = sources[sourceIndex] ?? null;
+
+  useEffect(() => {
+    setSourceIndex(0);
+    setLoaded(false);
+  }, [record.id, sources.join("|")]);
+
+  const thumbnail = (
+    <div className="download-thumbnail">
+      {source ? (
+        <>
+          {!loaded && <span className="download-thumbnail-skeleton" aria-hidden="true" />}
+          <img
+            className={loaded ? "is-loaded" : ""}
+            src={source!}
+            alt={`preview for ${record.site} post ${record.post_id}`}
+            loading="lazy"
+            decoding="async"
+            onLoad={() => setLoaded(true)}
+            onError={() => {
+              setLoaded(false);
+              setSourceIndex((current) => current + 1);
+            }}
+          />
+        </>
+      ) : (
+        <div className="download-thumbnail-fallback">
+          <Icon name="download" />
+          <span>preview unavailable</span>
+        </div>
+      )}
+    </div>
+  );
+  return onSelect ? (
+    <button className="download-thumbnail-trigger" type="button" aria-label={`inspect post ${record.post_id}`} onClick={() => onSelect(record.metadata)}>
+      {thumbnail}
+    </button>
+  ) : thumbnail;
 }
 
 interface ArchiveRowProps {
   record: ArchiveRecord;
   onCancel: (id: string) => Promise<void>;
   onOpen: (path: string) => Promise<void>;
+  interactive?: boolean;
 }
 
-function ArchiveRow({ record, onCancel, onOpen }: ArchiveRowProps) {
+function ArchiveRow({ record, onCancel, onOpen, interactive = true }: ArchiveRowProps) {
   const canCancel = record.status === "Queued" || record.status === "Running";
   const canOpen = Boolean(record.target_path) && (record.status === "Completed" || record.status === "ExistingTarget");
   return (
     <article className="download-row archive-row">
-      <div className="download-row-heading">
-        <strong>{record.pool_name}</strong>
-        <span className={`download-status status-${record.status.toLowerCase()}`}>{downloadStatusLabel(record.status)}</span>
+      <div className="download-thumbnail download-thumbnail-archive" aria-hidden="true"><Icon name="download" /></div>
+      <div className="download-row-content">
+        <div className="download-row-heading">
+          <div className="download-row-title"><strong>{record.pool_name}</strong><span>pool archive</span></div>
+          <span key={record.status} className={`download-status status-${record.status.toLowerCase()}`}>{downloadStatusLabel(record.status)}</span>
+        </div>
+        <p>{record.pool_id} · attempt {record.attempts || 1}</p>
+        <DownloadProgress
+          bytesDownloaded={record.bytes_downloaded}
+          totalBytes={record.total_bytes}
+          status={record.status}
+          label={`${record.pool_name} progress`}
+        />
+        {record.error && <p className="download-error">{record.error}</p>}
+        {record.status === "ExistingTarget" && <p className="download-state-note">existing file kept · no overwrite</p>}
+        {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
+        {interactive && (canCancel || canOpen) && <div className="download-row-actions">
+          {canCancel && <Button variant="text" onClick={() => void onCancel(record.id)}>cancel</Button>}
+          {canOpen && <Button variant="outlined" onClick={() => void onOpen(record.target_path!)}>open file</Button>}
+        </div>}
       </div>
-      <p>pool zip · {record.pool_id} · attempt {record.attempts || 1}</p>
-      {record.error && <p className="download-error">{record.error}</p>}
-      {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
-      {(canCancel || canOpen) && <div className="download-row-actions">
-        {canCancel && <Button variant="text" onClick={() => void onCancel(record.id)}>cancel</Button>}
-        {canOpen && <Button variant="outlined" onClick={() => void onOpen(record.target_path!)}>open file</Button>}
-      </div>}
     </article>
   );
 }
@@ -1904,61 +2498,81 @@ interface PoolPanelProps {
 function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool, posts, postsLoading, postsError, postsHasNext, onRetryPools, onRetryPosts, onLoadMorePools, onLoadMorePosts, onBack, onBrowse, onDownloadZip, onSelectPost, onDownload, favoriteSupported, favorited, favoriteUpdating, onFavorite, onTag, downloadingId, siteName, collectionDownloads, poolSearch, onPoolSearchChange, onSubmitPoolSearch, onClearPoolSearch }: PoolPanelProps) {
   if (selectedPool) {
     return (
-      <section className="workspace-panel shell-surface" aria-label={`${selectedPool.name} pool`}>
-        <div className="inspector-heading">
-          <div><p className="eyebrow">{siteName} pool</p><h2>{selectedPool.name}</h2></div>
+      <section className="workspace-panel pool-detail-panel shell-surface" aria-label={`${selectedPool.name} pool`}>
+        <div className="pool-detail-heading">
+          <div>
+            <Button className="pool-back-link" variant="text" startIcon={<Icon name="back" />} onClick={onBack}>pools</Button>
+            <p className="eyebrow">{siteName} collection</p>
+            <h2>{selectedPool.name}</h2>
+          </div>
           <div className="inspector-actions">
-            {collectionDownloads && <Button variant="outlined" onClick={() => onDownloadZip(selectedPool)}>download zip</Button>}
-            <Button variant="outlined" startIcon={<Icon name="back" />} onClick={onBack}>all pools</Button>
+            {collectionDownloads && <Button variant="outlined" title="download this pool as a zip archive" onClick={() => onDownloadZip(selectedPool)}>zip</Button>}
+            <Button variant="outlined" onClick={onBack}>all pools</Button>
           </div>
         </div>
-        <p className="helper-text">{selectedPool.post_count} ordered post{selectedPool.post_count === 1 ? "" : "s"} from {siteName}.</p>
+        <div className="pool-detail-summary">
+          <div><strong>{selectedPool.post_count} post{selectedPool.post_count === 1 ? "" : "s"}</strong><span>ordered in this public collection</span></div>
+          <span>{posts.length} loaded</span>
+        </div>
         {postsError && <Alert className="panel-error" severity="error" action={<Button color="inherit" size="small" onClick={onRetryPosts}>try again</Button>}>{postsError}</Alert>}
         {postsLoading && posts.length === 0 && <GallerySkeleton count={8} />}
         {!postsLoading && !postsError && posts.length === 0 && <div className="panel-empty">this pool has no visible posts.</div>}
-        <div className="gallery-grid">
-          {posts.map((post) => (
-            <ImageCard
-              key={post.post.id}
-              post={post}
-              selectionMode={false}
-              selected={false}
-              downloading={downloadingId === post.post.id}
-              favoriteSupported={favoriteSupported}
-              favorited={favorited(post)}
-              favoriteUpdating={favoriteUpdating(post)}
-              onDownload={onDownload}
-              onFavorite={onFavorite}
-              onSelect={onSelectPost}
-              onToggleSelection={() => undefined}
-              onTag={onTag}
-            />
-          ))}
-        </div>
+        {posts.length > 0 && <>
+          <div className="pool-contents-heading"><span className="section-label">contents</span><span>showing {posts.length} of {selectedPool.post_count}</span></div>
+          <div className="gallery-grid">
+            {posts.map((post) => (
+              <ImageCard
+                key={post.post.id}
+                post={post}
+                selectionMode={false}
+                selected={false}
+                downloading={downloadingId === post.post.id}
+                favoriteSupported={favoriteSupported}
+                favorited={favorited(post)}
+                favoriteUpdating={favoriteUpdating(post)}
+                onDownload={onDownload}
+                onFavorite={onFavorite}
+                onSelect={onSelectPost}
+                onToggleSelection={() => undefined}
+                onTag={onTag}
+              />
+            ))}
+          </div>
+        </>}
         {posts.length > 0 && <LoadMore hasNext={postsHasNext} loading={postsLoading} onLoadMore={onLoadMorePosts} />}
       </section>
     );
   }
 
   return (
-    <section className="workspace-panel shell-surface" aria-label="pools">
-      <div className="inspector-heading">
-        <div><p className="eyebrow">{siteName} collections</p><h2>pools</h2></div>
+    <section className="workspace-panel pool-overview-panel shell-surface" aria-label="pools">
+      <div className="pool-overview-heading">
+        <div><p className="eyebrow">{siteName} collections</p><h2>pools</h2><p>Browse public posts in the order their authors arranged them.</p></div>
+        <span className="pool-result-count">{pools.length} loaded</span>
       </div>
       <form className="pool-search" role="search" onSubmit={(event) => { event.preventDefault(); onSubmitPoolSearch(); }}>
-        <TextField aria-label="search pools" placeholder="search pools…" value={poolSearch} onChange={(event) => onPoolSearchChange(event.target.value)} size="small" />
-        <Button variant="contained" type="submit">search</Button>
-        {poolSearch && <Button variant="text" type="button" onClick={onClearPoolSearch}>clear</Button>}
+        <TextField label="find a pool" aria-label="search pools" placeholder="name or phrase" value={poolSearch} onChange={(event) => onPoolSearchChange(event.target.value)} size="small" />
+        <Button variant="contained" type="submit">find</Button>
+        {poolSearch && <Button variant="text" type="button" onClick={onClearPoolSearch}>reset</Button>}
       </form>
-      <p className="helper-text">public pools group ordered posts from {siteName}. open a pool to browse its ordered posts{collectionDownloads ? " or request its authenticated zip archive" : ""}.</p>
+      <div className="pool-list-heading">
+        <span className="section-label">public pools</span>
+        <span>{poolSearch.trim() ? `matching “${poolSearch.trim()}”` : "recently available"}</span>
+      </div>
       {poolsLoading && pools.length === 0 && <RowSkeleton />}
       {poolsError && <Alert className="panel-error" severity="error" action={<Button color="inherit" size="small" onClick={onRetryPools}>try again</Button>}>{poolsError}</Alert>}
-      {!poolsLoading && !poolsError && pools.length === 0 && <div className="panel-empty">no public pools found.</div>}
+      {!poolsLoading && !poolsError && pools.length === 0 && <div className="panel-empty">{poolSearch.trim() ? "no pools matched that search." : "no public pools found."}</div>}
       <div className="collection-list">
-        {pools.map((pool) => (
+        {pools.map((pool, index) => (
           <article className="collection-row" key={pool.id}>
-            <div><strong>{pool.name}</strong><p>{pool.post_count} post{pool.post_count === 1 ? "" : "s"}</p></div>
-            <Button variant="outlined" onClick={() => onBrowse(pool)}>browse</Button>
+            <div className="collection-row-main">
+              <span className="collection-row-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+              <div><strong>{pool.name}</strong><p>{pool.post_count} post{pool.post_count === 1 ? "" : "s"} · public collection</p></div>
+            </div>
+            <div className="collection-row-actions">
+              {collectionDownloads && <Button variant="text" title="download this pool as a zip archive" onClick={() => onDownloadZip(pool)}>zip</Button>}
+              <Button variant="outlined" onClick={() => onBrowse(pool)}>browse</Button>
+            </div>
           </article>
         ))}
       </div>
@@ -1969,6 +2583,7 @@ function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool
 
 interface AccountPanelProps {
   auth: AuthStatus | null;
+  siteName: string;
   favorites: Post[];
   favoritesLoading: boolean;
   favoritesError: string;
@@ -1989,7 +2604,7 @@ interface AccountPanelProps {
   onSignOut: () => Promise<void>;
 }
 
-function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favoritesHasNext, loading, authFlowStarted, onBeginAuth, onRefresh, onRetry, onLoadMore, onSelect, onDownload, favoriteSupported, favorited, favoriteUpdating, onFavorite, onTag, onSignOut }: AccountPanelProps) {
+function AccountPanel({ auth, siteName, favorites, favoritesLoading, favoritesError, favoritesHasNext, loading, authFlowStarted, onBeginAuth, onRefresh, onRetry, onLoadMore, onSelect, onDownload, favoriteSupported, favorited, favoriteUpdating, onFavorite, onTag, onSignOut }: AccountPanelProps) {
   return (
     <section className="workspace-panel shell-surface" aria-label="favorites account">
       {loading && !auth?.authenticated ? (
@@ -1999,7 +2614,7 @@ function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favor
         </div>
       ) : auth?.authenticated ? (
         <>
-          <p className="account-connected"><span className="connection-dot" /> {auth.username ? `${auth.username} connected` : "yandere account connected"}</p>
+          <p className="account-connected"><span className="connection-dot" /> {auth.username ? `${auth.username} connected` : `${siteName} account connected`}</p>
           {favoritesError && <Alert className="panel-error" severity="error" action={<Button color="inherit" size="small" onClick={onRetry}>try again</Button>}>{favoritesError}</Alert>}
           {favoritesLoading && favorites.length === 0 && <GallerySkeleton count={8} />}
           {!favoritesLoading && favorites.length === 0 && <div className="panel-empty">no favorites found.</div>}
@@ -2028,12 +2643,12 @@ function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favor
       ) : (
         <>
           <Alert className="auth-guide" severity="info">
-            <strong>sign in in the yande.re window</strong>
+            <strong>sign in in the {siteName} window</strong>
             <p>Dreamland never asks for your password here. Complete the site’s own sign-in, then check the session. Your sign-in cookie is kept locally for the next launch.</p>
           </Alert>
           {authFlowStarted && <p className="account-status" role="status">sign-in window is open. After you finish, choose “check login”.</p>}
           <div className="account-actions">
-            <Button variant="contained" onClick={onBeginAuth}>{authFlowStarted ? "reopen sign-in page" : "sign in to yande.re"}</Button>
+            <Button variant="contained" onClick={onBeginAuth}>{authFlowStarted ? "reopen sign-in" : "sign in"}</Button>
             <Button variant="outlined" disabled={loading} onClick={onRefresh}>{loading ? "checking…" : "check login"}</Button>
           </div>
         </>
@@ -2044,10 +2659,10 @@ function AccountPanel({ auth, favorites, favoritesLoading, favoritesError, favor
 
 function downloadStatusLabel(status: DownloadStatus): string {
   switch (status) {
-    case "ExistingTarget": return "already exists";
+    case "ExistingTarget": return "on disk";
     case "Queued": return "queued";
     case "Running": return "downloading";
-    case "Completed": return "completed";
+    case "Completed": return "downloaded";
     case "Failed": return "failed";
     case "Cancelled": return "cancelled";
   }

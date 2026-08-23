@@ -954,7 +954,7 @@ network-specific collections as explicit site actions/extensions.
 
 ## Site descriptor and capabilities
 
-The 0.1.1 implementation uses object-safe capability ports. A site adapter owns
+The current implementation uses object-safe capability ports. A site adapter owns
 its validated bundled defaults and returns optional ports only for features it
 actually implements. The registry validates that descriptor flags agree with
 those ports before the Tauri runtime starts.

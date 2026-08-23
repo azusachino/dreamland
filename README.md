@@ -3,7 +3,7 @@
 > A calm, native image-board browser for finding, inspecting, and keeping the
 > art you actually want.
 
-[![status: 0.1.1 release candidate](https://img.shields.io/badge/status-0.1.1%20release%20candidate-557c86)](https://github.com/azusachino/dreamland/issues/5)
+[![status: 0.1.2 release candidate](https://img.shields.io/badge/status-0.1.2%20release%20candidate-557c86)](https://github.com/azusachino/dreamland/issues/5)
 [![ci](https://github.com/azusachino/dreamland/actions/workflows/ci.yml/badge.svg)](https://github.com/azusachino/dreamland/actions/workflows/ci.yml)
 [![targets: macOS and Windows](https://img.shields.io/badge/targets-macOS%20%7C%20Windows-557c86)](docs/adr/0001-platform-and-toolchain.md)
 [![Tauri 2](https://img.shields.io/badge/Tauri-2-24c8db)](https://v2.tauri.app/)
@@ -21,7 +21,7 @@ site capabilities, authentication state, local persistence, cache lifecycles,
 and downloads. That separation keeps the UI expressive without letting every
 new site leak transport details into the application.
 
-## The 0.1.1 surface
+## The 0.1.2 surface
 
 | Explore | Inspect | Keep | Configure |
 | --- | --- | --- | --- |
@@ -106,7 +106,7 @@ The contract is intentionally layered:
 | `src-tauri` | IPC command composition and native integration | remote protocol implementation |
 | React frontend | presentation, navigation, optimistic UI, notifications | secrets, filesystem access, remote requests |
 
-This is the 0.1.1 implementation of the API v1 boundary. Unsupported optional
+This is the 0.1.2 implementation of the API v1 boundary. Unsupported optional
 capabilities are absent from an adapter instead of represented by fake
 successes, and the registry validates each descriptor against its actual ports.
 Read [API v1](docs/API-V1.md) and
@@ -123,15 +123,19 @@ directory:
 | --- | --- | --- | --- |
 | Settings | `$XDG_CONFIG_HOME/dreamland/config.toml` (`~/.config` fallback) | platform config directory / `dreamland/config.toml` | retained |
 | Queue and history | `$XDG_DATA_HOME/dreamland/state.sqlite3` (`~/.local/share` fallback) | platform local-data directory / `dreamland/state.sqlite3` | retained |
-| Detail and staging cache | `$XDG_CACHE_HOME/dreamland/{detail,detail-staging,downloads}` | platform cache directory / `dreamland/...` | clearable |
+| Detail and staging cache | `$XDG_CACHE_HOME/dreamland/{detail,detail-staging,downloads}` | platform cache directory / `dreamland/...` | detail is reusable; staging is disposable |
 | Logs | `$XDG_STATE_HOME/dreamland/logs/dreamland.log` (`~/.local/state` fallback) | platform local-data directory / `dreamland/logs/dreamland.log` | retained for diagnostics |
 | Download library | configured path; `~/Downloads/dreamland_images` by default | configured path; platform download directory by default | never removed by cache cleanup |
 
 Configuration is TOML. Common settings live at the top level; each site owns a
 `[sites.<site-id>]` section for non-secret enablement and versioned extensions.
 Credentials and cookies stay in the native session boundary and never enter
-TOML or SQLite. The cache action refuses to run during active downloads and
-removes only temporary media state.
+TOML or SQLite. A successful download promotes a copy into the configured
+library while leaving the currently usable detail cache intact. Detail loading
+prefers the library, falls back to detail cache, and retries a failed decode
+once by refreshing only the detail cache. Clearing cache does not make an
+already-downloaded image remote-only. Cache cleanup refuses to run while queued
+or running image/pool work exists and removes only cache state.
 
 See the [state contract](docs/STATE.md) for lifecycle rules and the SQLite
 schema and repository ownership.
@@ -147,16 +151,14 @@ schema and repository ownership.
 | Runtime | Rust 2024, Tokio, Reqwest |
 | Local database | SQLite through `dreamland-state` and `rusqlite` |
 | Shared protocol | `dreamland-moe` |
-| Tooling | Nix, mise, uv, Make |
+| Tooling | mise, uv, Make |
 
 ## Quick start
 
-On macOS, enter the Nix development shell. On Windows, use the native Rust,
-Bun, and uv toolchain with the pinned versions; Nix is not used as a native
-Windows provisioning layer.
+Use mise for the latest stable Rust, Bun, and uv toolchain. Native Tauri
+prerequisites remain OS-level dependencies.
 
 ```bash
-nix develop                 # macOS
 uv sync --locked
 bun install
 make doctor
@@ -177,6 +179,8 @@ an attractive screen cannot hide a broken command contract.
 ## Documentation map
 
 - [Development guide](docs/DEVELOPMENT.md) — setup, commands, and troubleshooting
+- [0.1.2 retrospective](docs/RETROSPECTIVE-0.1.2.md) — durable lessons, wrong turns, and repeatable checks
+- [agent-browser SOP](docs/AGENT-BROWSER-SOP.md) — isolated browser checks and mandatory resource cleanup
 - [Project spec](docs/PROJECT-SPEC.md) — scope and acceptance criteria
 - [API v1](docs/API-V1.md) — site/runtime capability contract
 - [User stories](docs/USER-STORIES-V1.md) — happy, edge, and failure flows

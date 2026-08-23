@@ -4,7 +4,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex, RwLock,
 };
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{bail, Context, Result};
 use dreamland_core::{MediaVariant, NetworkPolicy, Post, ReplayableQuery, SavedQuery, SiteId};
@@ -12,7 +12,10 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 
-use crate::{download_archive, download_image_with_detail_cache, DownloadOutcome};
+use crate::media::{
+    download_archive_with_progress, download_image_with_detail_cache_progress, ProgressCallback,
+};
+use crate::DownloadOutcome;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum DownloadStatus {
@@ -133,10 +136,31 @@ impl StateStore {
 
     pub fn enqueue(&self, request: DownloadRequest) -> Result<DownloadRecord> {
         validate_request(&request)?;
+        let connection = self.connection()?;
+        let duplicate = connection
+            .query_row(
+                "SELECT id, site_id, post_id, variant, source_url, download_root,
+                        metadata_json, status, target_path, error, attempts,
+                        bytes_downloaded, total_bytes, created_at_ms, updated_at_ms
+                 FROM download_queue
+                 WHERE site_id = ?1 AND post_id = ?2 AND variant = ?3
+                   AND status IN ('Queued', 'Running')
+                 ORDER BY created_at_ms ASC, id ASC
+                 LIMIT 1",
+                params![
+                    request.site.as_str(),
+                    request.post_id,
+                    variant_name(request.variant),
+                ],
+                decode_stored_download,
+            )
+            .optional()?;
+        if let Some(existing) = duplicate {
+            return Ok(existing.record);
+        }
         let id = uuid::Uuid::new_v4().to_string();
         let now = now_ms();
         let metadata_json = serde_json::to_string(&request.metadata)?;
-        let connection = self.connection()?;
         connection.execute(
             "INSERT INTO download_queue
              (id, site_id, post_id, variant, source_url, download_root, metadata_json,
@@ -211,6 +235,28 @@ impl StateStore {
         Ok(count)
     }
 
+    fn has_active_work(&self) -> Result<bool> {
+        let connection = self.connection()?;
+        let downloads: i64 = connection.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM download_queue WHERE status IN ('Queued', 'Running')
+            )",
+            [],
+            |row| row.get(0),
+        )?;
+        if downloads != 0 {
+            return Ok(true);
+        }
+        let archives: i64 = connection.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM archive_queue WHERE status IN ('Queued', 'Running')
+            )",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(archives != 0)
+    }
+
     pub(crate) fn update_progress(
         &self,
         id: &str,
@@ -219,6 +265,26 @@ impl StateStore {
     ) -> Result<()> {
         self.connection()?.execute(
             "UPDATE download_queue
+             SET bytes_downloaded = ?2, total_bytes = ?3, updated_at_ms = ?4
+             WHERE id = ?1",
+            params![
+                id,
+                bytes_downloaded as i64,
+                total_bytes.map(|value| value as i64),
+                now_ms(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub(crate) fn update_archive_progress(
+        &self,
+        id: &str,
+        bytes_downloaded: u64,
+        total_bytes: Option<u64>,
+    ) -> Result<()> {
+        self.connection()?.execute(
+            "UPDATE archive_queue
              SET bytes_downloaded = ?2, total_bytes = ?3, updated_at_ms = ?4
              WHERE id = ?1",
             params![
@@ -679,6 +745,37 @@ pub(crate) struct StoredDownload {
     pub download_root: PathBuf,
 }
 
+fn progress_callback(store: StateStore, id: String, archive: bool) -> ProgressCallback {
+    let checkpoint = Arc::new(Mutex::new((
+        Instant::now() - Duration::from_secs(1),
+        0_u64,
+        None::<u64>,
+    )));
+    Arc::new(move |bytes_downloaded, total_bytes| {
+        let mut checkpoint = checkpoint
+            .lock()
+            .expect("download progress checkpoint lock poisoned");
+        let should_update = checkpoint.2 != total_bytes
+            || bytes_downloaded.saturating_sub(checkpoint.1) >= 256 * 1024
+            || checkpoint.0.elapsed() >= Duration::from_millis(200)
+            || total_bytes == Some(bytes_downloaded);
+        if !should_update {
+            return;
+        }
+        checkpoint.0 = Instant::now();
+        checkpoint.1 = bytes_downloaded;
+        checkpoint.2 = total_bytes;
+        let result = if archive {
+            store.update_archive_progress(&id, bytes_downloaded, total_bytes)
+        } else {
+            store.update_progress(&id, bytes_downloaded, total_bytes)
+        };
+        if let Err(error) = result {
+            eprintln!("download progress update failed: {error}");
+        }
+    })
+}
+
 #[derive(Clone)]
 pub struct DownloadManager {
     store: StateStore,
@@ -687,7 +784,8 @@ pub struct DownloadManager {
     network: Arc<RwLock<NetworkPolicy>>,
     active: Arc<Mutex<HashMap<String, DownloadCancellation>>>,
     archive_cookies: Arc<Mutex<HashMap<String, String>>>,
-    notify: Arc<Notify>,
+    image_notify: Arc<Notify>,
+    archive_notify: Arc<Notify>,
 }
 
 impl DownloadManager {
@@ -706,7 +804,8 @@ impl DownloadManager {
             network: Arc::new(RwLock::new(network)),
             active: Arc::new(Mutex::new(HashMap::new())),
             archive_cookies: Arc::new(Mutex::new(HashMap::new())),
-            notify: Arc::new(Notify::new()),
+            image_notify: Arc::new(Notify::new()),
+            archive_notify: Arc::new(Notify::new()),
         })
     }
 
@@ -735,12 +834,15 @@ impl DownloadManager {
     }
 
     pub async fn clear_cache(&self) -> Result<()> {
-        if !self
+        let active_in_memory = !self
             .active
             .lock()
             .expect("download active lock poisoned")
-            .is_empty()
-        {
+            .is_empty();
+        let store = self.store.clone();
+        let active_in_state =
+            tokio::task::spawn_blocking(move || store.has_active_work()).await??;
+        if active_in_memory || active_in_state {
             bail!("cannot clear cache while downloads are active");
         }
         let download_cache = self.cache_root.as_ref().clone();
@@ -766,7 +868,7 @@ impl DownloadManager {
     pub async fn enqueue(&self, request: DownloadRequest) -> Result<DownloadRecord> {
         let store = self.store.clone();
         let record = tokio::task::spawn_blocking(move || store.enqueue(request)).await??;
-        self.notify.notify_one();
+        self.image_notify.notify_one();
         Ok(record)
     }
 
@@ -778,7 +880,7 @@ impl DownloadManager {
             .lock()
             .expect("archive cookie lock poisoned")
             .insert(record.id.clone(), cookie);
-        self.notify.notify_one();
+        self.archive_notify.notify_one();
         Ok(record)
     }
 
@@ -850,7 +952,7 @@ impl DownloadManager {
         let store = self.store.clone();
         let id = id.to_owned();
         let record = tokio::task::spawn_blocking(move || store.retry(&id)).await??;
-        self.notify.notify_one();
+        self.image_notify.notify_one();
         Ok(record)
     }
 
@@ -910,7 +1012,7 @@ impl DownloadManager {
                 }
             };
             let Some(job) = job else {
-                self.notify.notified().await;
+                self.image_notify.notified().await;
                 continue;
             };
 
@@ -930,7 +1032,8 @@ impl DownloadManager {
                 .read()
                 .expect("detail cache lock poisoned")
                 .clone();
-            let result = download_image_with_detail_cache(
+            let progress = progress_callback(self.store.clone(), job.record.id.clone(), false);
+            let result = download_image_with_detail_cache_progress(
                 &job.source_url,
                 job.record.site.as_str(),
                 &job.record.post_id,
@@ -939,6 +1042,7 @@ impl DownloadManager {
                 detail_cache_root.as_deref(),
                 &network,
                 &cancellation,
+                Some(&progress),
             )
             .await;
             if let Ok(DownloadOutcome::Completed(path)) = &result {
@@ -1004,7 +1108,7 @@ impl DownloadManager {
                     }
                 };
             let Some(archive) = archive else {
-                self.notify.notified().await;
+                self.archive_notify.notified().await;
                 continue;
             };
             let cancellation = DownloadCancellation::default();
@@ -1023,9 +1127,10 @@ impl DownloadManager {
                 .read()
                 .expect("download network lock poisoned")
                 .clone();
+            let progress = progress_callback(self.store.clone(), archive.record.id.clone(), true);
             let result = match cookie {
                 Some(cookie) => {
-                    download_archive(
+                    download_archive_with_progress(
                         &archive.source_url,
                         archive.record.site.as_str(),
                         &archive.record.pool_id,
@@ -1035,6 +1140,7 @@ impl DownloadManager {
                         &network,
                         &cookie,
                         &cancellation,
+                        Some(&progress),
                     )
                     .await
                 }
@@ -1331,6 +1437,17 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_active_requests_return_the_existing_record() {
+        let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
+        let store = StateStore::open(&path).unwrap();
+        let first = store.enqueue(test_request(&std::env::temp_dir())).unwrap();
+        let second = store.enqueue(test_request(&std::env::temp_dir())).unwrap();
+        assert_eq!(first.id, second.id);
+        assert_eq!(store.active(10).unwrap().len(), 1);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn saved_queries_round_trip_and_delete() {
         let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
         let yandere = SiteId::new("yandere");
@@ -1565,6 +1682,25 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    #[tokio::test]
+    async fn clear_cache_rejects_persisted_work() {
+        let root = std::env::temp_dir().join(format!("dreamland-cache-{}", uuid::Uuid::new_v4()));
+        let state_path = root.join("state.sqlite3");
+        let download_cache = root.join("downloads");
+        let manager =
+            DownloadManager::open(&state_path, &download_cache, NetworkPolicy::default()).unwrap();
+        manager
+            .enqueue(test_request(&root))
+            .await
+            .expect("queue download");
+
+        let error = manager.clear_cache().await.unwrap_err().to_string();
+        assert!(error.contains("downloads are active"));
+        assert!(state_path.exists());
+        drop(manager);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn queued_cancel_is_terminal_history_without_overwrite() {
         let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
@@ -1585,7 +1721,9 @@ mod tests {
         let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
         let store = StateStore::open(&path).unwrap();
         let first = store.enqueue(test_request(&std::env::temp_dir())).unwrap();
-        let second = store.enqueue(test_request(&std::env::temp_dir())).unwrap();
+        let mut second_request = test_request(&std::env::temp_dir());
+        second_request.post_id = "124".to_owned();
+        let second = store.enqueue(second_request).unwrap();
         store.cancel_queued(&first.id).unwrap();
         store.cancel_queued(&second.id).unwrap();
         assert_eq!(store.history_page(1, 0).unwrap().len(), 1);

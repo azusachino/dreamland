@@ -37,7 +37,7 @@ This is the current Tauri/React foundation:
 - React 19 + TypeScript + Vite + Bun frontend;
 - Tailwind CSS styling and TanStack Query IPC state;
 - Rust command boundary for API calls, settings, and downloads;
-- Nix development environment for macOS;
+- mise development toolchain for macOS and Windows;
 - desktop-only macOS/Windows icon set.
 
 Reference rationale: [REFERENCE-LEARNINGS.md](REFERENCE-LEARNINGS.md).

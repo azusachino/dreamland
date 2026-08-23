@@ -31,6 +31,23 @@ fn post_cache_key(site_id: &str, post_id: &str) -> String {
     format!("{site_id}:{post_id}")
 }
 
+fn resolve_cached_post(
+    posts: &Mutex<HashMap<String, Post>>,
+    site_id: &str,
+    post_id: &str,
+    fallback: Option<Post>,
+) -> Result<Post, String> {
+    let key = post_cache_key(site_id, post_id);
+    let mut cache = posts.lock().expect("post cache lock poisoned");
+    if let Some(post) = cache.get(&key).cloned() {
+        return Ok(post);
+    }
+    let post =
+        fallback.ok_or_else(|| "post not found; reload images before downloading".to_string())?;
+    cache.insert(key, post.clone());
+    Ok(post)
+}
+
 impl RuntimeState {
     fn new(config: &AppConfig) -> anyhow::Result<Self> {
         let registry = dreamland_sites::SiteRegistry::from_enabled(config.enabled_site_ids());
@@ -655,6 +672,7 @@ async fn load_detail_image(
     state: State<'_, RuntimeState>,
     site_id: String,
     post_id: String,
+    refresh: Option<bool>,
 ) -> Result<String, String> {
     if !state.registry.is_active_browse_site(&site_id) {
         let error = format!("'{site_id}' is not a registered, browse-capable site");
@@ -662,6 +680,34 @@ async fn load_detail_image(
         return Err(error);
     }
     let cache_root = dreamland_runtime::default_detail_cache_path();
+    let config = AppConfig::load_or_default().map_err(|error| {
+        let error = error.to_string();
+        dreamland_runtime::log_detail_failure(&site_id, &post_id, &error);
+        error
+    })?;
+    if refresh.unwrap_or(false) {
+        let source_url = detail_source_url(&state, &site_id, &post_id)?;
+        return dreamland_runtime::refresh_detail_image_at(
+            &source_url,
+            &site_id,
+            &post_id,
+            &cache_root,
+            &config.network,
+        )
+        .await
+        .map(|path| path.to_string_lossy().into_owned())
+        .map_err(|error| {
+            dreamland_runtime::log_detail_failure(&site_id, &post_id, &error.to_string());
+            error.to_string()
+        });
+    }
+    if let Some(path) =
+        dreamland_runtime::find_existing_image_at(&config.download_path, &site_id, &post_id)
+            .await
+            .map_err(|error| error.to_string())?
+    {
+        return Ok(path.to_string_lossy().into_owned());
+    }
     if let Some(path) =
         dreamland_runtime::find_cached_detail_image_at(&site_id, &post_id, &cache_root)
             .await
@@ -669,25 +715,7 @@ async fn load_detail_image(
     {
         return Ok(path.to_string_lossy().into_owned());
     }
-    let source_url = {
-        let posts = state.posts.lock().expect("post cache lock poisoned");
-        match posts
-            .get(&post_cache_key(&site_id, &post_id))
-            .and_then(|post| post.full_url.clone())
-        {
-            Some(url) => url,
-            None => {
-                let error = "full image URL is unavailable for this post".to_owned();
-                dreamland_runtime::log_detail_failure(&site_id, &post_id, &error);
-                return Err(error);
-            }
-        }
-    };
-    let config = AppConfig::load_or_default().map_err(|error| {
-        let error = error.to_string();
-        dreamland_runtime::log_detail_failure(&site_id, &post_id, &error);
-        error
-    })?;
+    let source_url = detail_source_url(&state, &site_id, &post_id)?;
     dreamland_runtime::cache_detail_image_at(
         &source_url,
         &site_id,
@@ -701,6 +729,21 @@ async fn load_detail_image(
         dreamland_runtime::log_detail_failure(&site_id, &post_id, &error.to_string());
         error.to_string()
     })
+}
+
+fn detail_source_url(state: &RuntimeState, site_id: &str, post_id: &str) -> Result<String, String> {
+    let posts = state.posts.lock().expect("post cache lock poisoned");
+    match posts
+        .get(&post_cache_key(site_id, post_id))
+        .and_then(|post| post.full_url.clone())
+    {
+        Some(url) => Ok(url),
+        None => {
+            let error = "full image URL is unavailable for this post".to_owned();
+            dreamland_runtime::log_detail_failure(site_id, post_id, &error);
+            Err(error)
+        }
+    }
 }
 
 #[tauri::command]
@@ -774,14 +817,28 @@ async fn enqueue_download(
             "'{site_id}' is not a registered, browse-capable site"
         ));
     }
-    let post = {
-        let cache = state.posts.lock().expect("post cache lock poisoned");
-        cache
-            .get(&post_cache_key(&site_id, &post_id))
-            .cloned()
-            .ok_or_else(|| "post not found; reload images before downloading".to_string())?
-    };
     let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
+    let cached_post = {
+        let cache = state.posts.lock().expect("post cache lock poisoned");
+        cache.get(&post_cache_key(&site_id, &post_id)).cloned()
+    };
+    let fallback_post = if cached_post.is_none() {
+        Some(
+            state
+                .registry
+                .lookup_post(&site_id, &post_id, config.content_policy, &config.network)
+                .await
+                .map_err(|error| error.to_string())?,
+        )
+    } else {
+        None
+    };
+    let post = resolve_cached_post(
+        &state.posts,
+        &site_id,
+        &post_id,
+        fallback_post.or(cached_post),
+    )?;
     let url = state
         .registry
         .resolve_media_url(&site_id, &post, variant)
@@ -953,4 +1010,49 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Dreamland");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_post(site: &str, id: &str) -> Post {
+        Post {
+            post: dreamland_core::PostRef {
+                site: SiteId::new(site),
+                id: id.to_owned(),
+            },
+            tags: vec!["dreamland".to_owned()],
+            author: None,
+            creator_id: None,
+            md5: None,
+            source: None,
+            parent_id: None,
+            has_children: false,
+            created_at: None,
+            width: Some(100),
+            height: Some(100),
+            rating: dreamland_core::Rating::Safe,
+            score: None,
+            preview_url: None,
+            sample_url: None,
+            full_url: Some("https://example.test/full.png".to_owned()),
+            file_size: None,
+        }
+    }
+
+    #[test]
+    fn download_post_falls_back_after_cached_route_replaces_runtime_cache() {
+        let posts = Mutex::new(HashMap::new());
+        let post = test_post("yandere", "123");
+
+        let resolved = resolve_cached_post(&posts, "yandere", "123", Some(post.clone()))
+            .expect("the authoritative lookup should restore the post cache");
+
+        assert_eq!(resolved, post);
+        assert!(posts
+            .lock()
+            .expect("post cache lock poisoned")
+            .contains_key("yandere:123"));
+    }
 }

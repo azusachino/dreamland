@@ -5,7 +5,19 @@ remains authoritative for external and authenticated acceptance.
 
 ## [Unreleased]
 
-No unreleased changes.
+### Changed
+
+- Replaced the Nix development environment with a mise-managed Rust, Bun, and
+  uv toolchain.
+- Added a small named motion system for loading, detail, favorite, toast, and
+  download-state transitions with reduced-motion and opaque-surface fallbacks.
+
+### Added
+
+- Per-item and aggregate download progress for known and unknown byte totals.
+- CSS-first detail image tilt and accessible keyboard zoom controls.
+- An isolated `/playground` download constellation with a local preview fixture,
+  WebGL fallback, bounded rendering, and keyboard-accessible live selection.
 
 ## [0.1.1] - 2026-08-12
 

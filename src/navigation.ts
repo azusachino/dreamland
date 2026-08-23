@@ -7,6 +7,7 @@ const viewPaths: Record<ViewMode, string> = {
   downloads: "/downloads",
   pools: "/pools",
   favorites: "/favorites",
+  playground: "/playground",
 };
 
 interface ViewPathOptions {
@@ -59,4 +60,10 @@ export function postPath(siteId: string, postId: string): string {
 
 export function isPostPath(pathname: string): boolean {
   return /^\/posts\/[^/]+\/[^/]+$/.test(pathname);
+}
+
+export function postRoute(pathname: string): { siteId: string; postId: string } | null {
+  const match = pathname.match(/^\/posts\/([^/]+)\/([^/]+)$/);
+  if (!match) return null;
+  return { siteId: decodeURIComponent(match[1]), postId: decodeURIComponent(match[2]) };
 }

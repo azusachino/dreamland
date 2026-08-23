@@ -6,8 +6,8 @@ mod state;
 pub use config::{detect_proxy, AppConfig, ProxyDetection};
 pub use media::{
     cache_detail_image, cache_detail_image_at, download_archive, download_image,
-    download_image_with_detail_cache, find_cached_detail_image_at, log_detail_failure,
-    DownloadOutcome,
+    download_image_with_detail_cache, find_cached_detail_image_at, find_existing_image_at,
+    log_detail_failure, refresh_detail_image_at, DownloadOutcome,
 };
 pub use sessions::{QuerySession, QuerySessionStore, SessionOperation};
 pub use state::{

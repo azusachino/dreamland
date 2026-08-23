@@ -30,21 +30,62 @@ export function createDreamlandTheme(mode: DreamlandPaletteMode) {
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {
-          root: { borderRadius: 999, minHeight: 42, paddingInline: 18 },
+          root: {
+            borderRadius: 999,
+            minHeight: 42,
+            paddingInline: 18,
+            transition: "background-color var(--motion-fast) var(--ease-smooth-out), border-color var(--motion-fast) var(--ease-smooth-out), color var(--motion-fast) var(--ease-smooth-out), transform var(--motion-fast) var(--ease-smooth-out)",
+            "&:active": { transform: "scale(0.98)" },
+          },
         },
       },
       MuiIconButton: {
         styleOverrides: {
-          root: { borderRadius: 999 },
+          root: {
+            borderRadius: 999,
+            transition: "background-color var(--motion-fast) var(--ease-smooth-out), color var(--motion-fast) var(--ease-smooth-out), transform var(--motion-fast) var(--ease-smooth-out)",
+            "&:active": { transform: "scale(0.92)" },
+          },
         },
       },
       MuiChip: {
         styleOverrides: {
-          root: { borderRadius: 10, fontWeight: 600 },
+          root: {
+            color: dark ? "#e7ebee" : "#1d282d",
+            borderRadius: 10,
+            fontWeight: 600,
+            transition: "background-color var(--motion-fast) var(--ease-smooth-out), border-color var(--motion-fast) var(--ease-smooth-out), transform var(--motion-fast) var(--ease-smooth-out)",
+          },
+        },
+      },
+      MuiAccordion: {
+        styleOverrides: {
+          root: { backgroundColor: "transparent", boxShadow: "none", "&::before": { display: "none" } },
         },
       },
       MuiTextField: {
         defaultProps: { size: "small" },
+      },
+      MuiOutlinedInput: {
+        styleOverrides: {
+          root: { color: dark ? "#e7ebee" : "#1d282d" },
+          input: { color: dark ? "#e7ebee" : "#1d282d" },
+        },
+      },
+      MuiInputLabel: {
+        styleOverrides: {
+          root: { color: dark ? "#aeb8bf" : "#5a6970" },
+        },
+      },
+      MuiDialogTitle: {
+        styleOverrides: {
+          root: { color: dark ? "#e7ebee" : "#1d282d" },
+        },
+      },
+      MuiDialogContent: {
+        styleOverrides: {
+          root: { color: dark ? "#e7ebee" : "#1d282d" },
+        },
       },
       MuiSkeleton: {
         styleOverrides: {

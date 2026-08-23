@@ -1,9 +1,12 @@
 use dreamland_core::{NetworkPolicy, ProxyMode};
+use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 
 const USER_AGENT: &str = concat!("Dreamland/", env!("CARGO_PKG_VERSION"));
 const DETAIL_IMAGE_EXTENSIONS: [&str; 7] = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "avif"];
 use crate::{default_detail_cache_path, default_log_path, DownloadCancellation};
+
+pub(crate) type ProgressCallback = Arc<dyn Fn(u64, Option<u64>) + Send + Sync>;
 
 fn log_detail_event(event: &str) {
     let path = default_log_path();
@@ -71,6 +74,32 @@ pub async fn download_image_with_detail_cache(
     network: &NetworkPolicy,
     cancellation: &DownloadCancellation,
 ) -> anyhow::Result<DownloadOutcome> {
+    download_image_with_detail_cache_progress(
+        url,
+        site_id,
+        identifier,
+        download_dir,
+        cache_dir,
+        detail_cache_root,
+        network,
+        cancellation,
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn download_image_with_detail_cache_progress(
+    url: &str,
+    site_id: &str,
+    identifier: &str,
+    download_dir: &std::path::Path,
+    cache_dir: &std::path::Path,
+    detail_cache_root: Option<&std::path::Path>,
+    network: &NetworkPolicy,
+    cancellation: &DownloadCancellation,
+    progress: Option<&ProgressCallback>,
+) -> anyhow::Result<DownloadOutcome> {
     validate_image_identifier(identifier)?;
     validate_path_component(site_id, "site")?;
     let posts_dir = download_dir.join(site_id).join("posts");
@@ -103,6 +132,7 @@ pub async fn download_image_with_detail_cache(
         cancellation,
         None,
         None,
+        progress,
     )
     .await?
     {
@@ -176,6 +206,34 @@ pub async fn download_archive(
     cookie_header: &str,
     cancellation: &DownloadCancellation,
 ) -> anyhow::Result<DownloadOutcome> {
+    download_archive_with_progress(
+        url,
+        site_id,
+        pool_id,
+        pool_name,
+        download_dir,
+        cache_dir,
+        network,
+        cookie_header,
+        cancellation,
+        None,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn download_archive_with_progress(
+    url: &str,
+    site_id: &str,
+    pool_id: &str,
+    pool_name: &str,
+    download_dir: &std::path::Path,
+    cache_dir: &std::path::Path,
+    network: &NetworkPolicy,
+    cookie_header: &str,
+    cancellation: &DownloadCancellation,
+    progress: Option<&ProgressCallback>,
+) -> anyhow::Result<DownloadOutcome> {
     validate_path_component(site_id, "site")?;
     if pool_id.is_empty() || !pool_id.chars().all(|value| value.is_ascii_digit()) {
         anyhow::bail!("pool id must be numeric");
@@ -193,6 +251,7 @@ pub async fn download_archive(
         cancellation,
         Some(cookie_header),
         Some(&filename),
+        progress,
     )
     .await?
     {
@@ -242,9 +301,17 @@ pub async fn find_cached_detail_image_at(
     post_id: &str,
     cache_root: &std::path::Path,
 ) -> anyhow::Result<Option<std::path::PathBuf>> {
+    find_existing_image_at(cache_root, site_id, post_id).await
+}
+
+pub async fn find_existing_image_at(
+    root: &std::path::Path,
+    site_id: &str,
+    post_id: &str,
+) -> anyhow::Result<Option<std::path::PathBuf>> {
     validate_image_identifier(post_id)?;
     validate_path_component(site_id, "site")?;
-    existing_image_path(&cache_root.join(site_id).join("posts"), post_id).await
+    existing_image_path(&root.join(site_id).join("posts"), post_id).await
 }
 
 pub async fn cache_detail_image_at(
@@ -288,6 +355,25 @@ pub async fn cache_detail_image_at(
     }
 }
 
+pub async fn refresh_detail_image_at(
+    url: &str,
+    site_id: &str,
+    post_id: &str,
+    cache_root: &std::path::Path,
+    network: &NetworkPolicy,
+) -> anyhow::Result<std::path::PathBuf> {
+    validate_image_identifier(post_id)?;
+    validate_path_component(site_id, "site")?;
+    let posts_dir = cache_root.join(site_id).join("posts");
+    for extension in DETAIL_IMAGE_EXTENSIONS {
+        let path = posts_dir.join(format!("{post_id}.{extension}"));
+        if tokio::fs::try_exists(&path).await? {
+            tokio::fs::remove_file(path).await?;
+        }
+    }
+    cache_detail_image_at(url, site_id, post_id, cache_root, network).await
+}
+
 fn detail_cache_path() -> std::path::PathBuf {
     default_detail_cache_path()
 }
@@ -316,6 +402,7 @@ async fn download_file(
     cancellation: &DownloadCancellation,
     cookie_header: Option<&str>,
     filename: Option<&str>,
+    progress: Option<&ProgressCallback>,
 ) -> anyhow::Result<DownloadFileOutcome> {
     validate_media_url(url)?;
     let client = build_client(network)?;
@@ -372,6 +459,10 @@ async fn download_file(
         .unwrap_or("image/jpeg")
         .to_string();
     let extension = mime_to_extension(&content_type).unwrap_or("jpg");
+    let total_bytes = response.content_length();
+    if let Some(progress) = progress {
+        progress(0, total_bytes);
+    }
     let final_path = target_dir.join(
         filename
             .map(str::to_owned)
@@ -385,6 +476,7 @@ async fn download_file(
     tokio::fs::create_dir_all(&cache_dir).await?;
     let temporary_path = cache_dir.join(format!("{}.{}.part", identifier, uuid::Uuid::new_v4()));
     let mut file = tokio::fs::File::create(&temporary_path).await?;
+    let mut bytes_downloaded = 0;
     let write_result: anyhow::Result<()> = async {
         let mut response = response;
         while let Some(chunk) = response.chunk().await? {
@@ -392,6 +484,10 @@ async fn download_file(
                 anyhow::bail!("download cancelled");
             }
             file.write_all(&chunk).await?;
+            bytes_downloaded += chunk.len() as u64;
+            if let Some(progress) = progress {
+                progress(bytes_downloaded, total_bytes);
+            }
         }
         file.flush().await?;
         Ok(())
@@ -543,6 +639,45 @@ mod tests {
         assert_eq!(mime_to_extension("image/unknown"), None);
     }
 
+    #[tokio::test]
+    async fn streamed_download_reports_known_progress() {
+        let root = std::env::temp_dir().join(format!("dreamland-root-{}", uuid::Uuid::new_v4()));
+        let cache = std::env::temp_dir().join(format!("dreamland-cache-{}", uuid::Uuid::new_v4()));
+        let (url, server) = image_server();
+        let updates = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let received_updates = updates.clone();
+        let progress: ProgressCallback = std::sync::Arc::new(move |bytes, total| {
+            received_updates.lock().unwrap().push((bytes, total));
+        });
+
+        let outcome = download_image_with_detail_cache_progress(
+            &url,
+            "yandere",
+            "123",
+            &root,
+            &cache,
+            None,
+            &NetworkPolicy {
+                proxy: ProxyMode::Direct,
+                ..NetworkPolicy::default()
+            },
+            &DownloadCancellation::default(),
+            Some(&progress),
+        )
+        .await
+        .unwrap();
+        server.join().unwrap();
+
+        assert!(matches!(outcome, DownloadOutcome::Completed(_)));
+        {
+            let updates = updates.lock().unwrap();
+            assert!(updates.contains(&(0, Some(4))));
+            assert!(updates.contains(&(4, Some(4))));
+        }
+        let _ = tokio::fs::remove_dir_all(root).await;
+        let _ = tokio::fs::remove_dir_all(cache).await;
+    }
+
     #[test]
     fn image_filename_rejects_path_traversal() {
         assert!(image_filename("../dreamland", "jpg").is_err());
@@ -681,6 +816,7 @@ mod tests {
         assert_eq!(outcome, DownloadOutcome::Completed(target.clone()));
         assert_eq!(tokio::fs::read(target).await.unwrap(), b"detail-cache");
         assert!(!cache.join("yandere/123.jpg").exists());
+        assert!(cached.exists());
         let _ = tokio::fs::remove_dir_all(root).await;
         let _ = tokio::fs::remove_dir_all(cache).await;
         let _ = tokio::fs::remove_dir_all(detail).await;
@@ -701,6 +837,37 @@ mod tests {
             .unwrap();
 
         assert_eq!(found, Some(cached));
+        let _ = tokio::fs::remove_dir_all(detail).await;
+    }
+
+    #[tokio::test]
+    async fn refreshing_detail_image_replaces_stale_cache() {
+        let detail =
+            std::env::temp_dir().join(format!("dreamland-detail-{}", uuid::Uuid::new_v4()));
+        let stale = detail.join("yandere/posts/123.jpg");
+        tokio::fs::create_dir_all(stale.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&stale, b"stale").await.unwrap();
+        let (url, server) = image_server();
+
+        let refreshed = refresh_detail_image_at(
+            &url,
+            "yandere",
+            "123",
+            &detail,
+            &NetworkPolicy {
+                proxy: ProxyMode::Direct,
+                ..NetworkPolicy::default()
+            },
+        )
+        .await
+        .unwrap();
+        server.join().unwrap();
+
+        assert_eq!(refreshed, detail.join("yandere/posts/123.png"));
+        assert_eq!(tokio::fs::read(refreshed).await.unwrap(), b"PNG!");
+        assert!(!stale.exists());
         let _ = tokio::fs::remove_dir_all(detail).await;
     }
 
@@ -800,6 +967,83 @@ mod tests {
         server.join().unwrap();
         assert!(completed);
         assert!(root.join("yandere/posts/123.png").exists());
+        let _ = tokio::fs::remove_file(state).await;
+        let _ = tokio::fs::remove_dir_all(root).await;
+        let _ = tokio::fs::remove_dir_all(cache).await;
+    }
+
+    #[tokio::test]
+    async fn image_queue_is_not_starved_by_idle_archive_worker() {
+        let state =
+            std::env::temp_dir().join(format!("dreamland-state-{}.sqlite3", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("dreamland-root-{}", uuid::Uuid::new_v4()));
+        let cache = std::env::temp_dir().join(format!("dreamland-cache-{}", uuid::Uuid::new_v4()));
+        let (url, server) = image_server();
+        let manager = DownloadManager::open(
+            &state,
+            &cache,
+            NetworkPolicy {
+                proxy: ProxyMode::Direct,
+                ..NetworkPolicy::default()
+            },
+        )
+        .unwrap();
+
+        tokio::spawn(manager.archive_worker());
+        tokio::spawn(manager.worker());
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+
+        manager
+            .enqueue(DownloadRequest {
+                site: SiteId::new("yandere"),
+                post_id: "456".to_owned(),
+                variant: dreamland_core::MediaVariant::Full,
+                source_url: url,
+                download_root: root.clone(),
+                metadata: Post {
+                    post: PostRef {
+                        site: SiteId::new("yandere"),
+                        id: "456".to_owned(),
+                    },
+                    tags: vec![],
+                    author: None,
+                    creator_id: None,
+                    md5: None,
+                    source: None,
+                    parent_id: None,
+                    has_children: false,
+                    created_at: None,
+                    width: None,
+                    height: None,
+                    rating: Rating::Safe,
+                    score: None,
+                    preview_url: None,
+                    sample_url: None,
+                    full_url: None,
+                    file_size: None,
+                },
+            })
+            .await
+            .unwrap();
+
+        let completed = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                if manager.records(10).await.unwrap().iter().any(|record| {
+                    record.post_id == "456" && record.status == DownloadStatus::Completed
+                }) {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .is_ok();
+
+        if completed {
+            server.join().unwrap();
+        }
+        assert!(completed, "image worker was starved by the archive worker");
+        assert!(root.join("yandere/posts/456.png").exists());
         let _ = tokio::fs::remove_file(state).await;
         let _ = tokio::fs::remove_dir_all(root).await;
         let _ = tokio::fs::remove_dir_all(cache).await;
