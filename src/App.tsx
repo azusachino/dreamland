@@ -2248,7 +2248,7 @@ function DownloadPanel({ records, archives, loading, demo = false, interactive =
                 </section>;
               })}
             </div>
-            <LoadMore hasNext={historyHasNext} loading={historyLoading} onLoadMore={onLoadMore} />
+            <LoadMore autoLoad={false} hasNext={historyHasNext} loading={historyLoading} onLoadMore={onLoadMore} />
           </section>}
         </>
       )}

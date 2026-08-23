@@ -188,13 +188,9 @@ async fn promote_cached_image(
     }
     if tokio::fs::try_exists(&final_path).await? {
         let _ = tokio::fs::remove_file(&temporary_path).await;
-        let _ = tokio::fs::remove_file(cached_path).await;
         return Ok(DownloadOutcome::ExistingTarget(final_path));
     }
     tokio::fs::rename(&temporary_path, &final_path).await?;
-    // The configured download library is the durable copy. Keeping the same
-    // bytes in the detail cache only makes cache usage look like a leak.
-    let _ = tokio::fs::remove_file(cached_path).await;
     Ok(DownloadOutcome::Completed(final_path))
 }
 
@@ -801,7 +797,7 @@ mod tests {
         assert_eq!(outcome, DownloadOutcome::Completed(target.clone()));
         assert_eq!(tokio::fs::read(target).await.unwrap(), b"detail-cache");
         assert!(!cache.join("yandere/123.jpg").exists());
-        assert!(!cached.exists());
+        assert!(cached.exists());
         let _ = tokio::fs::remove_dir_all(root).await;
         let _ = tokio::fs::remove_dir_all(cache).await;
         let _ = tokio::fs::remove_dir_all(detail).await;

@@ -130,11 +130,11 @@ directory:
 Configuration is TOML. Common settings live at the top level; each site owns a
 `[sites.<site-id>]` section for non-secret enablement and versioned extensions.
 Credentials and cookies stay in the native session boundary and never enter
-TOML or SQLite. A successful download promotes the file into the configured
-library and removes its duplicate detail-cache copy. Detail loading falls back
-to the library, so clearing cache does not make an already-downloaded image
-remote-only. Cache cleanup refuses to run while queued or running image/pool
-work exists and removes only cache state.
+TOML or SQLite. A successful download promotes a copy into the configured
+library while leaving the currently usable detail cache intact. Detail loading
+falls back to the library after cache cleanup, so clearing cache does not make
+an already-downloaded image remote-only. Cache cleanup refuses to run while
+queued or running image/pool work exists and removes only cache state.
 
 See the [state contract](docs/STATE.md) for lifecycle rules and the SQLite
 schema and repository ownership.

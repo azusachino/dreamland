@@ -60,11 +60,12 @@ arbitrary user files. The worker checks the final target immediately before
 atomic rename, so an existing completed file remains authoritative.
 
 The configured download library is the durable media store. Detail images are
-reusable until a download promotes one into that library; promotion removes the
-duplicate detail-cache file. Detail lookup checks the detail cache first and the
-library second, so cache cleanup does not invalidate already-downloaded media.
-`detail-staging` and `downloads` contain only in-flight temporary files. Cache
-cleanup is refused while either queue contains `Queued` or `Running` work.
+reusable cache entries, and a download promotes a copy into the library without
+removing a cache path that an open detail view may still be using. Detail lookup
+checks the detail cache first and the library second, so cache cleanup does not
+invalidate already-downloaded media. `detail-staging` and `downloads` contain
+only in-flight temporary files. Cache cleanup is refused while either queue
+contains `Queued` or `Running` work.
 
 The current schema is idempotent and tested in `dreamland-state`. New tables or
 columns must land there before a runtime repository method consumes them.
