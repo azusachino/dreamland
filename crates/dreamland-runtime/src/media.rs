@@ -188,9 +188,13 @@ async fn promote_cached_image(
     }
     if tokio::fs::try_exists(&final_path).await? {
         let _ = tokio::fs::remove_file(&temporary_path).await;
+        let _ = tokio::fs::remove_file(cached_path).await;
         return Ok(DownloadOutcome::ExistingTarget(final_path));
     }
     tokio::fs::rename(&temporary_path, &final_path).await?;
+    // The configured download library is the durable copy. Keeping the same
+    // bytes in the detail cache only makes cache usage look like a leak.
+    let _ = tokio::fs::remove_file(cached_path).await;
     Ok(DownloadOutcome::Completed(final_path))
 }
 
@@ -301,9 +305,17 @@ pub async fn find_cached_detail_image_at(
     post_id: &str,
     cache_root: &std::path::Path,
 ) -> anyhow::Result<Option<std::path::PathBuf>> {
+    find_existing_image_at(cache_root, site_id, post_id).await
+}
+
+pub async fn find_existing_image_at(
+    root: &std::path::Path,
+    site_id: &str,
+    post_id: &str,
+) -> anyhow::Result<Option<std::path::PathBuf>> {
     validate_image_identifier(post_id)?;
     validate_path_component(site_id, "site")?;
-    existing_image_path(&cache_root.join(site_id).join("posts"), post_id).await
+    existing_image_path(&root.join(site_id).join("posts"), post_id).await
 }
 
 pub async fn cache_detail_image_at(
@@ -789,6 +801,7 @@ mod tests {
         assert_eq!(outcome, DownloadOutcome::Completed(target.clone()));
         assert_eq!(tokio::fs::read(target).await.unwrap(), b"detail-cache");
         assert!(!cache.join("yandere/123.jpg").exists());
+        assert!(!cached.exists());
         let _ = tokio::fs::remove_dir_all(root).await;
         let _ = tokio::fs::remove_dir_all(cache).await;
         let _ = tokio::fs::remove_dir_all(detail).await;

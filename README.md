@@ -123,15 +123,18 @@ directory:
 | --- | --- | --- | --- |
 | Settings | `$XDG_CONFIG_HOME/dreamland/config.toml` (`~/.config` fallback) | platform config directory / `dreamland/config.toml` | retained |
 | Queue and history | `$XDG_DATA_HOME/dreamland/state.sqlite3` (`~/.local/share` fallback) | platform local-data directory / `dreamland/state.sqlite3` | retained |
-| Detail and staging cache | `$XDG_CACHE_HOME/dreamland/{detail,detail-staging,downloads}` | platform cache directory / `dreamland/...` | clearable |
+| Detail and staging cache | `$XDG_CACHE_HOME/dreamland/{detail,detail-staging,downloads}` | platform cache directory / `dreamland/...` | detail is reusable; staging is disposable |
 | Logs | `$XDG_STATE_HOME/dreamland/logs/dreamland.log` (`~/.local/state` fallback) | platform local-data directory / `dreamland/logs/dreamland.log` | retained for diagnostics |
 | Download library | configured path; `~/Downloads/dreamland_images` by default | configured path; platform download directory by default | never removed by cache cleanup |
 
 Configuration is TOML. Common settings live at the top level; each site owns a
 `[sites.<site-id>]` section for non-secret enablement and versioned extensions.
 Credentials and cookies stay in the native session boundary and never enter
-TOML or SQLite. The cache action refuses to run during active downloads and
-removes only temporary media state.
+TOML or SQLite. A successful download promotes the file into the configured
+library and removes its duplicate detail-cache copy. Detail loading falls back
+to the library, so clearing cache does not make an already-downloaded image
+remote-only. Cache cleanup refuses to run while queued or running image/pool
+work exists and removes only cache state.
 
 See the [state contract](docs/STATE.md) for lifecycle rules and the SQLite
 schema and repository ownership.

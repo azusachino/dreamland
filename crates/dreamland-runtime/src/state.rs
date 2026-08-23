@@ -235,6 +235,28 @@ impl StateStore {
         Ok(count)
     }
 
+    fn has_active_work(&self) -> Result<bool> {
+        let connection = self.connection()?;
+        let downloads: i64 = connection.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM download_queue WHERE status IN ('Queued', 'Running')
+            )",
+            [],
+            |row| row.get(0),
+        )?;
+        if downloads != 0 {
+            return Ok(true);
+        }
+        let archives: i64 = connection.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM archive_queue WHERE status IN ('Queued', 'Running')
+            )",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(archives != 0)
+    }
+
     pub(crate) fn update_progress(
         &self,
         id: &str,
@@ -812,12 +834,15 @@ impl DownloadManager {
     }
 
     pub async fn clear_cache(&self) -> Result<()> {
-        if !self
+        let active_in_memory = !self
             .active
             .lock()
             .expect("download active lock poisoned")
-            .is_empty()
-        {
+            .is_empty();
+        let store = self.store.clone();
+        let active_in_state =
+            tokio::task::spawn_blocking(move || store.has_active_work()).await??;
+        if active_in_memory || active_in_state {
             bail!("cannot clear cache while downloads are active");
         }
         let download_cache = self.cache_root.as_ref().clone();
@@ -1652,6 +1677,25 @@ mod tests {
         assert!(!detail_cache.exists());
         assert!(!detail_staging.exists());
         assert!(library.join("keep.jpg").exists());
+        assert!(state_path.exists());
+        drop(manager);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn clear_cache_rejects_persisted_work() {
+        let root = std::env::temp_dir().join(format!("dreamland-cache-{}", uuid::Uuid::new_v4()));
+        let state_path = root.join("state.sqlite3");
+        let download_cache = root.join("downloads");
+        let manager =
+            DownloadManager::open(&state_path, &download_cache, NetworkPolicy::default()).unwrap();
+        manager
+            .enqueue(test_request(&root))
+            .await
+            .expect("queue download");
+
+        let error = manager.clear_cache().await.unwrap_err().to_string();
+        assert!(error.contains("downloads are active"));
         assert!(state_path.exists());
         drop(manager);
         std::fs::remove_dir_all(root).unwrap();

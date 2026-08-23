@@ -669,6 +669,18 @@ async fn load_detail_image(
     {
         return Ok(path.to_string_lossy().into_owned());
     }
+    let config = AppConfig::load_or_default().map_err(|error| {
+        let error = error.to_string();
+        dreamland_runtime::log_detail_failure(&site_id, &post_id, &error);
+        error
+    })?;
+    if let Some(path) =
+        dreamland_runtime::find_existing_image_at(&config.download_path, &site_id, &post_id)
+            .await
+            .map_err(|error| error.to_string())?
+    {
+        return Ok(path.to_string_lossy().into_owned());
+    }
     let source_url = {
         let posts = state.posts.lock().expect("post cache lock poisoned");
         match posts
@@ -683,11 +695,6 @@ async fn load_detail_image(
             }
         }
     };
-    let config = AppConfig::load_or_default().map_err(|error| {
-        let error = error.to_string();
-        dreamland_runtime::log_detail_failure(&site_id, &post_id, &error);
-        error
-    })?;
     dreamland_runtime::cache_detail_image_at(
         &source_url,
         &site_id,
