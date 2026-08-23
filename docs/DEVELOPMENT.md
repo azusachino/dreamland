@@ -11,7 +11,10 @@ bun run tauri:dev
 The frontend runs on Vite during Tauri development. Rust commands live under
 `src-tauri/` and handle API requests, configuration, and downloads. Daily
 tooling and platform-aware checks live in `scripts/` and run through uv. mise
-selects the latest stable Rust, Bun, and uv versions for the project.
+selects the latest stable Rust, Bun, and uv versions for the project. The
+project lock also applies a seven-day package freshness window; CI sets the
+same `UV_EXCLUDE_NEWER` value explicitly so a developer's global uv policy
+cannot make the locked install drift.
 
 Or use `make install`, `make doctor`, `make dev`, and `make check`.
 

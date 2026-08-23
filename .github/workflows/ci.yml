@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  UV_EXCLUDE_NEWER: "7 days"
+
 jobs:
   validate:
     name: validate
