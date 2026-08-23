@@ -360,6 +360,7 @@ function formatBytes(bytes: number): string {
 }
 
 type ProgressRecord = Pick<DownloadRecord, "bytes_downloaded" | "total_bytes">;
+type ActiveProgressRecord = ProgressRecord & Pick<DownloadRecord, "status">;
 
 function progressPercent(record: ProgressRecord): number | null {
   if (record.total_bytes === null || record.total_bytes <= 0) return null;
@@ -367,15 +368,17 @@ function progressPercent(record: ProgressRecord): number | null {
 }
 
 interface OverallProgress extends ProgressRecord {
-  unknownTotals: number;
+  queuedCount: number;
+  runningUnknownCount: number;
 }
 
-function overallProgress(records: ProgressRecord[]): OverallProgress {
+function overallProgress(records: ActiveProgressRecord[]): OverallProgress {
   const knownRecords = records.filter((record) => record.total_bytes !== null && record.total_bytes > 0);
   return {
     bytes_downloaded: knownRecords.reduce((total, record) => total + record.bytes_downloaded, 0),
     total_bytes: knownRecords.length > 0 ? knownRecords.reduce((total, record) => total + (record.total_bytes ?? 0), 0) : null,
-    unknownTotals: records.length - knownRecords.length,
+    queuedCount: records.filter((record) => record.status === "Queued").length,
+    runningUnknownCount: records.filter((record) => record.status === "Running" && (record.total_bytes === null || record.total_bytes <= 0)).length,
   };
 }
 
@@ -851,7 +854,7 @@ function App() {
             ? "download in progress"
             : "download tracked";
       showToast(title, record.status === "ExistingTarget"
-        ? `post #${record.post_id} was kept; no file was overwritten.`
+        ? `post #${record.post_id} is already on disk; no file was overwritten.`
         : `post #${record.post_id} will be saved at the configured path.`);
     },
     onError: (reason) => setError(`download failed: ${errorMessage(reason)}`),
@@ -2169,6 +2172,11 @@ function DownloadPanel({ records, archives, loading, demo = false, interactive =
   const downloadedCount = history.filter((record) => record.status === "Completed" || record.status === "ExistingTarget").length + archiveHistory.filter((record) => record.status === "Completed" || record.status === "ExistingTarget").length;
   const attentionCount = history.filter((record) => record.status === "Failed" || record.status === "Cancelled").length + archiveHistory.filter((record) => record.status === "Failed" || record.status === "Cancelled").length;
   const totalProgress = overallProgress(activeRecords);
+  const overallStatus: DownloadStatus = activeRecords.some((record) => record.status === "Running") ? "Running" : "Queued";
+  const progressSummary = [
+    totalProgress.queuedCount > 0 ? `${totalProgress.queuedCount} waiting` : null,
+    totalProgress.runningUnknownCount > 0 ? `${totalProgress.runningUnknownCount} size unknown` : null,
+  ].filter(Boolean).join(" · ") || "all sizes known";
   const listClass = `download-list${presentation === "cards" ? " download-list-cards" : ""}`;
   const groups = new Map<string, DownloadRecord[]>();
   for (const record of history) {
@@ -2196,16 +2204,16 @@ function DownloadPanel({ records, archives, loading, demo = false, interactive =
         <div className={attentionCount > 0 ? "has-attention" : ""}><strong>{attentionCount}</strong><span>needs attention</span></div>
       </div>
       {activeRecords.length > 0 && <div className="download-overall">
-        <div className="download-overall-heading"><strong>overall progress</strong><span>{totalProgress.unknownTotals > 0 ? `${totalProgress.unknownTotals} size unknown` : "all sizes known"}</span></div>
+        <div className="download-overall-heading"><strong>overall progress</strong><span>{progressSummary}</span></div>
         <DownloadProgress
           bytesDownloaded={totalProgress.bytes_downloaded}
           totalBytes={totalProgress.total_bytes}
-          status="Running"
+          status={overallStatus}
           label="overall progress"
           alwaysVisible
           prominent
         />
-        {totalProgress.unknownTotals > 0 && <p className="download-progress-note">known sizes are counted; unknown files keep their own indeterminate progress.</p>}
+        {(totalProgress.queuedCount > 0 || totalProgress.runningUnknownCount > 0) && <p className="download-progress-note">known sizes are counted; waiting items start in order and unknown-size transfers report progress after their response begins.</p>}
       </div>}
       {loading && records.length === 0 && archives.length === 0 ? (
         <RowSkeleton count={6} />

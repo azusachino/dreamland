@@ -912,4 +912,81 @@ mod tests {
         let _ = tokio::fs::remove_dir_all(root).await;
         let _ = tokio::fs::remove_dir_all(cache).await;
     }
+
+    #[tokio::test]
+    async fn image_queue_is_not_starved_by_idle_archive_worker() {
+        let state =
+            std::env::temp_dir().join(format!("dreamland-state-{}.sqlite3", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("dreamland-root-{}", uuid::Uuid::new_v4()));
+        let cache = std::env::temp_dir().join(format!("dreamland-cache-{}", uuid::Uuid::new_v4()));
+        let (url, server) = image_server();
+        let manager = DownloadManager::open(
+            &state,
+            &cache,
+            NetworkPolicy {
+                proxy: ProxyMode::Direct,
+                ..NetworkPolicy::default()
+            },
+        )
+        .unwrap();
+
+        tokio::spawn(manager.archive_worker());
+        tokio::spawn(manager.worker());
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+
+        manager
+            .enqueue(DownloadRequest {
+                site: SiteId::new("yandere"),
+                post_id: "456".to_owned(),
+                variant: dreamland_core::MediaVariant::Full,
+                source_url: url,
+                download_root: root.clone(),
+                metadata: Post {
+                    post: PostRef {
+                        site: SiteId::new("yandere"),
+                        id: "456".to_owned(),
+                    },
+                    tags: vec![],
+                    author: None,
+                    creator_id: None,
+                    md5: None,
+                    source: None,
+                    parent_id: None,
+                    has_children: false,
+                    created_at: None,
+                    width: None,
+                    height: None,
+                    rating: Rating::Safe,
+                    score: None,
+                    preview_url: None,
+                    sample_url: None,
+                    full_url: None,
+                    file_size: None,
+                },
+            })
+            .await
+            .unwrap();
+
+        let completed = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                if manager.records(10).await.unwrap().iter().any(|record| {
+                    record.post_id == "456" && record.status == DownloadStatus::Completed
+                }) {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .is_ok();
+
+        if completed {
+            server.join().unwrap();
+        }
+        assert!(completed, "image worker was starved by the archive worker");
+        assert!(root.join("yandere/posts/456.png").exists());
+        let _ = tokio::fs::remove_file(state).await;
+        let _ = tokio::fs::remove_dir_all(root).await;
+        let _ = tokio::fs::remove_dir_all(cache).await;
+    }
 }

@@ -762,7 +762,8 @@ pub struct DownloadManager {
     network: Arc<RwLock<NetworkPolicy>>,
     active: Arc<Mutex<HashMap<String, DownloadCancellation>>>,
     archive_cookies: Arc<Mutex<HashMap<String, String>>>,
-    notify: Arc<Notify>,
+    image_notify: Arc<Notify>,
+    archive_notify: Arc<Notify>,
 }
 
 impl DownloadManager {
@@ -781,7 +782,8 @@ impl DownloadManager {
             network: Arc::new(RwLock::new(network)),
             active: Arc::new(Mutex::new(HashMap::new())),
             archive_cookies: Arc::new(Mutex::new(HashMap::new())),
-            notify: Arc::new(Notify::new()),
+            image_notify: Arc::new(Notify::new()),
+            archive_notify: Arc::new(Notify::new()),
         })
     }
 
@@ -841,7 +843,7 @@ impl DownloadManager {
     pub async fn enqueue(&self, request: DownloadRequest) -> Result<DownloadRecord> {
         let store = self.store.clone();
         let record = tokio::task::spawn_blocking(move || store.enqueue(request)).await??;
-        self.notify.notify_one();
+        self.image_notify.notify_one();
         Ok(record)
     }
 
@@ -853,7 +855,7 @@ impl DownloadManager {
             .lock()
             .expect("archive cookie lock poisoned")
             .insert(record.id.clone(), cookie);
-        self.notify.notify_one();
+        self.archive_notify.notify_one();
         Ok(record)
     }
 
@@ -925,7 +927,7 @@ impl DownloadManager {
         let store = self.store.clone();
         let id = id.to_owned();
         let record = tokio::task::spawn_blocking(move || store.retry(&id)).await??;
-        self.notify.notify_one();
+        self.image_notify.notify_one();
         Ok(record)
     }
 
@@ -985,7 +987,7 @@ impl DownloadManager {
                 }
             };
             let Some(job) = job else {
-                self.notify.notified().await;
+                self.image_notify.notified().await;
                 continue;
             };
 
@@ -1081,7 +1083,7 @@ impl DownloadManager {
                     }
                 };
             let Some(archive) = archive else {
-                self.notify.notified().await;
+                self.archive_notify.notified().await;
                 continue;
             };
             let cancellation = DownloadCancellation::default();
