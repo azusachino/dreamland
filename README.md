@@ -175,6 +175,7 @@ an attractive screen cannot hide a broken command contract.
 ## Documentation map
 
 - [Development guide](docs/DEVELOPMENT.md) — setup, commands, and troubleshooting
+- [agent-browser SOP](docs/AGENT-BROWSER-SOP.md) — isolated browser checks and mandatory resource cleanup
 - [Project spec](docs/PROJECT-SPEC.md) — scope and acceptance criteria
 - [API v1](docs/API-V1.md) — site/runtime capability contract
 - [User stories](docs/USER-STORIES-V1.md) — happy, edge, and failure flows
