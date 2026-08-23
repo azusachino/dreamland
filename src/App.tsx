@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -366,12 +366,16 @@ function progressPercent(record: ProgressRecord): number | null {
   return Math.min(100, (record.bytes_downloaded / record.total_bytes) * 100);
 }
 
-function overallProgress(records: ProgressRecord[]): ProgressRecord {
+interface OverallProgress extends ProgressRecord {
+  unknownTotals: number;
+}
+
+function overallProgress(records: ProgressRecord[]): OverallProgress {
+  const knownRecords = records.filter((record) => record.total_bytes !== null && record.total_bytes > 0);
   return {
-    bytes_downloaded: records.reduce((total, record) => total + record.bytes_downloaded, 0),
-    total_bytes: records.every((record) => record.total_bytes !== null)
-      ? records.reduce((total, record) => total + (record.total_bytes ?? 0), 0)
-      : null,
+    bytes_downloaded: knownRecords.reduce((total, record) => total + record.bytes_downloaded, 0),
+    total_bytes: knownRecords.length > 0 ? knownRecords.reduce((total, record) => total + (record.total_bytes ?? 0), 0) : null,
+    unknownTotals: records.length - knownRecords.length,
   };
 }
 
@@ -449,6 +453,21 @@ const demoDownloadRecords: DownloadRecord[] = [
     metadata: demoPost("8412", demoThumbnail("KEPT", "#9b5f56", "#efc0b5"), 1800, 1200),
   },
   {
+    id: "demo-existing",
+    site: "yandere",
+    post_id: "8418",
+    variant: "Full",
+    status: "ExistingTarget",
+    target_path: "/demo/dreamland/8418.jpg",
+    error: null,
+    attempts: 1,
+    bytes_downloaded: 3_200_000,
+    total_bytes: 3_200_000,
+    created_at_ms: Date.UTC(2026, 7, 21, 16, 48),
+    updated_at_ms: Date.UTC(2026, 7, 21, 16, 48),
+    metadata: demoPost("8418", demoThumbnail("ALREADY KEPT", "#4f7468", "#b1cec5"), 1400, 1400),
+  },
+  {
     id: "demo-failed",
     site: "yandere",
     post_id: "8407",
@@ -482,7 +501,7 @@ const demoArchiveRecords: ArchiveRecord[] = [
   },
 ];
 
-const demoPosts = demoDownloadRecords.map((record) => record.metadata);
+const demoPosts = demoDownloadRecords.filter((record) => record.id !== "demo-existing").map((record) => record.metadata);
 
 function routePost(siteId: string, postId: string): Post {
   return {
@@ -824,7 +843,16 @@ function App() {
     onSuccess: (record) => {
       void queryClient.invalidateQueries({ queryKey: ["downloads"] });
       downloadStatuses.current.set(record.id, record.status);
-      showToast("download queued", `post #${record.post_id} will be saved at the configured path.`);
+      const title = record.status === "ExistingTarget"
+        ? "already on disk"
+        : record.status === "Completed"
+          ? "already downloaded"
+          : record.status === "Running"
+            ? "download in progress"
+            : "download tracked";
+      showToast(title, record.status === "ExistingTarget"
+        ? `post #${record.post_id} was kept; no file was overwritten.`
+        : `post #${record.post_id} will be saved at the configured path.`);
     },
     onError: (reason) => setError(`download failed: ${errorMessage(reason)}`),
   });
@@ -1802,9 +1830,26 @@ interface PostInspectorProps {
 function PostInspector({ post, detailLoading, detailError, downloading, siteName, favoriteSupported, favorited, favoriteUpdating, onClose, canGoPrevious, canGoNext, previewPosition, previewTotal, onPrevious, onNext, onOpenPost, onOpenSimilarSearch, similarSearchSupported, onDownload, onFavorite, onTag, relatedTagsSupported, relatedTagsOpen, relatedTags, relatedTagsLoading, relatedTagsError, onToggleRelatedTags, downloadVariant, demo = false }: PostInspectorProps) {
   const originalUrl = post.full_url;
   const hasSourceLinks = !demo || Boolean(originalUrl || post.source);
+  const [chromeVisible, setChromeVisible] = useState(true);
+  const chromeTimer = useRef<number | null>(null);
+
+  function revealChrome() {
+    setChromeVisible(true);
+    if (chromeTimer.current !== null) window.clearTimeout(chromeTimer.current);
+    chromeTimer.current = window.setTimeout(() => setChromeVisible(false), 2_400);
+  }
+
+  useEffect(() => {
+    setChromeVisible(true);
+    chromeTimer.current = window.setTimeout(() => setChromeVisible(false), 2_400);
+    return () => {
+      if (chromeTimer.current !== null) window.clearTimeout(chromeTimer.current);
+    };
+  }, [post.post.id]);
+
   return (
     <Dialog open fullScreen onClose={onClose} className="detail-overlay" slotProps={{ paper: { className: "detail-panel", "aria-label": "post details", "aria-labelledby": `detail-title-${post.post.id}` } }}>
-        <div className="detail-stage">
+        <div className="detail-stage" onPointerMove={revealChrome} onPointerDown={revealChrome} onMouseMove={revealChrome} onMouseDown={revealChrome} onWheel={revealChrome} onKeyDown={revealChrome}>
           <div className="detail-stage-heading">
             <div className="detail-stage-identity">
               <p className="eyebrow">inspect</p>
@@ -1817,11 +1862,11 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
             <IconButton aria-label="close details" onClick={onClose}><Icon name="close" /></IconButton>
           </div>
           <div className="detail-preview">
-            <DetailImage key={post.post.id} post={post} demo={demo} />
+            <DetailImage key={post.post.id} post={post} demo={demo} onActivity={revealChrome} />
           </div>
           <div className="detail-navigation" aria-label="post preview navigation">
             <IconButton className="detail-nav-button" aria-label="previous post" title="previous post" disabled={!canGoPrevious} onClick={onPrevious}><Icon name="back" /></IconButton>
-            <span>{previewPosition && previewTotal ? `${previewPosition} of ${previewTotal}` : "single post"}</span>
+            <span className={chromeVisible ? "" : "is-hidden"}>{previewPosition && previewTotal ? `${previewPosition} of ${previewTotal}` : "single post"}</span>
             <IconButton className="detail-nav-button" aria-label="next post" title="next post" disabled={!canGoNext} onClick={onNext}><Icon name="forward" /></IconButton>
           </div>
         </div>
@@ -1916,18 +1961,25 @@ function PostInspector({ post, detailLoading, detailError, downloading, siteName
   );
 }
 
-function DetailImage({ post, demo = false }: { post: Post; demo?: boolean }) {
+function DetailImage({ post, demo = false, onActivity }: { post: Post; demo?: boolean; onActivity?: () => void }) {
+  const minZoom = 1;
+  const maxZoom = 4;
   const [source, setSource] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(minZoom);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ pointerId: number; x: number; y: number; panX: number; panY: number } | null>(null);
 
   useEffect(() => {
     let active = true;
     setSource(null);
     setLoaded(false);
     setError(null);
-    setZoom(1);
+    setZoom(minZoom);
+    setPan({ x: 0, y: 0 });
     if (demo) {
       setSource(post.preview_url ?? post.sample_url ?? null);
     } else {
@@ -1944,11 +1996,28 @@ function DetailImage({ post, demo = false }: { post: Post; demo?: boolean }) {
     };
   }, [demo, post.post.id, post.post.site, post.preview_url, post.sample_url]);
 
+  function boundedPan(x: number, y: number, scale = zoom) {
+    const bounds = frameRef.current;
+    if (!bounds || scale <= minZoom) return { x: 0, y: 0 };
+    const maxX = (bounds.clientWidth * (scale - 1)) / 2;
+    const maxY = (bounds.clientHeight * (scale - 1)) / 2;
+    return {
+      x: Math.min(maxX, Math.max(-maxX, x)),
+      y: Math.min(maxY, Math.max(-maxY, y)),
+    };
+  }
+
   function changeZoom(delta: number) {
-    setZoom((current) => Math.min(2.5, Math.max(1, Number((current + delta).toFixed(1)))));
+    onActivity?.();
+    setZoom((current) => {
+      const next = Math.min(maxZoom, Math.max(minZoom, Number((current + delta).toFixed(1))));
+      setPan((currentPan) => boundedPan(currentPan.x, currentPan.y, next));
+      return next;
+    });
   }
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    onActivity?.();
     if (event.key === "+" || event.key === "=" || event.key === "ArrowUp") {
       event.preventDefault();
       changeZoom(0.1);
@@ -1957,11 +2026,26 @@ function DetailImage({ post, demo = false }: { post: Post; demo?: boolean }) {
       changeZoom(-0.1);
     } else if (event.key === "0") {
       event.preventDefault();
-      setZoom(1);
+      setZoom(minZoom);
+      setPan({ x: 0, y: 0 });
     }
   }
 
+  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+    onActivity?.();
+    if (!source || !loaded || zoom <= minZoom || event.button !== 0) return;
+    if (event.target instanceof Element && event.target.closest("button")) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y };
+    setDragging(true);
+  }
+
   function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
+    onActivity?.();
+    if (dragRef.current?.pointerId === event.pointerId) {
+      setPan(boundedPan(dragRef.current.panX + event.clientX - dragRef.current.x, dragRef.current.panY + event.clientY - dragRef.current.y));
+      return;
+    }
     if (event.pointerType === "touch" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const horizontal = ((event.clientX - bounds.left) / bounds.width - 0.5) * 2;
@@ -1970,23 +2054,53 @@ function DetailImage({ post, demo = false }: { post: Post; demo?: boolean }) {
     event.currentTarget.style.setProperty("--detail-tilt-y", `${horizontal * 1.8}deg`);
   }
 
+  function endPointerDrag(event: PointerEvent<HTMLDivElement>) {
+    if (dragRef.current?.pointerId === event.pointerId) {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      dragRef.current = null;
+      setDragging(false);
+    }
+    resetPointerTilt(event);
+  }
+
   function resetPointerTilt(event: PointerEvent<HTMLDivElement>) {
     event.currentTarget.style.setProperty("--detail-tilt-x", "0deg");
     event.currentTarget.style.setProperty("--detail-tilt-y", "0deg");
   }
 
+  function handleWheel(event: ReactWheelEvent<HTMLDivElement>) {
+    if (!source || !loaded) return;
+    event.preventDefault();
+    changeZoom(event.deltaY > 0 ? -0.1 : 0.1);
+  }
+
+  function handleDoubleClick(event: ReactMouseEvent<HTMLDivElement>) {
+    event.preventDefault();
+    onActivity?.();
+    const next = zoom === minZoom ? 1.5 : minZoom;
+    setZoom(next);
+    setPan((currentPan) => boundedPan(currentPan.x, currentPan.y, next));
+  }
+
   if (error) return <div className="detail-image-state" role="alert">full image unavailable<p>{error}</p></div>;
   return (
     <div
-      className="detail-image-frame"
       role="group"
-      aria-label="full artwork; use plus, minus, or zero to zoom"
+      aria-label="full artwork; use plus, minus, wheel, or drag to zoom and move"
       tabIndex={0}
-      style={{ "--detail-zoom": zoom } as CSSProperties}
+      ref={frameRef}
+      style={{ "--detail-zoom": zoom, "--detail-pan-x": `${pan.x}px`, "--detail-pan-y": `${pan.y}px` } as CSSProperties}
       onKeyDown={handleKeyDown}
+      onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
+      onMouseMove={onActivity}
+      onMouseDown={onActivity}
+      onWheel={handleWheel}
+      onDoubleClick={handleDoubleClick}
+      onPointerUp={endPointerDrag}
       onPointerLeave={resetPointerTilt}
-      onPointerCancel={resetPointerTilt}
+      onPointerCancel={endPointerDrag}
+      className={`detail-image-frame${zoom > minZoom ? " is-zoomed" : ""}${dragging ? " is-dragging" : ""}`}
     >
       {(!source || !loaded) && <Skeleton className="detail-image-loading" variant="rectangular" animation="wave" role="status" aria-label="loading full artwork" />}
       {source && <img
@@ -1995,17 +2109,20 @@ function DetailImage({ post, demo = false }: { post: Post; demo?: boolean }) {
           alt={`post ${post.post.id}`}
           loading="eager"
           decoding="async"
-          onLoad={() => setLoaded(true)}
+          onLoad={() => {
+            setLoaded(true);
+            setPan({ x: 0, y: 0 });
+          }}
           onError={() => {
             setLoaded(false);
             setError("the cached full image could not be decoded");
           }}
         />}
       {source && loaded && <div className="detail-image-controls" aria-label="image zoom controls">
-        <Button size="small" variant="outlined" onClick={() => changeZoom(-0.1)} disabled={zoom <= 1} aria-label="zoom out">−</Button>
+        <Button size="small" variant="outlined" onClick={() => changeZoom(-0.1)} disabled={zoom <= minZoom} aria-label="zoom out">−</Button>
         <span aria-live="polite">{Math.round(zoom * 100)}%</span>
-        <Button size="small" variant="outlined" onClick={() => changeZoom(0.1)} disabled={zoom >= 2.5} aria-label="zoom in">+</Button>
-        <Button size="small" variant="outlined" onClick={() => setZoom(1)} disabled={zoom === 1}>reset</Button>
+        <Button size="small" variant="outlined" onClick={() => changeZoom(0.1)} disabled={zoom >= maxZoom} aria-label="zoom in">+</Button>
+        <Button size="small" variant="outlined" onClick={() => { setZoom(minZoom); setPan({ x: 0, y: 0 }); }} disabled={zoom === minZoom && pan.x === 0 && pan.y === 0}>reset</Button>
       </div>}
     </div>
   );
@@ -2027,6 +2144,7 @@ interface DownloadPanelProps {
 }
 
 function DownloadPanel({ records, archives, loading, demo = false, interactive = true, historyHasNext, historyLoading, onCancel, onRetry, onOpen, onLoadMore, onCancelArchive }: DownloadPanelProps) {
+  const [presentation, setPresentation] = useState<"list" | "cards">("list");
   const active = records.filter((record) => isActiveDownload(record.status));
   const history = records.filter((record) => !isActiveDownload(record.status));
   const activeArchives = archives.filter((record) => isActiveDownload(record.status));
@@ -2035,6 +2153,7 @@ function DownloadPanel({ records, archives, loading, demo = false, interactive =
   const keptCount = history.filter((record) => record.status === "Completed" || record.status === "ExistingTarget").length + archiveHistory.filter((record) => record.status === "Completed" || record.status === "ExistingTarget").length;
   const attentionCount = history.filter((record) => record.status === "Failed" || record.status === "Cancelled").length + archiveHistory.filter((record) => record.status === "Failed" || record.status === "Cancelled").length;
   const totalProgress = overallProgress(activeRecords);
+  const listClass = `download-list${presentation === "cards" ? " download-list-cards" : ""}`;
   const groups = new Map<string, DownloadRecord[]>();
   for (const record of history) {
     const date = new Date(record.created_at_ms);
@@ -2046,6 +2165,10 @@ function DownloadPanel({ records, archives, loading, demo = false, interactive =
     <section className="workspace-panel shell-surface" aria-label="downloads">
       <div className="inspector-heading">
         <div><p className="eyebrow">local state</p><h2>downloads</h2></div>
+        <div className="download-view-switch" role="group" aria-label="download layout">
+          <Button size="small" variant={presentation === "list" ? "contained" : "text"} aria-pressed={presentation === "list"} onClick={() => setPresentation("list")}>list</Button>
+          <Button size="small" variant={presentation === "cards" ? "contained" : "text"} aria-pressed={presentation === "cards"} onClick={() => setPresentation("cards")}>cards</Button>
+        </div>
       </div>
       <div className="download-summary">
         <p className="helper-text">{active.length + activeArchives.length ? `${active.length + activeArchives.length} item${active.length + activeArchives.length === 1 ? "" : "s"} in progress` : "nothing is downloading"}</p>
@@ -2056,12 +2179,18 @@ function DownloadPanel({ records, archives, loading, demo = false, interactive =
         <div><strong>{keptCount}</strong><span>kept</span></div>
         <div className={attentionCount > 0 ? "has-attention" : ""}><strong>{attentionCount}</strong><span>needs attention</span></div>
       </div>
-      {activeRecords.length > 0 && <DownloadProgress
-        bytesDownloaded={totalProgress.bytes_downloaded}
-        totalBytes={totalProgress.total_bytes}
-        status="Running"
-        label="overall progress"
-      />}
+      {activeRecords.length > 0 && <div className="download-overall">
+        <div className="download-overall-heading"><strong>overall progress</strong><span>{totalProgress.unknownTotals > 0 ? `${totalProgress.unknownTotals} size unknown` : "all sizes known"}</span></div>
+        <DownloadProgress
+          bytesDownloaded={totalProgress.bytes_downloaded}
+          totalBytes={totalProgress.total_bytes}
+          status="Running"
+          label="overall progress"
+          alwaysVisible
+          prominent
+        />
+        {totalProgress.unknownTotals > 0 && <p className="download-progress-note">known sizes are counted; unknown files keep their own indeterminate progress.</p>}
+      </div>}
       {loading && records.length === 0 && archives.length === 0 ? (
         <RowSkeleton count={6} />
       ) : records.length === 0 && archives.length === 0 ? (
@@ -2070,14 +2199,14 @@ function DownloadPanel({ records, archives, loading, demo = false, interactive =
         <>
           {active.length + activeArchives.length > 0 && <section className="download-section">
             <h3 className="download-section-title">in progress</h3>
-            <div className="download-list">
+            <div className={listClass}>
               {activeArchives.map((record) => <ArchiveRow key={record.id} record={record} onCancel={onCancelArchive} onOpen={onOpen} interactive={interactive} />)}
               {active.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} onOpen={onOpen} interactive={interactive} />)}
             </div>
           </section>}
           {archiveHistory.length > 0 && <section className="download-section">
             <h3 className="download-section-title">pool archives</h3>
-            <div className="download-list">
+            <div className={listClass}>
               {archiveHistory.map((record) => <ArchiveRow key={record.id} record={record} onCancel={onCancelArchive} onOpen={onOpen} interactive={interactive} />)}
             </div>
           </section>}
@@ -2089,7 +2218,7 @@ function DownloadPanel({ records, archives, loading, demo = false, interactive =
                 const monthName = new Date(Number(year), Number(month) - 1, 1).toLocaleString(undefined, { month: "long" });
                 return <section className="download-month" key={key}>
                   <h4>{year}<span>{monthName}</span></h4>
-                  <div className="download-list">
+                  <div className={listClass}>
                     {group.map((record) => <DownloadRow key={record.id} record={record} onCancel={onCancel} onRetry={onRetry} onOpen={onOpen} interactive={interactive} />)}
                   </div>
                 </section>;
@@ -2108,11 +2237,13 @@ interface DownloadProgressProps {
   totalBytes: number | null;
   status: DownloadStatus;
   label: string;
+  alwaysVisible?: boolean;
+  prominent?: boolean;
 }
 
-function DownloadProgress({ bytesDownloaded, totalBytes, status, label }: DownloadProgressProps) {
+function DownloadProgress({ bytesDownloaded, totalBytes, status, label, alwaysVisible = false, prominent = false }: DownloadProgressProps) {
   const percent = progressPercent({ bytes_downloaded: bytesDownloaded, total_bytes: totalBytes });
-  const shouldShow = status === "Queued" || percent !== null || bytesDownloaded > 0;
+  const shouldShow = alwaysVisible || status === "Queued" || percent !== null || bytesDownloaded > 0;
   if (!shouldShow) return null;
   const indeterminate = status === "Running" && percent === null;
   const waiting = status === "Queued" && percent === null;
@@ -2120,7 +2251,7 @@ function DownloadProgress({ bytesDownloaded, totalBytes, status, label }: Downlo
     ? status === "Queued" ? "waiting" : "size unknown"
     : `${formatBytes(bytesDownloaded)} of ${formatBytes(totalBytes!)}`;
   return (
-    <div className="download-progress" aria-label={label}>
+    <div className={`download-progress${prominent ? " download-progress-prominent" : ""}`} aria-label={label}>
       <div className="download-progress-meta">
         <span>{percent === null ? detail : `${Math.round(percent)}%`}</span>
         {percent !== null && <span>{detail}</span>}
@@ -2167,6 +2298,7 @@ function DownloadRow({ record, onCancel, onRetry, onOpen, interactive = true }: 
           label={`post ${record.post_id} progress`}
         />
         {record.error && <p className="download-error">{record.error}</p>}
+        {record.status === "ExistingTarget" && <p className="download-state-note">already kept; nothing was overwritten.</p>}
         {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
         {interactive && (canCancel || canRetry || canOpen) && <div className="download-row-actions">
           {canCancel && <Button variant="text" onClick={() => void onCancel(record.id)}>cancel</Button>}
@@ -2240,6 +2372,7 @@ function ArchiveRow({ record, onCancel, onOpen, interactive = true }: ArchiveRow
           label={`${record.pool_name} progress`}
         />
         {record.error && <p className="download-error">{record.error}</p>}
+        {record.status === "ExistingTarget" && <p className="download-state-note">already kept; nothing was overwritten.</p>}
         {record.target_path && <p className="download-path" title={record.target_path}>{record.target_path}</p>}
         {interactive && (canCancel || canOpen) && <div className="download-row-actions">
           {canCancel && <Button variant="text" onClick={() => void onCancel(record.id)}>cancel</Button>}
@@ -2427,7 +2560,7 @@ function AccountPanel({ auth, siteName, favorites, favoritesLoading, favoritesEr
 
 function downloadStatusLabel(status: DownloadStatus): string {
   switch (status) {
-    case "ExistingTarget": return "already exists";
+    case "ExistingTarget": return "already on disk";
     case "Queued": return "queued";
     case "Running": return "downloading";
     case "Completed": return "completed";

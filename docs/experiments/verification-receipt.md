@@ -11,12 +11,18 @@ Date: 2026-08-23
 | Headless WebGL route | `agent-browser` open/snapshot plus Chrome capture of `#/playground?demo=1` | pass; populated canvas and accessible node controls rendered |
 | Headless non-WebGL route | `agent-browser --args '--disable-gpu,--disable-software-rasterizer'` | pass; fallback rendered and remained actionable |
 | reduced motion | `agent-browser set media dark reduced-motion` and reload | pass at browser behavior level; native visual check pending |
-| Downloads media collection | `agent-browser` open `#/downloads?demo=1`, full screenshot and snapshot | pass; four post thumbnails plus archive fallback, progress, summary metrics, and failed state rendered |
+| Downloads media collection | `agent-browser` open `#/downloads?demo=1`, full screenshot and snapshot | pass; five post records plus archive fallback, progress, summary metrics, existing-target state, and failed state rendered |
+| Downloads list/card switch | `agent-browser` click `cards`, inspect `.download-list-cards` and computed progress track | pass; all three download groups switch to cards and the prominent track renders at 0.48rem |
+| Download progress semantics | demo queue with one known and one unknown total | pass; overall progress reports known bytes honestly and calls out the unknown item instead of inventing a total |
+| Existing-target history | demo `ExistingTarget` record and runtime enqueue path | pass; “already on disk” is retained as history with an explanation and active duplicate requests return the original queue record |
 | Explore media fallback | `agent-browser` open `#/latest?demo=1` | pass; four deterministic preview cards rendered with disabled demo actions |
 | Inspect stage sizing | `agent-browser` click demo post and inspect `.MuiDialog-container` bounds | pass; desktop renders a media stage beside a detail rail instead of a shallow stacked sheet |
 | Inspect compact layout | `agent-browser` set viewport 390×844 and capture the demo detail | pass; stage, actions, tags, and metadata stack in the intended order; close control remains reachable |
 | Inspect keyboard zoom | focus `.detail-image-frame`, press `+`, inspect zoom status | pass; zoom changed to 110% without losing focus |
 | Inspect pointer zoom | click `button[aria-label="zoom in"]`, inspect zoom status and computed transform | pass; navigation no longer intercepts the zoom control; zoom changed to 110% and the image transform changed |
+| Inspect wheel/double-click zoom | `agent-browser` wheel input and double-click on `.detail-image-frame` | pass; wheel changes zoom, double-click toggles 150%, and reset returns to 100% |
+| Inspect image pan | `agent-browser mouse down/move/up` on a zoomed `.detail-image-frame` | pass; image movement is reflected in bounded `--detail-pan-x/y` values and reset clears both axes |
+| Inspect transient detail chrome | open detail and wait for the navigation count timeout | pass; the `1 of N` counter fades after 2.4 seconds while zoom controls remain discoverable |
 | Inspect direct route | open `#/posts/yandere/8421?demo=1` without history state | pass; route reconstructs a post reference and opens the detail surface |
 | light/reduced-motion quality | `agent-browser set media light reduced-motion` on Downloads demo | pass; hierarchy and progress remain readable without animation |
 | opaque surfaces | `--glass-fallback` and forced non-WebGL capture | pass at browser level |

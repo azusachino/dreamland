@@ -133,10 +133,31 @@ impl StateStore {
 
     pub fn enqueue(&self, request: DownloadRequest) -> Result<DownloadRecord> {
         validate_request(&request)?;
+        let connection = self.connection()?;
+        let duplicate = connection
+            .query_row(
+                "SELECT id, site_id, post_id, variant, source_url, download_root,
+                        metadata_json, status, target_path, error, attempts,
+                        bytes_downloaded, total_bytes, created_at_ms, updated_at_ms
+                 FROM download_queue
+                 WHERE site_id = ?1 AND post_id = ?2 AND variant = ?3
+                   AND status IN ('Queued', 'Running')
+                 ORDER BY created_at_ms ASC, id ASC
+                 LIMIT 1",
+                params![
+                    request.site.as_str(),
+                    request.post_id,
+                    variant_name(request.variant),
+                ],
+                decode_stored_download,
+            )
+            .optional()?;
+        if let Some(existing) = duplicate {
+            return Ok(existing.record);
+        }
         let id = uuid::Uuid::new_v4().to_string();
         let now = now_ms();
         let metadata_json = serde_json::to_string(&request.metadata)?;
-        let connection = self.connection()?;
         connection.execute(
             "INSERT INTO download_queue
              (id, site_id, post_id, variant, source_url, download_root, metadata_json,
@@ -1331,6 +1352,17 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_active_requests_return_the_existing_record() {
+        let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
+        let store = StateStore::open(&path).unwrap();
+        let first = store.enqueue(test_request(&std::env::temp_dir())).unwrap();
+        let second = store.enqueue(test_request(&std::env::temp_dir())).unwrap();
+        assert_eq!(first.id, second.id);
+        assert_eq!(store.active(10).unwrap().len(), 1);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn saved_queries_round_trip_and_delete() {
         let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
         let yandere = SiteId::new("yandere");
@@ -1585,7 +1617,9 @@ mod tests {
         let path = std::env::temp_dir().join(format!("dreamland-{}.sqlite3", uuid::Uuid::new_v4()));
         let store = StateStore::open(&path).unwrap();
         let first = store.enqueue(test_request(&std::env::temp_dir())).unwrap();
-        let second = store.enqueue(test_request(&std::env::temp_dir())).unwrap();
+        let mut second_request = test_request(&std::env::temp_dir());
+        second_request.post_id = "124".to_owned();
+        let second = store.enqueue(second_request).unwrap();
         store.cancel_queued(&first.id).unwrap();
         store.cancel_queued(&second.id).unwrap();
         assert_eq!(store.history_page(1, 0).unwrap().len(), 1);
