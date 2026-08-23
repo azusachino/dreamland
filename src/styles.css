@@ -726,6 +726,8 @@ select:focus-visible {
   border: 1px solid var(--outline);
   border-radius: var(--radius-md);
   cursor: pointer;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   transition: border-color var(--motion-fast) var(--ease-smooth-out), box-shadow var(--motion-fast) var(--ease-smooth-out), transform var(--motion-fast) var(--ease-smooth-out);
 }
@@ -885,6 +887,10 @@ select:focus-visible {
 }
 
 .card-details {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
   padding: 0.85rem;
 }
 
@@ -903,7 +909,8 @@ select:focus-visible {
 .card-footer {
   gap: 0.5rem;
   justify-content: space-between;
-  margin-top: 1rem;
+  margin-top: auto;
+  padding-top: 1rem;
 }
 
 .post-meta {
