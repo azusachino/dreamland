@@ -1859,6 +1859,7 @@ select:focus-visible {
   justify-content: space-between;
   left: 1rem;
   margin: 0;
+  pointer-events: none;
   position: absolute;
   right: 1rem;
   text-shadow: 0 0.1rem 0.5rem var(--detail-stage-scrim);
@@ -1871,6 +1872,7 @@ select:focus-visible {
   border-color: var(--detail-control-border);
   color: var(--detail-stage-ink);
   height: 2.2rem;
+  pointer-events: auto;
   width: 2.2rem;
 }
 

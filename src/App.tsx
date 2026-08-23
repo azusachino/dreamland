@@ -81,7 +81,7 @@ import { LoadMore } from "./components/LoadMore";
 import { GallerySkeleton, RowSkeleton } from "./components/LoadingStates";
 import { MainNavigation } from "./components/MainNavigation";
 import { AdvancedQueryDialog as PopupAdvancedQueryDialog, ErrorState as PopupErrorState, SettingsDialog as PopupSettingsDialog, Toast as PopupToast } from "./components/Popups";
-import { isPoolPath, isPostPath, pathForView, poolPath, popularPath, postPath, searchPath, viewFromPath } from "./navigation";
+import { isPoolPath, isPostPath, pathForView, poolPath, popularPath, postPath, postRoute, searchPath, viewFromPath } from "./navigation";
 
 import type { ViewMode } from "./view-model";
 const DownloadPlayground = lazy(() => import("./components/DownloadPlayground"));
@@ -484,6 +484,28 @@ const demoArchiveRecords: ArchiveRecord[] = [
 
 const demoPosts = demoDownloadRecords.map((record) => record.metadata);
 
+function routePost(siteId: string, postId: string): Post {
+  return {
+    post: { site: siteId, id: postId },
+    tags: [],
+    author: null,
+    creator_id: null,
+    md5: null,
+    source: null,
+    parent_id: null,
+    has_children: false,
+    created_at: null,
+    width: null,
+    height: null,
+    rating: "Unknown",
+    score: null,
+    preview_url: null,
+    sample_url: null,
+    full_url: null,
+    file_size: null,
+  };
+}
+
 function App() {
   const queryClient = useQueryClient();
   const location = useLocation();
@@ -533,7 +555,7 @@ function App() {
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const routeSite = params.get("site");
+    const routeSite = params.get("site") ?? postRoute(location.pathname)?.siteId;
     if (routeSite && routeSite !== selectedSiteId) setSelectedSiteId(routeSite);
     if (location.pathname === "/popular") {
       const routePeriod = params.get("period");
@@ -569,11 +591,14 @@ function App() {
     }
     if (isPostPath(location.pathname)) {
       const routeState = location.state as { post?: Post } | null;
+      const route = postRoute(location.pathname);
       if (routeState?.post) setSelectedPost(routeState.post);
+      else if (route && demoMode) setSelectedPost(demoPosts.find((post) => post.post.site === route.siteId && post.post.id === route.postId) ?? routePost(route.siteId, route.postId));
+      else if (route) setSelectedPost(routePost(route.siteId, route.postId));
     } else {
       setSelectedPost(null);
     }
-  }, [location.pathname, location.search]);
+  }, [demoMode, location.pathname, location.search, location.state]);
 
   useEffect(() => {
     if (themeMode === "system") document.documentElement.removeAttribute("data-theme");

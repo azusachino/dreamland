@@ -16,6 +16,8 @@ Date: 2026-08-23
 | Inspect stage sizing | `agent-browser` click demo post and inspect `.MuiDialog-container` bounds | pass; desktop renders a media stage beside a detail rail instead of a shallow stacked sheet |
 | Inspect compact layout | `agent-browser` set viewport 390×844 and capture the demo detail | pass; stage, actions, tags, and metadata stack in the intended order; close control remains reachable |
 | Inspect keyboard zoom | focus `.detail-image-frame`, press `+`, inspect zoom status | pass; zoom changed to 110% without losing focus |
+| Inspect pointer zoom | click `button[aria-label="zoom in"]`, inspect zoom status and computed transform | pass; navigation no longer intercepts the zoom control; zoom changed to 110% and the image transform changed |
+| Inspect direct route | open `#/posts/yandere/8421?demo=1` without history state | pass; route reconstructs a post reference and opens the detail surface |
 | light/reduced-motion quality | `agent-browser set media light reduced-motion` on Downloads demo | pass; hierarchy and progress remain readable without animation |
 | opaque surfaces | `--glass-fallback` and forced non-WebGL capture | pass at browser level |
 | WebGL context loss | `agent-browser eval` dispatch of `webglcontextlost`, fallback text, and canvas count | pass in browser; native event injection pending |
