@@ -2619,6 +2619,10 @@ select:focus-visible {
     padding: 0.65rem;
   }
 
+  .header-actions .settings-button .MuiButton-startIcon {
+    margin: 0;
+  }
+
   .app-layout,
   .app-layout.has-detail {
     gap: 0.8rem;

@@ -171,6 +171,7 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ config, themeMode, onThemeChange, onCancel, onSave, onDetectProxy, onClearCache, formatError }: SettingsDialogProps) {
+  const isAndroid = document.documentElement.dataset.platform === "android";
   const [downloadPath, setDownloadPath] = useState(config?.download_path ?? "");
   const [contentPolicy, setContentPolicy] = useState<ContentPolicy>(config?.content_policy ?? "SafeOnly");
   const [downloadVariant, setDownloadVariant] = useState<MediaVariant>(config?.download_variant ?? "Full");
@@ -242,7 +243,15 @@ export function SettingsDialog({ config, themeMode, onThemeChange, onCancel, onS
           </div>
           <div className="settings-section">
             <p className="section-label">storage & site</p>
-            <TextField label="download path" required value={downloadPath} onChange={(event) => setDownloadPath(event.target.value)} fullWidth />
+            <TextField
+              label="download path"
+              required
+              value={downloadPath}
+              onChange={(event) => setDownloadPath(event.target.value)}
+              fullWidth
+              slotProps={isAndroid ? { input: { readOnly: true } } : undefined}
+              helperText={isAndroid ? "managed by the app on Android; downloads are also saved to Pictures/Dreamland." : undefined}
+            />
             <FormControl fullWidth>
               <InputLabel id="content-policy-label">content policy</InputLabel>
               <Select labelId="content-policy-label" label="content policy" value={contentPolicy} onChange={(event) => setContentPolicy(event.target.value as ContentPolicy)}>

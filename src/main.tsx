@@ -7,7 +7,11 @@ import App from "./App";
 import "./styles.css";
 
 if (isTauri()) {
-  document.documentElement.dataset.platform = /Mac/.test(navigator.platform) ? "macos" : "native";
+  document.documentElement.dataset.platform = /Mac/.test(navigator.platform)
+    ? "macos"
+    : /Android/.test(navigator.userAgent)
+      ? "android"
+      : "native";
 }
 
 const queryClient = new QueryClient();
