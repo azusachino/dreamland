@@ -5,7 +5,7 @@
 
 [![status: 0.1.2 release candidate](https://img.shields.io/badge/status-0.1.2%20release%20candidate-557c86)](https://github.com/azusachino/dreamland/issues/5)
 [![ci](https://github.com/azusachino/dreamland/actions/workflows/ci.yml/badge.svg)](https://github.com/azusachino/dreamland/actions/workflows/ci.yml)
-[![targets: macOS and Windows](https://img.shields.io/badge/targets-macOS%20%7C%20Windows-557c86)](docs/adr/0001-platform-and-toolchain.md)
+[![targets: macOS, Windows, Android](https://img.shields.io/badge/targets-macOS%20%7C%20Windows%20%7C%20Android-557c86)](docs/adr/0011-android-target.md)
 [![Tauri 2](https://img.shields.io/badge/Tauri-2-24c8db)](https://v2.tauri.app/)
 [![React 19](https://img.shields.io/badge/React-19-61dafb)](https://react.dev/)
 [![Rust](https://img.shields.io/badge/runtime-Rust-b7410e)](https://www.rust-lang.org/)
@@ -61,9 +61,10 @@ as first-class flows:
 6. Return through normal history, reopen the local file, or continue from the
    download history grouped by time.
 
-The product is deliberately a desktop image board, not a generic social feed.
-Linux and mobile are outside the current target; there is no distribution
-schedule yet.
+The product is deliberately a desktop-first image board, not a generic social
+feed. Android is now a supported target alongside macOS and Windows (see
+[ADR 0011](docs/adr/0011-android-target.md)); Linux remains outside the
+current target, and there is no distribution schedule yet.
 
 ## Architecture at a glance
 

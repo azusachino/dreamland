@@ -1,7 +1,7 @@
 SHELL := bash
 
 .DEFAULT_GOAL := help
-.PHONY: help install doctor dev build frontend fmt test check validate
+.PHONY: help install doctor dev build android-build frontend fmt test check validate
 
 help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | \
@@ -19,6 +19,9 @@ dev: ## Run the Tauri development application
 
 build: ## Build the distributable Tauri application
 	bun run tauri:build
+
+android-build: ## Build the Android debug APK
+	bun run tauri:android:build
 
 frontend: ## Build the React frontend
 	bun run build

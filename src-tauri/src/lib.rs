@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::Mutex;
 
 use dreamland_core::{
@@ -13,6 +12,7 @@ use dreamland_runtime::{
 use dreamland_sites::SiteDescriptor;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri_plugin_opener::OpenerExt;
 
 /// Posts from the most recent typed query, keyed by site and post id.
 /// Downloads resolve their URL from here rather than trusting a client-supplied
@@ -152,6 +152,7 @@ async fn clear_cache(state: State<'_, RuntimeState>) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
+#[cfg(not(mobile))]
 fn yande_auth_window(
     app: &AppHandle,
     state: &RuntimeState,
@@ -183,6 +184,13 @@ fn yande_auth_window(
     .map_err(|error| error.to_string())
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+fn begin_auth(_app: AppHandle, _state: State<'_, RuntimeState>) -> Result<(), String> {
+    Err("sign-in is not available on Android yet".to_owned())
+}
+
+#[cfg(not(mobile))]
 #[tauri::command]
 fn begin_auth(app: AppHandle, state: State<'_, RuntimeState>) -> Result<(), String> {
     yande_auth_window(&app, &state, true).map(|_| ())
@@ -299,6 +307,19 @@ fn open_similar_search(
     .map_err(|error| error.to_string())
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+async fn auth_status(
+    _app: AppHandle,
+    _state: State<'_, RuntimeState>,
+) -> Result<AuthStatus, String> {
+    Ok(AuthStatus {
+        authenticated: false,
+        username: None,
+    })
+}
+
+#[cfg(not(mobile))]
 #[tauri::command]
 async fn auth_status(app: AppHandle, state: State<'_, RuntimeState>) -> Result<AuthStatus, String> {
     let window = yande_auth_window(&app, &state, false)?;
@@ -930,7 +951,7 @@ async fn cancel_archive(state: State<'_, RuntimeState>, id: String) -> Result<()
 }
 
 #[tauri::command]
-fn open_download(path: String) -> Result<(), String> {
+fn open_download(app: AppHandle, path: String) -> Result<(), String> {
     let path = PathBuf::from(path);
     if !path.is_absolute() {
         return Err("download path must be absolute".to_owned());
@@ -939,33 +960,39 @@ fn open_download(path: String) -> Result<(), String> {
         return Err("downloaded file no longer exists".to_owned());
     }
 
-    #[cfg(target_os = "macos")]
-    let mut command = Command::new("open");
-    #[cfg(target_os = "windows")]
-    let mut command = {
-        let mut command = Command::new("cmd");
-        command.args(["/C", "start", ""]);
-        command
-    };
-    #[cfg(all(unix, not(target_os = "macos")))]
-    let mut command = Command::new("xdg-open");
-
-    command
-        .arg(path)
-        .spawn()
-        .map(|_| ())
+    app.opener()
+        .open_path(path.to_string_lossy(), None::<String>)
         .map_err(|error| format!("could not open downloaded file: {error}"))
 }
 
+#[cfg(mobile)]
+fn set_mobile_dirs(app: &tauri::App) {
+    let path = app.path();
+    if let Ok(data_dir) = path.app_data_dir() {
+        std::env::set_var("XDG_DATA_HOME", &data_dir);
+        std::env::set_var("XDG_STATE_HOME", &data_dir);
+        std::env::set_var("XDG_CONFIG_HOME", &data_dir);
+        std::env::set_var("DREAMLAND_DOWNLOAD_DIR", data_dir.join("images"));
+    }
+    if let Ok(cache_dir) = path.app_cache_dir() {
+        std::env::set_var("XDG_CACHE_HOME", &cache_dir);
+    }
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let config =
-        AppConfig::load_or_default().expect("Dreamland runtime configuration must be loadable");
-    let runtime_state =
-        RuntimeState::new(&config).expect("Dreamland local SQLite state must be initializable");
     tauri::Builder::default()
-        .manage(runtime_state)
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let downloads = app.state::<RuntimeState>().downloads.clone();
+            #[cfg(mobile)]
+            set_mobile_dirs(app);
+
+            let config = AppConfig::load_or_default()
+                .expect("Dreamland runtime configuration must be loadable");
+            let runtime_state = RuntimeState::new(&config)
+                .expect("Dreamland local SQLite state must be initializable");
+            let downloads = runtime_state.downloads.clone();
+            app.manage(runtime_state);
             downloads.set_detail_cache_root(dreamland_runtime::default_detail_cache_path());
             tauri::async_runtime::spawn(downloads.worker());
             tauri::async_runtime::spawn(downloads.archive_worker());
