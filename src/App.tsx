@@ -1882,7 +1882,7 @@ function PostInspector({ post, detailLoading, detailError, downloading, download
             <IconButton aria-label="close details" onClick={onClose}><Icon name="close" /></IconButton>
           </div>
           <div className="detail-preview">
-            <DetailImage key={post.post.id} post={post} demo={demo} onActivity={revealChrome} />
+            <DetailImage key={post.post.id} post={post} demo={demo} onActivity={revealChrome} canGoPrevious={canGoPrevious} canGoNext={canGoNext} onPrevious={onPrevious} onNext={onNext} />
           </div>
           <div className="detail-navigation" aria-label="post preview navigation">
             <IconButton className="detail-nav-button" aria-label="previous post" title="previous post" disabled={!canGoPrevious} onClick={onPrevious}><Icon name="back" /></IconButton>
@@ -1975,7 +1975,7 @@ function PostInspector({ post, detailLoading, detailError, downloading, download
   );
 }
 
-function DetailImage({ post, demo = false, onActivity }: { post: Post; demo?: boolean; onActivity?: () => void }) {
+function DetailImage({ post, demo = false, onActivity, canGoPrevious, canGoNext, onPrevious, onNext }: { post: Post; demo?: boolean; onActivity?: () => void; canGoPrevious: boolean; canGoNext: boolean; onPrevious: () => void; onNext: () => void }) {
   const minZoom = 1;
   const maxZoom = 4;
   const [source, setSource] = useState<string | null>(null);
@@ -1988,6 +1988,9 @@ function DetailImage({ post, demo = false, onActivity }: { post: Post; demo?: bo
   const [dragging, setDragging] = useState(false);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ pointerId: number; x: number; y: number; panX: number; panY: number } | null>(null);
+  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchRef = useRef<{ distance: number; zoom: number } | null>(null);
+  const swipeRef = useRef<{ pointerId: number; startX: number; startY: number } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -2049,21 +2052,55 @@ function DetailImage({ post, demo = false, onActivity }: { post: Post; demo?: bo
     }
   }
 
+  function pointerDistance(a: { x: number; y: number }, b: { x: number; y: number }) {
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+
   function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
     onActivity?.();
-    if (!source || !loaded || zoom <= minZoom || event.button !== 0) return;
+    if (!source || !loaded || event.button !== 0) return;
     if (event.target instanceof Element && event.target.closest("button")) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y };
-    setDragging(true);
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (pointersRef.current.size === 2) {
+      dragRef.current = null;
+      swipeRef.current = null;
+      setDragging(false);
+      const [a, b] = Array.from(pointersRef.current.values());
+      pinchRef.current = { distance: pointerDistance(a, b), zoom };
+    } else if (pointersRef.current.size === 1) {
+      if (zoom > minZoom) {
+        dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, panX: pan.x, panY: pan.y };
+        setDragging(true);
+      } else if (event.pointerType === "touch") {
+        swipeRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY };
+      }
+    }
   }
 
   function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
     onActivity?.();
+    if (pointersRef.current.has(event.pointerId)) {
+      pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    }
+
+    if (pinchRef.current && pointersRef.current.size === 2) {
+      const [a, b] = Array.from(pointersRef.current.values());
+      const scale = pointerDistance(a, b) / pinchRef.current.distance;
+      const nextZoom = Math.min(maxZoom, Math.max(minZoom, Number((pinchRef.current.zoom * scale).toFixed(2))));
+      setZoom(nextZoom);
+      setPan((currentPan) => boundedPan(currentPan.x, currentPan.y, nextZoom));
+      return;
+    }
+
     if (dragRef.current?.pointerId === event.pointerId) {
       setPan(boundedPan(dragRef.current.panX + event.clientX - dragRef.current.x, dragRef.current.panY + event.clientY - dragRef.current.y));
       return;
     }
+
+    if (swipeRef.current?.pointerId === event.pointerId) return;
+
     if (event.pointerType === "touch" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     const horizontal = ((event.clientX - bounds.left) / bounds.width - 0.5) * 2;
@@ -2073,11 +2110,25 @@ function DetailImage({ post, demo = false, onActivity }: { post: Post; demo?: bo
   }
 
   function endPointerDrag(event: PointerEvent<HTMLDivElement>) {
-    if (dragRef.current?.pointerId === event.pointerId) {
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    pointersRef.current.delete(event.pointerId);
+
+    if (pinchRef.current) {
+      if (pointersRef.current.size < 2) pinchRef.current = null;
+    } else if (swipeRef.current?.pointerId === event.pointerId) {
+      const deltaX = event.clientX - swipeRef.current.startX;
+      const deltaY = event.clientY - swipeRef.current.startY;
+      swipeRef.current = null;
+      const threshold = 56;
+      if (Math.abs(deltaX) > threshold && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
+        if (deltaX > 0 && canGoPrevious) onPrevious();
+        else if (deltaX < 0 && canGoNext) onNext();
+      }
+    } else if (dragRef.current?.pointerId === event.pointerId) {
       dragRef.current = null;
       setDragging(false);
     }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     resetPointerTilt(event);
   }
 
@@ -2104,7 +2155,7 @@ function DetailImage({ post, demo = false, onActivity }: { post: Post; demo?: bo
   return (
     <div
       role="group"
-      aria-label="full artwork; use plus, minus, wheel, or drag to zoom and move"
+      aria-label="full artwork; use plus, minus, wheel, or pinch to zoom, drag to move when zoomed, or swipe to go to the previous or next post"
       tabIndex={0}
       ref={frameRef}
       style={{ "--detail-zoom": zoom, "--detail-pan-x": `${pan.x}px`, "--detail-pan-y": `${pan.y}px` } as CSSProperties}
