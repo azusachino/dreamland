@@ -786,6 +786,7 @@ pub struct DownloadManager {
     archive_cookies: Arc<Mutex<HashMap<String, String>>>,
     image_notify: Arc<Notify>,
     archive_notify: Arc<Notify>,
+    completions: tokio::sync::broadcast::Sender<DownloadRecord>,
 }
 
 impl DownloadManager {
@@ -797,6 +798,7 @@ impl DownloadManager {
         let store = StateStore::open(state_path)?;
         store.recover_running()?;
         store.recover_running_archives()?;
+        let (completions, _) = tokio::sync::broadcast::channel(16);
         Ok(Self {
             store,
             cache_root: Arc::new(cache_root.into()),
@@ -806,7 +808,15 @@ impl DownloadManager {
             archive_cookies: Arc::new(Mutex::new(HashMap::new())),
             image_notify: Arc::new(Notify::new()),
             archive_notify: Arc::new(Notify::new()),
+            completions,
         })
+    }
+
+    /// Subscribes to downloads that finish as `Completed` or `ExistingTarget`.
+    /// Intended for platform layers (e.g. a mobile notification bridge); the
+    /// channel is dropped silently if nobody subscribes.
+    pub fn subscribe_completions(&self) -> tokio::sync::broadcast::Receiver<DownloadRecord> {
+        self.completions.subscribe()
     }
 
     pub fn worker(&self) -> impl std::future::Future<Output = ()> + Send + 'static {
@@ -1082,12 +1092,21 @@ impl DownloadManager {
             };
             let store = self.store.clone();
             let id = job.record.id.clone();
-            if let Err(error) = tokio::task::spawn_blocking(move || {
+            match tokio::task::spawn_blocking(move || {
                 store.finish(&id, status, target.as_deref(), error.as_deref())
             })
             .await
             {
-                eprintln!("download queue finish failed: {error}");
+                Ok(Ok(record)) => {
+                    if matches!(
+                        record.status,
+                        DownloadStatus::Completed | DownloadStatus::ExistingTarget
+                    ) {
+                        let _ = self.completions.send(record);
+                    }
+                }
+                Ok(Err(error)) => eprintln!("download queue finish failed: {error}"),
+                Err(error) => eprintln!("download queue finish failed: {error}"),
             }
         }
     }
