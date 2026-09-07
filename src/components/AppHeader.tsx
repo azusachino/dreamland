@@ -1,4 +1,4 @@
-import { type FormEvent, type RefObject } from "react";
+import { type FormEvent, type RefObject, useEffect, useRef } from "react";
 import { Button, IconButton, InputAdornment, Menu, MenuItem, TextField } from "@mui/material";
 import { Icon } from "./Icon";
 import type { SiteDescriptor } from "../lib/ipc";
@@ -39,8 +39,22 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({ activeSite, activeSiteId, sites, siteMenuAnchor, onSiteMenuOpen, onSiteMenuClose, onSelectSite, onOpenSite, title, loading, canGoBack, canGoForward, onBack, onForward, onRefresh, onSettings, searchDraft, searchInput, searchFocused, onSearchFocus, onSearchBlur, onSearchChange, onSearchSubmit, onClearSearch, onOpenAdvancedSearch, suggestions, onChooseTag }: AppHeaderProps) {
+  const headerRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    const setHeight = () => {
+      document.documentElement.style.setProperty("--app-header-height", `${header.offsetHeight}px`);
+    };
+    setHeight();
+    const observer = new ResizeObserver(setHeight);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <header className="app-header shell-surface" data-tauri-drag-region="deep">
+    <header ref={headerRef} className="app-header shell-surface" data-tauri-drag-region="deep">
       <div className="header-identity">
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true">✦</div>

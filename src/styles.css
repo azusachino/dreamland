@@ -233,6 +233,7 @@ select:focus-visible {
   grid-template-columns: max-content minmax(20rem, 1fr) max-content;
   min-height: 5.3rem;
   padding: 0.8rem clamp(1rem, 3vw, 2.5rem);
+  padding-top: max(0.8rem, env(safe-area-inset-top));
   position: sticky;
   top: 0;
   z-index: 5;
@@ -508,7 +509,7 @@ select:focus-visible {
   overflow-x: auto;
   padding: 0.35rem;
   position: sticky;
-  top: 7.3rem;
+  top: var(--app-header-height, 7.3rem);
   z-index: 4;
 }
 
@@ -759,10 +760,6 @@ select:focus-visible {
   width: 100%;
 }
 
-.skeleton-card .tag-list {
-  min-height: 2rem;
-}
-
 .skeleton-rows {
   display: grid;
   gap: 0.75rem;
@@ -980,12 +977,6 @@ select:focus-visible {
 .tag-chip-rose { --tag-bg: var(--tag-rose-bg); --tag-ink: var(--tag-rose-ink); --tag-border: var(--tag-rose-border); }
 .tag-chip-mint { --tag-bg: var(--tag-mint-bg); --tag-ink: var(--tag-mint-ink); --tag-border: var(--tag-mint-border); }
 .tag-chip-blue { --tag-bg: var(--tag-blue-bg); --tag-ink: var(--tag-blue-ink); --tag-border: var(--tag-blue-border); }
-
-.tag-overflow {
-  color: var(--ink-subtle);
-  font-size: 0.7rem;
-  padding: 0.35rem 0.2rem;
-}
 
 .card-footer {
   gap: 0.5rem;
@@ -2639,11 +2630,6 @@ select:focus-visible {
     padding: 0.65rem;
   }
 
-  .header-actions .settings-button::before {
-    content: "⚙";
-    font-size: 1rem;
-  }
-
   .app-layout,
   .app-layout.has-detail {
     gap: 0.8rem;
@@ -2654,7 +2640,7 @@ select:focus-visible {
   .view-tabs {
     margin-bottom: 1rem;
     position: sticky;
-    top: 0.75rem;
+    top: var(--app-header-height, 0.75rem);
     z-index: 5;
   }
 

@@ -7,11 +7,6 @@ function PostCardSkeleton() {
         <Skeleton className="skeleton-media" variant="rectangular" animation="wave" />
       </div>
       <div className="card-details">
-        <div className="tag-list">
-          <Skeleton variant="rounded" width="38%" height={28} animation="wave" />
-          <Skeleton variant="rounded" width="30%" height={28} animation="wave" />
-          <Skeleton variant="rounded" width="24%" height={28} animation="wave" />
-        </div>
         <div className="card-footer">
           <Skeleton variant="text" width="42%" height={24} animation="wave" />
           <Skeleton variant="rounded" width={92} height={40} animation="wave" />

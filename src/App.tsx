@@ -1536,7 +1536,6 @@ function App() {
                         demo={demoMode}
                         onSelect={openPostDetail}
                         onToggleSelection={() => togglePostSelection(post.post.id)}
-                        onTag={chooseTag}
                         favoriteSupported={activeSite?.capabilities.remote_favorites === true}
                         favorited={favoritePostIds.has(post.post.id)}
                         favoriteUpdating={favoriteUpdatingIds.has(post.post.id)}
@@ -1745,10 +1744,9 @@ interface ImageCardProps {
   onFavorite: (post: Post) => Promise<void>;
   onSelect: (post: Post) => void;
   onToggleSelection: () => void;
-  onTag: (tag: string) => void;
 }
 
-function ImageCard({ post, demo = false, selectionMode, selected, downloading, downloadStatus, favoriteSupported, favorited, favoriteUpdating, onDownload, onFavorite, onSelect, onToggleSelection, onTag }: ImageCardProps) {
+function ImageCard({ post, demo = false, selectionMode, selected, downloading, downloadStatus, favoriteSupported, favorited, favoriteUpdating, onDownload, onFavorite, onSelect, onToggleSelection }: ImageCardProps) {
   const previewUrl = post.preview_url ?? post.sample_url ?? post.full_url;
   const activeDownload = downloading || (downloadStatus !== undefined && isActiveDownload(downloadStatus));
   const downloaded = downloadStatus === "Completed";
@@ -1802,15 +1800,6 @@ function ImageCard({ post, demo = false, selectionMode, selected, downloading, d
         )}
       </div>
       <div className="card-details">
-        <div className="tag-list">
-          {post.tags.slice(0, 4).map((tag) => (
-            <Chip key={tag} className={`tag-chip tag-chip-${tagTone(tag)}`} component="button" clickable label={tag} onClick={(event) => {
-              event.stopPropagation();
-              onTag(tag);
-            }} />
-          ))}
-          {post.tags.length > 4 && <span className="tag-overflow">+{post.tags.length - 4}</span>}
-        </div>
         <div className="card-footer">
           <span className="post-meta">#{post.post.id}{post.score !== null ? ` · ${post.score} score` : ""}</span>
               <Button variant="contained" disabled={demo || activeDownload || downloaded || alreadyOnDisk} title={demo ? "demo fixture" : activeDownload ? "download already in progress" : downloaded ? "file already downloaded" : alreadyOnDisk ? "file already on disk" : "download image"} onClick={(event) => {
@@ -2534,7 +2523,6 @@ function PoolPanel({ pools, poolsLoading, poolsError, poolsHasNext, selectedPool
                 onFavorite={onFavorite}
                 onSelect={onSelectPost}
                 onToggleSelection={() => undefined}
-                onTag={onTag}
               />
             ))}
           </div>
@@ -2633,7 +2621,6 @@ function AccountPanel({ auth, siteName, favorites, favoritesLoading, favoritesEr
                 onFavorite={onFavorite}
                 onSelect={onSelect}
                 onToggleSelection={() => undefined}
-                onTag={onTag}
               />
             ))}
           </div>
