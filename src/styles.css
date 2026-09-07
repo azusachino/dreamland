@@ -2322,17 +2322,6 @@ select:focus-visible {
   margin: 0;
 }
 
-.detail-more-data {
-  border-top: 1px solid var(--outline);
-  padding-top: 0.75rem;
-}
-
-.detail-more-data-content {
-  display: grid;
-  gap: 1rem;
-  padding-top: 1rem;
-}
-
 .inspector-section,
 .settings-section {
   display: grid;

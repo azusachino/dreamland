@@ -2,9 +2,6 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSPropertie
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
   Alert,
   Button,
   Chip,
@@ -1930,14 +1927,14 @@ function PostInspector({ post, detailLoading, detailError, downloading, download
             </Button>
           </div>
           <div className="detail-explore">
-            <span className="section-label">explore</span>
+            <span className="section-label">tags</span>
             <div className="tag-list" aria-label="post tags">
               {post.tags.map((tag) => <Chip key={tag} className={`tag-chip tag-chip-${tagTone(tag)}`} component="button" clickable label={tag} onClick={() => onTag(tag)} />)}
             </div>
             {relatedTagsSupported && (
               <div className="detail-related-tags">
                 <Button variant="outlined" className="detail-post-link" onClick={onToggleRelatedTags}>
-                  {relatedTagsOpen ? "hide related" : "related tags"}
+                  {relatedTagsOpen ? "hide related tags" : "show related tags"}
                 </Button>
                 {relatedTagsOpen && <p className="detail-helper">site metadata may include tags outside the current rating filter; post results still follow content policy.</p>}
                 {relatedTagsOpen && relatedTagsLoading && <p className="detail-helper" role="status">loading related tags…</p>}
@@ -1952,33 +1949,27 @@ function PostInspector({ post, detailLoading, detailError, downloading, download
                 {relatedTagsOpen && !relatedTagsLoading && !relatedTagsError && relatedTags.length === 0 && <p className="detail-helper">no related tags found.</p>}
               </div>
             )}
+            {(post.parent_id || post.has_children) && (
+              <div className="detail-related-actions" aria-label="related posts">
+                {post.parent_id && <Button variant="outlined" className="detail-post-link" onClick={() => onTag(`id:${post.parent_id}`)}>find parent #{post.parent_id}</Button>}
+                {post.has_children && <Button variant="outlined" className="detail-post-link" onClick={() => onTag(`parent:${post.post.id}`)}>find child posts</Button>}
+              </div>
+            )}
+            <span className="section-label">details</span>
+            <dl className="metadata">
+              <div><dt>site</dt><dd>{siteName}</dd></div>
+              <div><dt>post id</dt><dd>{post.post.id}</dd></div>
+              <div><dt>rating</dt><dd>{post.rating.toLowerCase()}</dd></div>
+              <div><dt>size</dt><dd>{post.width ?? "?"}×{post.height ?? "?"}</dd></div>
+              <div><dt>score</dt><dd>{post.score ?? "—"}</dd></div>
+              <div><dt>file size</dt><dd>{post.file_size ? `${Math.round(post.file_size / 1024)} kb` : "—"}</dd></div>
+              <div><dt>md5</dt><dd className="metadata-value">{post.md5 ?? "—"}</dd></div>
+              <div><dt>parent</dt><dd>{post.parent_id ? `#${post.parent_id}` : "none"}</dd></div>
+              <div><dt>children</dt><dd>{post.has_children ? "yes" : "no"}</dd></div>
+              <div><dt>created</dt><dd>{post.created_at ? new Date(post.created_at).toLocaleString() : "—"}</dd></div>
+            </dl>
+            {!detailLoading && !detailError && <p className="detail-helper">post details are hydrated from the site API.</p>}
           </div>
-          <Accordion className="detail-more-data">
-            <AccordionSummary expandIcon={<Icon name="chevron" />}>more data</AccordionSummary>
-            <AccordionDetails>
-            <div className="detail-more-data-content">
-              {(post.parent_id || post.has_children) && (
-                <div className="detail-related-actions" aria-label="related posts">
-                  {post.parent_id && <Button variant="outlined" className="detail-post-link" onClick={() => onTag(`id:${post.parent_id}`)}>find parent #{post.parent_id}</Button>}
-                  {post.has_children && <Button variant="outlined" className="detail-post-link" onClick={() => onTag(`parent:${post.post.id}`)}>find child posts</Button>}
-                </div>
-              )}
-              <dl className="metadata">
-                <div><dt>site</dt><dd>{siteName}</dd></div>
-                <div><dt>post id</dt><dd>{post.post.id}</dd></div>
-                <div><dt>rating</dt><dd>{post.rating.toLowerCase()}</dd></div>
-                <div><dt>size</dt><dd>{post.width ?? "?"}×{post.height ?? "?"}</dd></div>
-                <div><dt>score</dt><dd>{post.score ?? "—"}</dd></div>
-                <div><dt>file size</dt><dd>{post.file_size ? `${Math.round(post.file_size / 1024)} kb` : "—"}</dd></div>
-                <div><dt>md5</dt><dd className="metadata-value">{post.md5 ?? "—"}</dd></div>
-                <div><dt>parent</dt><dd>{post.parent_id ? `#${post.parent_id}` : "none"}</dd></div>
-                <div><dt>children</dt><dd>{post.has_children ? "yes" : "no"}</dd></div>
-                <div><dt>created</dt><dd>{post.created_at ? new Date(post.created_at).toLocaleString() : "—"}</dd></div>
-              </dl>
-              {!detailLoading && !detailError && <p className="detail-helper">post details are hydrated from the site API.</p>}
-            </div>
-            </AccordionDetails>
-          </Accordion>
         </section>
     </Dialog>
   );
