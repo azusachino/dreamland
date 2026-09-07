@@ -117,15 +117,40 @@ R8 needs a `-keep` rule for JNI-invoked Kotlin methods like `getCookies()`
 in `app/proguard-rules.pro`, or it will continue stripping them regardless.
 Not yet added — debug builds were the verification target for this ADR.
 
+## Addendum (2026-09-07): shared-gallery downloads, notifications, and a `Platform` trait
+
+Three more gaps found via `docs/ANDROID-ASSET-AND-DETAIL-AUDIT.md` and a
+comparison against the vendored `moebooru` reference, all fixed and verified
+on-device:
+
+- **Downloads now also land in `Pictures/Dreamland/`** via
+  `tauri-plugin-android-fs`'s `PublicStorage::write_new`, matching
+  moebooru's own `Pictures/$moeHost` `MediaStore` convention. The original
+  app-private copy (`app_data_dir/images/...`) is left in place unchanged —
+  the rest of the app (dedup checks, `open_download`, thumbnails) keeps
+  working from that path; the Pictures copy is a best-effort side effect
+  published after a download completes, via a new
+  `DownloadManager::subscribe_completions()` broadcast channel.
+- **Downloads now trigger a system notification** via
+  `tauri-plugin-notification`. Android 13+ (API 33) requires an explicit
+  runtime `POST_NOTIFICATIONS` prompt in addition to the manifest permission
+  (which the plugin injects automatically via its own AAR manifest merge —
+  it does not appear in the source `AndroidManifest.xml`, only in the
+  Gradle-merged build output); without calling `request_permission()`, the
+  notification channel exists but nothing is ever shown
+  (`dumpsys notification` reports `importance=NONE`). Requested once, at the
+  start of the same completion-handling task that does the gallery publish.
+- **`src-tauri/src/lib.rs`'s scattered `#[cfg(mobile)]`/`#[cfg(not(mobile))]`
+  duplicated-function pairs were replaced with a `Platform` trait**
+  (`src-tauri/src/platform.rs`), with `Desktop`/`Mobile` structs implementing
+  it and a single `ActivePlatform` type alias selecting between them at
+  compile time. Each `#[tauri::command]` is now a single definition that
+  delegates to `ActivePlatform::method(...)`, rather than two full duplicated
+  function bodies gated by `cfg`. The trait bound means adding a new
+  platform-divergent behavior forces both implementations to cover it.
+
 ## Consequences
 
-- **Downloads land in app-private storage on Android**, not the shared
-  Pictures/Downloads folder — Android's scoped storage makes app-private
-  storage the only location writable without extra permissions or a Storage
-  Access Framework picker. This is a known v1 limitation: the file is
-  reachable via `open_download`'s "open with" flow and a file manager with
-  ADB/root access, but not from the system Downloads app. Reaching shared
-  storage is a real follow-up, not solved here.
 - Frontend touch ergonomics (`App.tsx`'s wheel/keydown/mousemove-driven
   chrome) are not addressed by this ADR. Pointer events already fire on
   touch, so the app is usable, just not touch-optimized; that is a follow-up

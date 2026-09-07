@@ -1,12 +1,16 @@
 # Android asset-loading and detail-view audit
 
-Status: audit, 2026-09-07. No implementation changes in this doc; findings
-only, pending review before any fix lands. Written after Android on-device
-testing surfaced "full image could not be decoded" in the detail view and a
-general "slow network" feeling, and a request to compare the detail
-mechanism against the vendored `vendor/moebooru` reference
-(`com.github.yueeng.moebooru`, also installed on-device as the yande.re
-flavor `com.github.yueeng.moebooru.yande`).
+Status: audit, 2026-09-07. Written after Android on-device testing surfaced
+"full image could not be decoded" in the detail view and a general "slow
+network" feeling, and a request to compare the detail mechanism against the
+vendored `vendor/moebooru` reference (`com.github.yueeng.moebooru`, also
+installed on-device as the yande.re flavor
+`com.github.yueeng.moebooru.yande`).
+
+**Finding 1 is fixed** (the `$APPCACHE` scope entry proposed below was
+applied and verified on-device: detail images load without the
+refresh-then-fail loop). Finding 2 (the tag/metadata panel restructure) is
+still open -- not implemented.
 
 ## Finding 1 (confirmed, high confidence): asset-protocol scope mismatch breaks every Android detail-image load
 
