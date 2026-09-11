@@ -9,6 +9,7 @@
 [![Tauri 2](https://img.shields.io/badge/Tauri-2-24c8db)](https://v2.tauri.app/)
 [![React 19](https://img.shields.io/badge/React-19-61dafb)](https://react.dev/)
 [![Rust](https://img.shields.io/badge/runtime-Rust-b7410e)](https://www.rust-lang.org/)
+[![license: MIT](https://img.shields.io/badge/license-MIT-3da639)](LICENSE)
 
 Dreamland is a cross-platform desktop gallery built around one simple loop:
 
