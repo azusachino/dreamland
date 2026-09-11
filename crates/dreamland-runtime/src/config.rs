@@ -70,6 +70,9 @@ fn default_site_configs() -> BTreeMap<String, SiteConfig> {
 }
 
 fn default_download_path() -> PathBuf {
+    if let Some(dir) = std::env::var_os("DREAMLAND_DOWNLOAD_DIR") {
+        return PathBuf::from(dir);
+    }
     dirs::download_dir()
         .or_else(dirs::home_dir)
         .unwrap_or_else(|| PathBuf::from("."))
@@ -147,7 +150,9 @@ impl AppConfig {
     }
 
     fn config_dir() -> PathBuf {
-        dirs::config_dir()
+        std::env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .or_else(dirs::config_dir)
             .unwrap_or_else(|| PathBuf::from("."))
             .join("dreamland")
     }

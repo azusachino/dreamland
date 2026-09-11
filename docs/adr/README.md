@@ -16,3 +16,4 @@ new alternatives or superseding choices get a new ADR.
 | [0008](0008-frontend-visual-language.md) | Frontend visual language and cross-platform rendering | Accepted |
 | [0009](0009-runtime-operation-context-and-common-services.md) | Runtime operation context and common services | Accepted design; incremental implementation |
 | [0010](0010-solid-layer-boundaries.md) | SOLID boundaries for the site API | Accepted and implemented in 0.1.1 |
+| [0011](0011-android-target.md) | Android target | Accepted |

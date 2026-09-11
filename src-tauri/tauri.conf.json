@@ -27,7 +27,8 @@
         "enable": true,
         "scope": [
           "$CACHE/dreamland/detail/**/*",
-          "$HOME/.cache/dreamland/detail/**/*"
+          "$HOME/.cache/dreamland/detail/**/*",
+          "$APPCACHE/dreamland/detail/**/*"
         ]
       }
     }

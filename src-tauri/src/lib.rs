@@ -1,18 +1,21 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::Mutex;
 
 use dreamland_core::{
-    BrowserCookie, ContentPolicy, MediaVariant, NetworkPolicy, PoolPage, Post, PostQueryRequest,
-    QuerySessionId, SavedQuery, SiteId, SitePage, SiteSession, TagSuggestion, TagSuggestionRequest,
+    ContentPolicy, MediaVariant, NetworkPolicy, PoolPage, Post, PostQueryRequest, QuerySessionId,
+    SavedQuery, SiteId, SitePage, SiteSession, TagSuggestion, TagSuggestionRequest,
 };
 use dreamland_runtime::{
     AppConfig, ArchiveRecord, ArchiveRequest, DownloadRecord, DownloadRequest,
 };
 use dreamland_sites::SiteDescriptor;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_opener::OpenerExt;
+
+mod platform;
+use platform::{ActivePlatform, Platform};
 
 /// Posts from the most recent typed query, keyed by site and post id.
 /// Downloads resolve their URL from here rather than trusting a client-supplied
@@ -152,40 +155,9 @@ async fn clear_cache(state: State<'_, RuntimeState>) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
-fn yande_auth_window(
-    app: &AppHandle,
-    state: &RuntimeState,
-    visible: bool,
-) -> Result<WebviewWindow, String> {
-    if let Some(window) = app.get_webview_window("yande-auth") {
-        if visible {
-            window.show().map_err(|error| error.to_string())?;
-            window.set_focus().map_err(|error| error.to_string())?;
-        }
-        return Ok(window);
-    }
-    WebviewWindowBuilder::new(
-        app,
-        "yande-auth",
-        WebviewUrl::External(
-            state
-                .registry
-                .auth_login_url(dreamland_sites::DEFAULT_SITE_ID)
-                .map_err(|error| error.to_string())?
-                .parse()
-                .map_err(|error| format!("invalid login URL: {error}"))?,
-        ),
-    )
-    .title("Sign in to yandere")
-    .inner_size(480.0, 760.0)
-    .visible(visible)
-    .build()
-    .map_err(|error| error.to_string())
-}
-
 #[tauri::command]
 fn begin_auth(app: AppHandle, state: State<'_, RuntimeState>) -> Result<(), String> {
-    yande_auth_window(&app, &state, true).map(|_| ())
+    ActivePlatform::begin_auth(&app, &state)
 }
 
 #[tauri::command]
@@ -301,57 +273,7 @@ fn open_similar_search(
 
 #[tauri::command]
 async fn auth_status(app: AppHandle, state: State<'_, RuntimeState>) -> Result<AuthStatus, String> {
-    let window = yande_auth_window(&app, &state, false)?;
-    let cookies = window
-        .cookies_for_url(
-            "https://yande.re/"
-                .parse()
-                .map_err(|error| format!("invalid yandere URL: {error}"))?,
-        )
-        .map_err(|error| error.to_string())?;
-    let browser_cookies = cookies
-        .iter()
-        .map(|cookie| BrowserCookie {
-            name: cookie.name().to_owned(),
-            value: cookie.value().to_owned(),
-        })
-        .collect::<Vec<_>>();
-    let session = state
-        .registry
-        .auth_session(dreamland_sites::DEFAULT_SITE_ID, &browser_cookies)
-        .map_err(|error| error.to_string())?;
-    let authenticated = session.is_some();
-    *state
-        .auth_session
-        .lock()
-        .expect("auth session lock poisoned") = session.clone();
-    let session_for_lookup = state
-        .auth_session
-        .lock()
-        .expect("auth session lock poisoned")
-        .clone();
-    let username = if authenticated {
-        if let Some(session) = session_for_lookup {
-            let config = AppConfig::load_or_default().map_err(|error| error.to_string())?;
-            state
-                .registry
-                .current_user(dreamland_sites::DEFAULT_SITE_ID, &session, &config.network)
-                .await
-                .ok()
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-    *state
-        .auth_username
-        .lock()
-        .expect("auth username lock poisoned") = username.clone();
-    Ok(AuthStatus {
-        authenticated,
-        username,
-    })
+    ActivePlatform::auth_status(&app, &state).await
 }
 
 #[tauri::command]
@@ -930,7 +852,7 @@ async fn cancel_archive(state: State<'_, RuntimeState>, id: String) -> Result<()
 }
 
 #[tauri::command]
-fn open_download(path: String) -> Result<(), String> {
+fn open_download(app: AppHandle, path: String) -> Result<(), String> {
     let path = PathBuf::from(path);
     if !path.is_absolute() {
         return Err("download path must be absolute".to_owned());
@@ -939,77 +861,72 @@ fn open_download(path: String) -> Result<(), String> {
         return Err("downloaded file no longer exists".to_owned());
     }
 
-    #[cfg(target_os = "macos")]
-    let mut command = Command::new("open");
-    #[cfg(target_os = "windows")]
-    let mut command = {
-        let mut command = Command::new("cmd");
-        command.args(["/C", "start", ""]);
-        command
-    };
-    #[cfg(all(unix, not(target_os = "macos")))]
-    let mut command = Command::new("xdg-open");
-
-    command
-        .arg(path)
-        .spawn()
-        .map(|_| ())
+    app.opener()
+        .open_path(path.to_string_lossy(), None::<String>)
         .map_err(|error| format!("could not open downloaded file: {error}"))
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let config =
-        AppConfig::load_or_default().expect("Dreamland runtime configuration must be loadable");
-    let runtime_state =
-        RuntimeState::new(&config).expect("Dreamland local SQLite state must be initializable");
-    tauri::Builder::default()
-        .manage(runtime_state)
-        .setup(|app| {
-            let downloads = app.state::<RuntimeState>().downloads.clone();
-            downloads.set_detail_cache_root(dreamland_runtime::default_detail_cache_path());
-            tauri::async_runtime::spawn(downloads.worker());
-            tauri::async_runtime::spawn(downloads.archive_worker());
-            Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
-            list_sites,
-            load_config,
-            save_config,
-            detect_proxy,
-            clear_cache,
-            begin_auth,
-            open_site,
-            open_post,
-            open_similar_search,
-            auth_status,
-            sign_out,
-            list_pools,
-            query_pool_posts,
-            enqueue_pool_zip,
-            list_favorites,
-            list_saved_queries,
-            save_saved_query,
-            delete_saved_query,
-            move_saved_query,
-            set_favorite,
-            query_posts,
-            lookup_post,
-            load_detail_image,
-            related_tags,
-            continue_query,
-            cancel_query,
-            suggest_tags,
-            enqueue_download,
-            cancel_download,
-            retry_download,
-            list_downloads,
-            list_download_history,
-            list_archives,
-            cancel_archive,
-            open_download
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running Dreamland");
+    ActivePlatform::register_plugins(
+        tauri::Builder::default()
+            .plugin(tauri_plugin_opener::init())
+            .plugin(tauri_plugin_notification::init()),
+    )
+    .setup(|app| {
+        ActivePlatform::configure_dirs(app);
+
+        let config =
+            AppConfig::load_or_default().expect("Dreamland runtime configuration must be loadable");
+        let runtime_state =
+            RuntimeState::new(&config).expect("Dreamland local SQLite state must be initializable");
+        let downloads = runtime_state.downloads.clone();
+        app.manage(runtime_state);
+        downloads.set_detail_cache_root(dreamland_runtime::default_detail_cache_path());
+        ActivePlatform::handle_completed_downloads(app, &downloads);
+        tauri::async_runtime::spawn(downloads.worker());
+        tauri::async_runtime::spawn(downloads.archive_worker());
+        Ok(())
+    })
+    .invoke_handler(tauri::generate_handler![
+        list_sites,
+        load_config,
+        save_config,
+        detect_proxy,
+        clear_cache,
+        begin_auth,
+        open_site,
+        open_post,
+        open_similar_search,
+        auth_status,
+        sign_out,
+        list_pools,
+        query_pool_posts,
+        enqueue_pool_zip,
+        list_favorites,
+        list_saved_queries,
+        save_saved_query,
+        delete_saved_query,
+        move_saved_query,
+        set_favorite,
+        query_posts,
+        lookup_post,
+        load_detail_image,
+        related_tags,
+        continue_query,
+        cancel_query,
+        suggest_tags,
+        enqueue_download,
+        cancel_download,
+        retry_download,
+        list_downloads,
+        list_download_history,
+        list_archives,
+        cancel_archive,
+        open_download
+    ])
+    .run(tauri::generate_context!())
+    .expect("error while running Dreamland");
 }
 
 #[cfg(test)]

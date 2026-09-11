@@ -7,7 +7,10 @@
     "typecheck": "tsc --noEmit",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "tauri:android:init": "tauri android init && tauri icon app-icon.svg && uv run scripts/patch_android_gen.py",
+    "tauri:android:dev": "tauri icon app-icon.svg && uv run scripts/patch_android_gen.py && tauri android dev",
+    "tauri:android:build": "tauri icon app-icon.svg && uv run scripts/patch_android_gen.py && tauri android build --debug"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
