@@ -1,7 +1,9 @@
 # MoeBooru UX learnings
 
-Status: research notes, 2026-08-10. These observations come from the nested
-read-only UX reference checkout at `vendor/moebooru`, pinned to:
+Status: research notes, 2026-08-10. These observations come from a nested
+read-only UX reference checkout of [`yueeng/moebooru`](https://github.com/yueeng/moebooru)
+(vendored at `vendor/moebooru` during research, since dropped as a submodule),
+pinned to:
 
 ```text
 5bcf76644de594e136865eb70d486b916152de4b

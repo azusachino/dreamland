@@ -6,11 +6,12 @@ not what it should copy wholesale.
 
 ## Vendored `xplusky/MoeLoaderP`
 
-Dreamland carries MoeLoaderP as the nested git submodule at
-`vendor/moeloaderp`, pinned by the current Dreamland gitlink to commit
-`0025dd999306258103ed2b239b2132d3913c99e0`. The checkout is the source of
-truth for the site inventory below; GitHub links are only convenient
-navigation.
+Dreamland vendored MoeLoaderP as a nested git submodule at
+`vendor/moeloaderp` during research, pinned to commit
+`0025dd999306258103ed2b239b2132d3913c99e0`. That submodule has since been
+dropped; the pinned commit remains the source of truth for the site inventory
+below, and [`xplusky/MoeLoaderP`](https://github.com/xplusky/MoeLoaderP) at
+that commit is where to read it.
 
 - `SiteManager` and `MoeSite` demonstrate a site registry with per-site
   capability flags and per-site settings.

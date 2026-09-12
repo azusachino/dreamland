@@ -37,10 +37,11 @@ The release scope and evidence are tracked in
 
 ## Evidence boundary
 
-The design is based on Dreamland's nested MoeLoaderP submodule:
+The design is based on a nested MoeLoaderP submodule Dreamland vendored
+during research (since dropped as a submodule):
 
 ~~~text
-vendor/moeloaderp
+https://github.com/xplusky/MoeLoaderP
 commit 0025dd999306258103ed2b239b2132d3913c99e0
 ~~~
 

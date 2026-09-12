@@ -5,8 +5,9 @@ it is not an implementation approval.
 
 ## Source boundary
 
-Dreamland vendors MoeLoaderP as the nested git submodule
-`vendor/moeloaderp`, pinned by Dreamland to:
+Dreamland vendored [`xplusky/MoeLoaderP`](https://github.com/xplusky/MoeLoaderP)
+as a nested git submodule at `vendor/moeloaderp` during research (since
+dropped as a submodule), pinned to:
 
 ```text
 0025dd999306258103ed2b239b2132d3913c99e0
