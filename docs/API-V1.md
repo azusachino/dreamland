@@ -39,8 +39,10 @@ The release scope and evidence are tracked in
 
 The design is based on Dreamland's nested MoeLoaderP submodule:
 
-    vendor/moeloaderp
-    commit 0025dd999306258103ed2b239b2132d3913c99e0
+~~~text
+vendor/moeloaderp
+commit 0025dd999306258103ed2b239b2132d3913c99e0
+~~~
 
 Observed shapes:
 
@@ -442,8 +444,10 @@ download queue; it does not make site-specific fields mandatory.
 
 The normalization pipeline is:
 
-    site wire response -> site DTO -> site mapper -> PostSummary/PostDetail
-    -> runtime policy -> Tauri DTO
+~~~text
+site wire response -> site DTO -> site mapper -> PostSummary/PostDetail
+-> runtime policy -> Tauri DTO
+~~~
 
 For example, Yande maps its `author` and `creator_id` fields to
 `PostAttribution.posting_account`, while typed artist tags remain
@@ -1174,21 +1178,25 @@ sessions. Raw secret values can be written only through the runtime secret
 store; SiteConfigInput accepts references, never secret text.
 
 Yande v1 needs only a validated base URL/mirror override and runtime content
-policy. Its default endpoint is https://yande.re. Login cookies are session
+policy. Its default endpoint is <https://yande.re>. Login cookies are session
 state, not site TOML values.
 
 ### Download layout and canonical names
 
 The default organization is `Site`:
 
-    <directory>/<site>/posts/<canonical-name>.<extension>
+~~~text
+<directory>/<site>/posts/<canonical-name>.<extension>
+~~~
 
 For a post, the canonical name is `<post-id>_<checksum>` when a site
 checksum exists, otherwise `<post-id>`. The extension comes from the resolved
 media content type, not from a frontend-supplied filename. For a site
 archive, the default is:
 
-    <directory>/<site>/pools/pool-<pool-id>_<safe-pool-name>.zip
+~~~text
+<directory>/<site>/pools/pool-<pool-id>_<safe-pool-name>.zip
+~~~
 
 The runtime normalizes Unicode, removes path separators and reserved names,
 limits each component to a safe byte length, and falls back to the stable
@@ -1297,46 +1305,48 @@ pub struct EnqueueDownloadResult {
 }
 ~~~
 
-    list_sites() -> Vec<SiteDescriptor>
-    get_site_capabilities(SiteId) -> EffectiveCapabilities
-    get_site_config_schema(SiteId) -> SiteConfigSchema
-    list_site_categories(SiteId) -> Vec<CategoryNode>
-    list_site_mirrors(SiteId) -> Vec<MirrorDescriptor>
-    load_site_config(SiteId) -> SiteConfig
-    validate_site_config(SiteId, SiteConfigInput) -> SiteConfig
-    save_site_config(SiteId, SiteConfigInput) -> SiteConfig
-    load_config() -> RuntimeConfig
-    save_config(RuntimeConfigInput) -> RuntimeConfig
+~~~text
+list_sites() -> Vec<SiteDescriptor>
+get_site_capabilities(SiteId) -> EffectiveCapabilities
+get_site_config_schema(SiteId) -> SiteConfigSchema
+list_site_categories(SiteId) -> Vec<CategoryNode>
+list_site_mirrors(SiteId) -> Vec<MirrorDescriptor>
+load_site_config(SiteId) -> SiteConfig
+validate_site_config(SiteId, SiteConfigInput) -> SiteConfig
+save_site_config(SiteId, SiteConfigInput) -> SiteConfig
+load_config() -> RuntimeConfig
+save_config(RuntimeConfigInput) -> RuntimeConfig
 
-    auth_status(SiteId) -> AuthStatus
-    begin_auth(SiteId) -> AuthChallenge
-    complete_auth(AuthCompletion) -> AuthStatus
-    refresh_auth(SiteId) -> AuthStatus
-    logout(SiteId) -> ()
+auth_status(SiteId) -> AuthStatus
+begin_auth(SiteId) -> AuthChallenge
+complete_auth(AuthCompletion) -> AuthStatus
+refresh_auth(SiteId) -> AuthStatus
+logout(SiteId) -> ()
 
-    query_posts(QueryInput) -> PostPage
-    continue_query(QuerySessionId) -> PostPage
-    cancel_query(QuerySessionId) -> ()
-    suggest_tags(TagSuggestionInput) -> Vec<TagSuggestion>
-    lookup_post(PostRef) -> Post
-    hydrate_post(PostRef, DetailExpansion) -> Post
-    get_creator(CreatorRef) -> CreatorProfile
-    list_remote_collections(RemoteCollectionListInput) -> RemoteCollectionPage
-    list_remote_collection_posts(RemoteCollectionInput) -> PostPage
-    list_remote_favorites(SiteId, PaginationRequest) -> PostPage
-    save_query(SavedQueryInput) -> SavedQuery
-    list_saved_queries(bool) -> Vec<SavedQuery>
-    move_saved_query(LocalRecordId, Direction) -> ()
-    delete_saved_query(LocalRecordId) -> ()
-    download_history(PaginationRequest) -> Vec<DownloadRecord>
-    open_download(LocalRecordId) -> ()
-    execute_post_action(PostActionInput) -> PostActionResult
+query_posts(QueryInput) -> PostPage
+continue_query(QuerySessionId) -> PostPage
+cancel_query(QuerySessionId) -> ()
+suggest_tags(TagSuggestionInput) -> Vec<TagSuggestion>
+lookup_post(PostRef) -> Post
+hydrate_post(PostRef, DetailExpansion) -> Post
+get_creator(CreatorRef) -> CreatorProfile
+list_remote_collections(RemoteCollectionListInput) -> RemoteCollectionPage
+list_remote_collection_posts(RemoteCollectionInput) -> PostPage
+list_remote_favorites(SiteId, PaginationRequest) -> PostPage
+save_query(SavedQueryInput) -> SavedQuery
+list_saved_queries(bool) -> Vec<SavedQuery>
+move_saved_query(LocalRecordId, Direction) -> ()
+delete_saved_query(LocalRecordId) -> ()
+download_history(PaginationRequest) -> Vec<DownloadRecord>
+open_download(LocalRecordId) -> ()
+execute_post_action(PostActionInput) -> PostActionResult
 
-    enqueue_download(DownloadRequest) -> EnqueueDownloadResult
-    cancel_download(LocalRecordId) -> ()
-    retry_download(LocalRecordId) -> EnqueueDownloadResult
-    open_site(SiteId) -> ()
-    open_post(PostRef) -> ()
+enqueue_download(DownloadRequest) -> EnqueueDownloadResult
+cancel_download(LocalRecordId) -> ()
+retry_download(LocalRecordId) -> EnqueueDownloadResult
+open_site(SiteId) -> ()
+open_post(PostRef) -> ()
+~~~
 
 The current Tauri shell uses `open_site` for an explicit site-owned browser
 route and for feed-error recovery. It validates the registered browse
